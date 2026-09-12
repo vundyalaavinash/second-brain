@@ -61,7 +61,8 @@ textarea::placeholder {
 }
 
 :focus-visible {
-  outline: none;
+  outline: 2px solid rgba(76, 201, 255, 0.55);
+  outline-offset: 2px;
 }
 
 /* Frosted floating chrome: dock, palette, pickers. */
@@ -73,8 +74,9 @@ textarea::placeholder {
   box-shadow: var(--shadow-float);
 }
 
-/* Focus ring used by every interactive primitive. */
+/* Focus ring used by every interactive primitive; overrides the global outline fallback. */
 .focus-ring:focus-visible {
+  outline: none;
   box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(76, 201, 255, 0.55);
 }
 
