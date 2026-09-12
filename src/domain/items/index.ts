@@ -108,8 +108,8 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
     if (ids.length === 0) return [];
     conds.push(inArray(items.id, ids));
   }
-  if (filter.from) conds.push(gte(items.createdAt, `${filter.from}T00:00:00.000Z`));
-  if (filter.to) conds.push(lte(items.createdAt, `${filter.to}T23:59:59.999Z`));
+  if (filter.from) conds.push(gte(items.createdAt, new Date(`${filter.from}T00:00:00`).toISOString()));
+  if (filter.to) conds.push(lte(items.createdAt, new Date(`${filter.to}T23:59:59.999`).toISOString()));
   return db
     .select()
     .from(items)

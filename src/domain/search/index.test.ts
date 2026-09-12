@@ -73,6 +73,19 @@ describe("search", () => {
     expect(old.map((r) => r.item.id)).toEqual([tomato.id]);
   });
 
+  it("compares date filters against local calendar days, not UTC instants", async () => {
+    const { embed, tomato } = await seed(t);
+    // A local-evening instant that would fall on the next UTC calendar day for timezones behind UTC.
+    t.db.$client
+      .prepare("UPDATE items SET created_at = ? WHERE id = ?")
+      .run(new Date("2026-03-10T22:30:00").toISOString(), tomato.id);
+
+    const sameDay = await search(t.db, embed, "tomato", { from: "2026-03-10", to: "2026-03-10" });
+    expect(sameDay.map((r) => r.item.id)).toContain(tomato.id);
+    const nextDay = await search(t.db, embed, "tomato", { from: "2026-03-11" });
+    expect(nextDay.map((r) => r.item.id)).not.toContain(tomato.id);
+  });
+
   it("returns nothing for an empty query and respects the limit", async () => {
     const { embed } = await seed(t);
     expect(await search(t.db, embed, "   ")).toEqual([]);

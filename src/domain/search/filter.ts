@@ -3,9 +3,9 @@ import type { ItemType } from "@/db/schema";
 export interface SearchFilter {
   type?: ItemType;
   tag?: string;
-  /** Inclusive lower bound on created date, YYYY-MM-DD. */
+  /** Inclusive lower bound on created date, YYYY-MM-DD (local start of day). */
   from?: string;
-  /** Inclusive upper bound on created date, YYYY-MM-DD. */
+  /** Inclusive upper bound on created date, YYYY-MM-DD (local end of day). */
   to?: string;
 }
 
@@ -23,11 +23,11 @@ export function filterSql(filter: SearchFilter = {}): { where: string; params: u
   }
   if (filter.from) {
     where += " AND i.created_at >= ?";
-    params.push(`${filter.from}T00:00:00.000Z`);
+    params.push(new Date(`${filter.from}T00:00:00`).toISOString());
   }
   if (filter.to) {
     where += " AND i.created_at <= ?";
-    params.push(`${filter.to}T23:59:59.999Z`);
+    params.push(new Date(`${filter.to}T23:59:59.999`).toISOString());
   }
   return { where, params };
 }

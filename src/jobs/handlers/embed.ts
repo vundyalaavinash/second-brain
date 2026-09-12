@@ -19,13 +19,20 @@ export function createEmbedHandler(deps: { db: DB; embed: EmbedProvider | null }
     }
     updateItem(deps.db, itemId, { status: "processing" });
     const rows = getItemChunks(deps.db, itemId);
-    for (let i = 0; i < rows.length; i += BATCH) {
-      const batch = rows.slice(i, i + BATCH);
-      const vectors = await deps.embed.embed(batch.map((c) => c.text));
-      upsertChunkVectors(
-        deps.db,
-        batch.map((c, j) => ({ chunkId: c.id, vector: vectors[j] })),
-      );
+    try {
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const vectors = await deps.embed.embed(batch.map((c) => c.text));
+        upsertChunkVectors(
+          deps.db,
+          batch.map((c, j) => ({ chunkId: c.id, vector: vectors[j] })),
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[embed] embedding provider failed for item ${itemId}; indexed for keyword search only: ${message}`);
+      updateItem(deps.db, itemId, { status: "ready", error: null });
+      return;
     }
     updateItem(deps.db, itemId, { status: "ready", error: null });
   };

@@ -59,6 +59,7 @@ export function CaptureBox({ onCaptured }: Props) {
       }
       setText("");
       setFiles([]);
+      setTags("");
       created.forEach(onCaptured);
       textareaRef.current?.focus();
     } catch (e) {

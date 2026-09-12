@@ -14,7 +14,7 @@ describe("fetch_link handler", () => {
 
   it("fills title, extracted text, meta, chunks, and queues embedding", async () => {
     const url = "https://example.test/post";
-    const item = createItem(t.db, { type: "link", title: url, sourceUrl: url });
+    const item = createItem(t.db, { type: "link", title: url, sourceUrl: url, meta: { keep: "me" } });
     const job = enqueueJob(t.db, "fetch_link", { itemId: item.id }, item.id);
     const fetchImpl: typeof fetch = async () => new Response(ARTICLE_HTML, { status: 200 });
     await createFetchLinkHandler({ db: t.db, fetchImpl })(job);
@@ -23,7 +23,11 @@ describe("fetch_link handler", () => {
     expect(after.title).toMatch(/Test Article/);
     expect(after.extractedText).toMatch(/second brain keeps/);
     expect(after.status).toBe("processing");
-    expect(parseMeta<{ fetched_at: string }>(after).fetched_at).toBeTruthy();
+    const meta = parseMeta<{ keep: string; fetched_at: string; site_name: unknown; byline: unknown }>(after);
+    expect(meta.keep).toBe("me");
+    expect(meta).toHaveProperty("site_name");
+    expect(meta).toHaveProperty("byline");
+    expect(meta.fetched_at).toBeTruthy();
     expect(getItemChunks(t.db, item.id).length).toBeGreaterThan(0);
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["fetch_link", "embed"]);
   });

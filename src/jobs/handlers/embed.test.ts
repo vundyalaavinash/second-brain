@@ -42,4 +42,14 @@ describe("embed handler", () => {
     const job = enqueueJob(t.db, "embed", { itemId: 404 });
     await expect(createEmbedHandler({ db: t.db, embed: createFakeEmbedProvider() })(job)).rejects.toThrow(/not found/);
   });
+
+  it("marks the item ready without vectors when the embedding provider fails", async () => {
+    const item = createItem(t.db, { type: "note", title: "T", body: "hello" });
+    rechunkItem(t.db, item.id);
+    const job = enqueueJob(t.db, "embed", { itemId: item.id }, item.id);
+    const failingEmbed = { dimensions: 384, embed: async () => { throw new Error("model unavailable"); } };
+    await createEmbedHandler({ db: t.db, embed: failingEmbed })(job);
+    expect(countChunkVectors(t.db)).toBe(0);
+    expect(getItem(t.db, item.id)?.status).toBe("ready");
+  });
 });

@@ -15,6 +15,12 @@ export function boot(): JobWorker {
   if (!embed) console.warn("[boot] SB_EMBED=off: semantic search disabled");
   const worker = new JobWorker(db, createJobHandlers({ db, embed }), { log: (m) => console.log(`[worker] ${m}`) });
   worker.start();
+  if (embed) {
+    void embed
+      .embed(["warmup"])
+      .then(() => console.log("[boot] embedding model ready"))
+      .catch((err) => console.warn(`[boot] embedding model unavailable: ${err instanceof Error ? err.message : String(err)}`));
+  }
   g.__sbWorker = worker;
   console.log("[boot] job worker started");
   return worker;

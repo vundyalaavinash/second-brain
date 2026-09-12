@@ -100,6 +100,17 @@ describe("items api", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("application/pdf");
     expect(Buffer.from(await served.arrayBuffer()).equals(MINIMAL_PDF)).toBe(true);
+    expect(served.headers.get("content-disposition")).toMatch(/^inline/);
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+
+    const htmlForm = new FormData();
+    htmlForm.append("file", new File([new Uint8Array(Buffer.from("<script>1</script>"))], "page.html", { type: "text/html" }));
+    const htmlRes = await routes.upload.POST(new Request("http://localhost/api/upload", { method: "POST", body: htmlForm }));
+    expect(htmlRes.status).toBe(201);
+    const htmlDto = (await htmlRes.json()) as ItemDTO;
+    const servedHtml = await routes.file.GET(json("GET", `/api/items/${htmlDto.id}/file`), params(htmlDto.id));
+    expect(servedHtml.headers.get("content-disposition")).toMatch(/^attachment/);
+    expect(servedHtml.headers.get("x-content-type-options")).toBe("nosniff");
 
     const audio = new FormData();
     audio.append("file", new File([new Uint8Array(Buffer.from("x"))], "call.m4a", { type: "audio/mp4" }));

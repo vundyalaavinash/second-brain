@@ -18,7 +18,7 @@ export function createTransformersEmbedProvider(opts: TransformersEmbedOptions):
       loading = (async () => {
         const { pipeline, env } = await import("@huggingface/transformers");
         env.cacheDir = opts.cacheDir;
-        return (await pipeline("feature-extraction", model, { dtype: "fp32" })) as FeatureExtractionPipeline;
+        return (await pipeline("feature-extraction", model, { dtype: "q8" })) as FeatureExtractionPipeline;
       })();
     }
     return loading;
