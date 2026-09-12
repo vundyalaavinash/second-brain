@@ -3,8 +3,9 @@ import { getDb } from "@/db/client";
 import { ITEM_STATUSES, ITEM_TYPES, type ItemStatus, type ItemType } from "@/db/enums";
 import { listItems, listTagNames } from "@/domain/items";
 import { listContainers } from "@/domain/containers";
-import { StatusBadge, TypeBadge } from "@/components/badges";
+import { TypeIcon, StatusDot, TYPE_LABEL, KIND_LABEL } from "@/components/type-icon";
 import { relativeTime } from "@/lib/format";
+import { Button, Input, List, PageHeader, Row, Select } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,10 @@ function parseContainer(v: string | undefined): number | null | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const type = isType(sp.type) ? sp.type : undefined;
@@ -51,30 +56,27 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     return `/library${s ? `?${s}` : ""}`;
   };
   const chip = (active: boolean) =>
-    `h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border transition-colors duration-150 ${
-      active ? "border-accent text-accent bg-accent-dim" : "border-line text-fg-muted hover:text-fg"
+    `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
+      active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
     }`;
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-6 flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-medium tracking-tight">Library</h1>
-        <span className="font-mono text-[10px] text-fg-faint">{items.length} shown</span>
-      </header>
+    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-5">
+      <PageHeader title="Library" meta={<span className="font-mono">{items.length} shown</span>} />
 
       <div className="flex flex-wrap gap-2 items-center">
         <Link href={href({ type: undefined })} className={chip(!type)}>
-          all
+          All
         </Link>
         {ITEM_TYPES.map((t) => (
           <Link key={t} href={href({ type: t })} className={chip(type === t)}>
-            {t}
+            {TYPE_LABEL[t]}
           </Link>
         ))}
         <span className="w-px h-4 bg-line mx-1" />
         {ITEM_STATUSES.map((s) => (
           <Link key={s} href={href({ status: status === s ? undefined : s })} className={chip(status === s)}>
-            {s}
+            {titleCase(s)}
           </Link>
         ))}
       </div>
@@ -93,63 +95,56 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         {type && <input type="hidden" name="type" value={type} />}
         {status && <input type="hidden" name="status" value={status} />}
         {tag && <input type="hidden" name="tag" value={tag} />}
-        <select
-          name="container"
-          defaultValue={sp.container ?? ""}
-          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
-        >
-          <option value="">any home</option>
-          <option value="inbox">inbox</option>
+        <Select name="container" defaultValue={sp.container ?? ""} className="h-8 w-auto text-[12.5px]">
+          <option value="">Any home</option>
+          <option value="inbox">Inbox</option>
           {containers.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.kind} · {c.name}
+              {c.name} ({KIND_LABEL[c.kind]})
             </option>
           ))}
-        </select>
-        <input
-          type="date"
-          name="from"
-          defaultValue={from ?? ""}
-          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
-        />
-        <span className="font-mono text-[10px] text-fg-faint">to</span>
-        <input
-          type="date"
-          name="to"
-          defaultValue={to ?? ""}
-          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
-        />
-        <label className="flex items-center gap-1.5 font-mono text-[10px] text-fg-muted">
+        </Select>
+        <Input type="date" name="from" defaultValue={from ?? ""} className="h-8 w-auto text-[12.5px]" />
+        <span className="text-[12.5px] text-fg-faint">to</span>
+        <Input type="date" name="to" defaultValue={to ?? ""} className="h-8 w-auto text-[12.5px]" />
+        <label className="flex items-center gap-1.5 text-[12.5px] text-fg-muted">
           <input type="checkbox" name="archived" value="1" defaultChecked={archived} />
-          include archived
+          Include archived
         </label>
-        <button type="submit" className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line text-fg-muted hover:text-fg">
+        <Button variant="secondary" size="sm" type="submit">
           Apply
-        </button>
+        </Button>
         {(from || to || sp.container || archived) && (
           <Link
             href={href({ from: undefined, to: undefined, container: undefined, archived: undefined })}
-            className="font-mono text-[10px] text-fg-faint hover:text-fg underline"
+            className="text-[12.5px] text-fg-faint hover:text-fg underline"
           >
-            clear
+            Clear
           </Link>
         )}
       </form>
 
-      <ul className="border border-line rounded-lg divide-y divide-line bg-surface-1">
-        {items.length === 0 && <li className="px-3 h-12 flex items-center text-fg-faint text-[13px]">Nothing here yet.</li>}
-        {items.map((item) => (
-          <li key={item.id} className="flex items-center gap-3 px-3 h-10 hover:bg-surface-2 transition-colors duration-150">
-            <span className="font-mono text-[10px] text-fg-faint w-8">#{item.id}</span>
-            <TypeBadge type={item.type} />
-            <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13px] hover:text-accent">
-              {item.title}
-            </Link>
-            <StatusBadge status={item.status} error={item.error} />
-            <span className="font-mono text-[10px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
-          </li>
-        ))}
-      </ul>
+      {items.length === 0 ? (
+        <List>
+          <Row>
+            <span className="text-fg-faint text-[13.5px]">Nothing here yet.</span>
+          </Row>
+        </List>
+      ) : (
+        <List>
+          {items.map((item) => (
+            <Row key={item.id}>
+              <span className="font-mono text-[11px] text-fg-faint w-8">#{item.id}</span>
+              <TypeIcon type={item.type} />
+              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
+                {item.title}
+              </Link>
+              <StatusDot status={item.status} error={item.error} />
+              <span className="font-mono text-[11px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
+            </Row>
+          ))}
+        </List>
+      )}
     </div>
   );
 }

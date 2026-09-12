@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import { Button, Input } from "./ui";
 
 export function NewPersonForm() {
   const router = useRouter();
@@ -37,16 +39,16 @@ export function NewPersonForm() {
       }}
       className="flex items-center gap-2"
     >
-      <input
+      <Input
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="New person"
-        className="h-8 flex-1 max-w-sm bg-surface-1 border border-line rounded-md px-3 text-[13px] outline-none focus:border-accent"
+        className="flex-1 max-w-sm"
       />
-      <button type="submit" disabled={!name.trim() || busy} className="h-8 px-3 rounded-md text-[12px] font-medium bg-accent text-bg disabled:opacity-40">
+      <Button variant="primary" icon={Plus} type="submit" disabled={!name.trim() || busy}>
         Add
-      </button>
-      {error && <span className="text-[12px] text-danger">{error}</span>}
+      </Button>
+      {error && <span className="text-[12.5px] text-danger">{error}</span>}
     </form>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { RotateCcw } from "lucide-react";
+import { Button } from "./ui";
 
 export function RestoreButton({ kind, id }: { kind: "container" | "item"; id: number }) {
   const router = useRouter();
@@ -19,8 +21,8 @@ export function RestoreButton({ kind, id }: { kind: "container" | "item"; id: nu
     }
   }
   return (
-    <button onClick={() => void restore()} disabled={busy} className="h-6 px-2 rounded-sm font-mono text-[10px] uppercase tracking-wider border border-line hover:border-accent hover:text-accent disabled:opacity-40">
-      restore
-    </button>
+    <Button variant="secondary" size="sm" icon={RotateCcw} onClick={() => void restore()} disabled={busy}>
+      Restore
+    </Button>
   );
 }
