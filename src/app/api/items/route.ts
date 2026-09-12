@@ -34,14 +34,20 @@ export async function POST(req: Request): Promise<Response> {
   }
 }
 
-const TypeParam = z.enum(ITEM_TYPES).optional();
-const StatusParam = z.enum(ITEM_STATUSES).optional();
+const ListParams = z.object({
+  type: z.enum(ITEM_TYPES).optional(),
+  status: z.enum(ITEM_STATUSES).optional(),
+});
 
 export async function GET(req: Request): Promise<Response> {
   try {
     const url = new URL(req.url);
-    const type = TypeParam.parse(url.searchParams.get("type") ?? undefined);
-    const status = StatusParam.parse(url.searchParams.get("status") ?? undefined);
+    const parsed = ListParams.safeParse({
+      type: url.searchParams.get("type") || undefined,
+      status: url.searchParams.get("status") || undefined,
+    });
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    const { type, status } = parsed.data;
     const tag = url.searchParams.get("tag") ?? undefined;
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
     const offset = Number(url.searchParams.get("offset") ?? 0) || 0;

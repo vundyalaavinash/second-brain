@@ -81,6 +81,11 @@ describe("items api", () => {
     expect((await routes.items.POST(json("POST", "/api/items", { type: "link", url: "nope" }))).status).toBe(400);
   });
 
+  it("rejects invalid list filters", async () => {
+    expect((await routes.items.GET(json("GET", "/api/items?type=bogus"))).status).toBe(400);
+    expect((await routes.items.GET(json("GET", "/api/items?status=nope"))).status).toBe(400);
+  });
+
   it("uploads a pdf, serves it back, and rejects audio", async () => {
     const form = new FormData();
     form.append("file", new File([new Uint8Array(MINIMAL_PDF)], "hello.pdf", { type: "application/pdf" }));
