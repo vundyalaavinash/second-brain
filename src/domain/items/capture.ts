@@ -31,7 +31,14 @@ function queueEmbedding(db: DB, itemId: number): void {
   enqueueJob(db, "embed", { itemId }, itemId);
 }
 
+function assertContainerExists(db: DB, containerId: number | null | undefined): void {
+  if (containerId === null || containerId === undefined) return;
+  const exists = db.$client.prepare("SELECT id FROM containers WHERE id = ?").get(containerId);
+  if (!exists) throw new CaptureError(`Container ${containerId} not found`, 400);
+}
+
 export function captureNote(db: DB, input: { title?: string; body: string; tags?: string[]; containerId?: number | null }): Item {
+  assertContainerExists(db, input.containerId);
   const title = input.title?.trim() || deriveTitle(input.body);
   const item = createItem(db, { type: "note", title, body: input.body, containerId: input.containerId ?? null });
   if (input.tags) setItemTags(db, item.id, input.tags);
@@ -54,6 +61,7 @@ export function captureLink(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new CaptureError("Only http and https links can be captured");
   }
+  assertContainerExists(db, input.containerId);
   if (!input.force) {
     const existing = findLinkByUrl(db, raw);
     if (existing) throw new DuplicateError(existing.id);
@@ -77,6 +85,7 @@ export function captureFile(
   if (kind === "audio") {
     throw new CaptureError("Audio files are captured as meetings, which arrive with the meetings slice", 415);
   }
+  assertContainerExists(db, input.containerId);
   const saved = saveFile(input.bytes, input.name);
   const item = createItem(db, {
     type: "file",

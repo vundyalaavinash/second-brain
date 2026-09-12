@@ -65,10 +65,18 @@ describe("containers api", () => {
     const note = (await noteRes.json()) as ItemDTO;
     expect(note.containerId).toBe(project.id);
     expect(note.container?.slug).toBe("launch");
+    expect((await r.items.POST(json("POST", "/api/items", { type: "note", body: "x", containerId: 99999 }))).status).toBe(400);
 
     const patched = (await (await r.container.PATCH(json("PATCH", `/api/containers/${project.id}`, { goal: "Ship" }), params(project.id))).json()) as ContainerDTO;
     expect(patched.goal).toBe("Ship");
     expect(patched.itemCount).toBe(1);
+
+    const badJson = new Request(`http://localhost/api/containers/${project.id}/archive`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    expect((await r.archive.POST(badJson, params(project.id))).status).toBe(400);
 
     const archived = (await (await r.archive.POST(json("POST", `/api/containers/${project.id}/archive`, { moveItemsTo: area.id }), params(project.id))).json()) as ContainerDTO;
     expect(archived.status).toBe("archived");

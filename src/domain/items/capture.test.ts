@@ -103,4 +103,14 @@ describe("capture", () => {
     const file = captureFile(t.db, { bytes: Buffer.from("t"), name: "n.txt", mime: "text/plain", containerId });
     expect(file.containerId).toBe(containerId);
   });
+
+  it("rejects a nonexistent containerId with a 400 CaptureError", () => {
+    try {
+      captureNote(t.db, { body: "x", containerId: 9999 });
+      throw new Error("expected CaptureError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CaptureError);
+      expect((e as CaptureError).status).toBe(400);
+    }
+  });
 });
