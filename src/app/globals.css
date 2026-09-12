@@ -85,3 +85,73 @@ textarea::placeholder {
   padding: 1px 5px;
   line-height: 1.4;
 }
+
+.md {
+  line-height: 1.65;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin: 1.2em 0 0.4em;
+}
+.md h1 {
+  font-size: 1.35rem;
+}
+.md h2 {
+  font-size: 1.15rem;
+}
+.md h3 {
+  font-size: 1rem;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md blockquote {
+  margin: 0.6em 0;
+}
+.md ul,
+.md ol {
+  padding-left: 1.4em;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-surface-3);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.md pre {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+}
+.md blockquote {
+  border-left: 2px solid var(--color-line-strong);
+  padding-left: 0.9em;
+  color: var(--color-fg-muted);
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 1.2em 0;
+}
