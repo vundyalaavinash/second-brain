@@ -2113,11 +2113,12 @@ describe("embed handler", () => {
 
   it("embeds every chunk of the item and marks it ready", async () => {
     const item = createItem(t.db, { type: "note", title: "T", body: Array.from({ length: 800 }, (_, i) => `w${i}`).join(" ") });
-    expect(rechunkItem(t.db, item.id)).toBe(3);
+    // Title "T" packs into its own chunk, then 800 words split into 375 + 375 + 50.
+    expect(rechunkItem(t.db, item.id)).toBe(4);
     const job = enqueueJob(t.db, "embed", { itemId: item.id }, item.id);
     const handler = createEmbedHandler({ db: t.db, embed: createFakeEmbedProvider() });
     await handler(job);
-    expect(countChunkVectors(t.db)).toBe(3);
+    expect(countChunkVectors(t.db)).toBe(4);
     expect(getItem(t.db, item.id)?.status).toBe("ready");
 
     updateItem(t.db, item.id, { body: "short now" });
