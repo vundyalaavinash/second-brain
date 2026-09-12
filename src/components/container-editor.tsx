@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } from "lucide-react";
 import type { ContainerDTO, ItemDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
-import { StatusBadge, TypeBadge } from "./badges";
 import { relativeTime } from "@/lib/format";
+import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select, Textarea } from "./ui";
+import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
-
-const KIND_LABEL = { project: "Project", area: "Area", resource: "Resource" } as const;
 
 export function ContainerEditor({ initial, items }: { initial: ContainerDTO; items: ItemDTO[] }) {
   const router = useRouter();
@@ -87,85 +87,168 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
     router.push(`/${c.kind}s`);
   }
 
-  const field = "w-full bg-surface-1 border border-line rounded-md px-3 py-2 text-[13px] outline-none focus:border-accent";
   const mark = () => setDirty(true);
+  const saveText = saving ? "Saving" : dirty ? "Unsaved, ⌘S to save" : "";
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
-      <header className="flex items-center gap-3 h-8">
-        <Link href={`/${c.kind}s`} className="font-mono text-[11px] text-fg-muted hover:text-fg">
-          ← {KIND_LABEL[c.kind].toLowerCase()}s
+      <header className="flex items-center gap-2 h-10 mb-3">
+        <Link href={`/${c.kind}s`} className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          {KIND_LABEL[c.kind]}s
         </Link>
-        <span className="font-mono text-[10px] tracking-wider uppercase text-fg-muted border border-line rounded-sm px-1.5 py-0.5">{KIND_LABEL[c.kind]}</span>
-        {c.status === "archived" && <span className="font-mono text-[10px] text-warn">archived</span>}
-        <span className={`font-mono text-[10px] ${error ? "text-danger" : "text-fg-faint"}`}>{saving ? "saving" : dirty ? "unsaved · ⌘S" : ""}</span>
+        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted">
+          <KindIcon kind={c.kind} />
+          {KIND_LABEL[c.kind]}
+        </span>
+        {c.status === "archived" && <span className="text-[11.5px] text-warn">Archived</span>}
+        <span className={`text-[12px] ${error ? "text-danger" : "text-fg-faint"}`}>{saveText}</span>
         <span className="flex-1" />
-        <Link href={`/capture?to=${c.slug}`} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong flex items-center">
-          Capture here
+        <Link href={`/capture?to=${c.slug}`}>
+          <Button variant="secondary" size="sm" icon={Plus}>
+            Capture here
+          </Button>
         </Link>
         {c.status === "active" && c.kind === "project" && (
-          <button onClick={() => setComplete(true)} className="h-7 px-2 rounded-md text-[12px] border border-accent text-accent">
+          <Button variant="primary" icon={Check} onClick={() => setComplete(true)}>
             Complete
-          </button>
+          </Button>
         )}
         {(c.status === "archived" || c.kind !== "project") && (
-          <button onClick={() => void archiveOrRestore()} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong">
-            {c.status === "archived" ? "Restore" : "Archive"}
-          </button>
+          <IconButton
+            label={c.status === "archived" ? "Restore" : `Archive ${c.kind}`}
+            icon={c.status === "archived" ? RotateCcw : Archive}
+            onClick={() => void archiveOrRestore()}
+          />
         )}
         {c.totalItemCount === 0 && (
-          <button onClick={() => void remove()} onBlur={() => setConfirmDelete(false)} className={`h-7 px-2 rounded-md text-[12px] border ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}>
-            {confirmDelete ? "Confirm delete" : "Delete"}
-          </button>
+          <IconButton
+            label={confirmDelete ? "Confirm delete" : "Delete"}
+            icon={Trash2}
+            danger={confirmDelete}
+            onClick={() => void remove()}
+            onBlur={() => setConfirmDelete(false)}
+          />
         )}
-        <button onClick={() => void save()} disabled={!dirty || saving} className="h-7 px-3 rounded-md text-[12px] font-medium bg-accent text-bg disabled:opacity-40">
-          Save
-        </button>
+        <Button variant="primary" icon={Save} disabled={!dirty || saving} onClick={() => void save()}>
+          Save changes
+        </Button>
       </header>
 
-      {error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{error}</div>}
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
 
-      <input value={name} onChange={(e) => { setName(e.target.value); mark(); }} className="w-full bg-transparent outline-none text-2xl font-medium tracking-tight" placeholder="Name" />
+      <input
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          mark();
+        }}
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full"
+        placeholder="Name"
+      />
 
       {c.kind === "project" && (
         <div className="grid grid-cols-[1fr_auto] gap-3">
-          <input value={goal} onChange={(e) => { setGoal(e.target.value); mark(); }} placeholder="Goal: what does done look like?" className={field} />
-          <input type="date" value={deadline} onChange={(e) => { setDeadline(e.target.value); mark(); }} className={`${field} font-mono text-[12px]`} />
+          <Input
+            value={goal}
+            onChange={(e) => {
+              setGoal(e.target.value);
+              mark();
+            }}
+            placeholder="What does done look like?"
+          />
+          <Input
+            type="date"
+            value={deadline}
+            onChange={(e) => {
+              setDeadline(e.target.value);
+              mark();
+            }}
+            className="font-mono text-[12px]"
+          />
         </div>
       )}
       {c.kind === "area" && (
-        <input value={standard} onChange={(e) => { setStandard(e.target.value); mark(); }} placeholder="Standard: what does good look like here?" className={field} />
+        <Input
+          value={standard}
+          onChange={(e) => {
+            setStandard(e.target.value);
+            mark();
+          }}
+          placeholder="What does good look like here?"
+        />
       )}
       {c.kind === "resource" && (
-        <select value={category} onChange={(e) => { setCategory(e.target.value as ResourceCategory); mark(); }} className={`${field} max-w-xs font-mono text-[12px]`}>
+        <Select
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value as ResourceCategory);
+            mark();
+          }}
+          className="max-w-xs"
+        >
           {RESOURCE_CATEGORIES.map((cat) => (
-            <option key={cat} value={cat}>{cat}</option>
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
           ))}
-        </select>
+        </Select>
       )}
 
-      <textarea value={description} onChange={(e) => { setDescription(e.target.value); mark(); }} placeholder="Description" rows={3} className={`${field} resize-y`} />
+      <Textarea
+        value={description}
+        onChange={(e) => {
+          setDescription(e.target.value);
+          mark();
+        }}
+        placeholder="Description"
+        rows={3}
+      />
 
       {c.kind === "project" && (
         <section className="flex flex-col gap-1">
-          <label className="font-mono text-[10px] tracking-wider uppercase text-fg-faint">Next steps</label>
-          <textarea value={nextSteps} onChange={(e) => { setNextSteps(e.target.value); mark(); }} placeholder={"- [ ] first step"} rows={4} className={`${field} resize-y font-mono text-[12.5px]`} />
+          <SectionHeading>Next steps</SectionHeading>
+          <Textarea
+            value={nextSteps}
+            onChange={(e) => {
+              setNextSteps(e.target.value);
+              mark();
+            }}
+            placeholder={"- [ ] First step"}
+            rows={4}
+            className="font-mono text-[12.5px]"
+          />
         </section>
       )}
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-mono text-[10px] tracking-wider uppercase text-fg-faint">Items · {items.length}</h2>
-        <ul className="border border-line rounded-lg divide-y divide-line bg-surface-1">
-          {items.length === 0 && <li className="px-3 h-10 flex items-center text-fg-faint text-[13px]">Nothing filed here yet.</li>}
-          {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 px-3 h-9 hover:bg-surface-2 transition-colors duration-150">
-              <TypeBadge type={item.type} />
-              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13px] hover:text-accent">{item.title}</Link>
-              <StatusBadge status={item.status} error={item.error} />
-              <span className="font-mono text-[10px] text-fg-faint">{relativeTime(item.createdAt)}</span>
-            </li>
-          ))}
-        </ul>
+        <SectionHeading count={items.length}>Items</SectionHeading>
+        {items.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            text="Nothing filed here yet."
+            action={
+              <Link href={`/capture?to=${c.slug}`}>
+                <Button variant="secondary" size="sm" icon={Plus}>
+                  Capture here
+                </Button>
+              </Link>
+            }
+          />
+        ) : (
+          <List>
+            {items.map((item) => (
+              <Row key={item.id}>
+                <TypeIcon type={item.type} />
+                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13px] hover:text-accent">
+                  {item.title}
+                </Link>
+                <StatusDot status={item.status} error={item.error} />
+                <span className="font-mono text-[11px] text-fg-faint">{relativeTime(item.createdAt)}</span>
+              </Row>
+            ))}
+          </List>
+        )}
       </section>
 
       {complete && (

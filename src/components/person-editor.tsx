@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
+import { ArrowLeft, Eye, Pencil, Trash2, Save } from "lucide-react";
 import type { PersonDTO } from "@/lib/dto";
+import { Button, Chip, IconButton, Textarea } from "./ui";
 
 export function PersonEditor({ initial }: { initial: PersonDTO }) {
   const router = useRouter();
@@ -57,21 +59,49 @@ export function PersonEditor({ initial }: { initial: PersonDTO }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <header className="flex items-center gap-3 h-8">
-        <Link href="/people" className="font-mono text-[11px] text-fg-muted hover:text-fg">← people</Link>
-        <span className="font-mono text-[10px] text-fg-faint">@{initial.slug}</span>
-        <span className={`font-mono text-[10px] ${error ? "text-danger" : "text-fg-faint"}`}>{saving ? "saving" : dirty ? "unsaved · ⌘S" : ""}</span>
+      <header className="flex items-center gap-2 h-10 mb-3">
+        <Link href="/people" className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          People
+        </Link>
+        <Chip className="font-mono">@{initial.slug}</Chip>
+        <span className={`text-[12px] ${error ? "text-danger" : "text-fg-faint"}`}>{saving ? "Saving" : dirty ? "Unsaved, ⌘S to save" : ""}</span>
         <span className="flex-1" />
-        <button onClick={() => setPreview((p) => !p)} className={`h-7 px-2 rounded-md text-[12px] border ${preview ? "border-accent text-accent" : "border-line hover:border-line-strong"}`}>{preview ? "Edit" : "Preview"}</button>
-        <button onClick={() => void remove()} onBlur={() => setConfirmDelete(false)} className={`h-7 px-2 rounded-md text-[12px] border ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}>{confirmDelete ? "Confirm delete" : "Delete"}</button>
-        <button onClick={() => void save()} disabled={!dirty || saving} className="h-7 px-3 rounded-md text-[12px] font-medium bg-accent text-bg disabled:opacity-40">Save</button>
+        <IconButton label={preview ? "Edit" : "Preview"} icon={preview ? Pencil : Eye} active={preview} onClick={() => setPreview((p) => !p)} />
+        <IconButton
+          label={confirmDelete ? "Confirm delete" : "Delete"}
+          icon={Trash2}
+          danger={confirmDelete}
+          onClick={() => void remove()}
+          onBlur={() => setConfirmDelete(false)}
+        />
+        <Button variant="primary" icon={Save} disabled={!dirty || saving} onClick={() => void save()}>
+          Save changes
+        </Button>
       </header>
-      {error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{error}</div>}
-      <input value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} className="w-full bg-transparent outline-none text-2xl font-medium tracking-tight" />
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
+      <input
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          setDirty(true);
+        }}
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full"
+      />
       {preview ? (
-        <div className="md min-h-[200px]"><Markdown>{profile || "*No profile yet.*"}</Markdown></div>
+        <div className="md min-h-[200px]">
+          <Markdown>{profile || "*No profile yet.*"}</Markdown>
+        </div>
       ) : (
-        <textarea value={profile} onChange={(e) => { setProfile(e.target.value); setDirty(true); }} placeholder={"Who they are, role, how you work together, open threads"} className="w-full min-h-[200px] resize-y bg-surface-1 border border-line rounded-lg px-4 py-3 outline-none leading-relaxed" />
+        <Textarea
+          value={profile}
+          onChange={(e) => {
+            setProfile(e.target.value);
+            setDirty(true);
+          }}
+          placeholder="Who they are, their role, how you work together, open threads."
+          className="min-h-[200px]"
+        />
       )}
     </div>
   );

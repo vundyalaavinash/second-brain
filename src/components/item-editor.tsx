@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
+import { ArrowLeft, AtSign, Eye, Pencil, Archive, RotateCcw, Trash2, RefreshCw, ExternalLink, FileText, Plus, Inbox as InboxIcon } from "lucide-react";
 import type { ItemDTO } from "@/lib/dto";
 import { formatDateTime } from "@/lib/format";
-import { StatusBadge, TypeBadge } from "./badges";
+import { Button, Chip, IconButton, Input, Textarea } from "./ui";
+import { TypeIcon, StatusDot, TYPE_LABEL, KIND_ICON } from "./type-icon";
 import { ContainerPicker } from "./container-picker";
 import { PeoplePicker } from "./people-picker";
 
@@ -182,52 +184,49 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
   const isPdf = item.type === "file" && item.mimeType === "application/pdf";
   const saveLabel: Record<SaveState, string> = {
     idle: "",
-    dirty: "unsaved · autosaves in 5s",
-    saving: "saving",
-    saved: "saved",
-    error: "save failed",
+    dirty: "Unsaved, autosaves in 5 s",
+    saving: "Saving",
+    saved: "Saved",
+    error: "Save failed",
   };
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
-      <header className="flex items-center gap-3 h-8">
-        <Link href="/library" className="font-mono text-[11px] text-fg-muted hover:text-fg">
-          ← library
+      <header className="flex items-center gap-2 h-10 mb-3">
+        <Link href="/library" className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Library
         </Link>
-        <span className="font-mono text-[10px] text-fg-faint">#{item.id}</span>
-        <TypeBadge type={item.type} />
-        <StatusBadge status={item.status} error={item.error} />
-        <button onClick={() => setMovePicker(true)} className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line hover:border-accent hover:text-accent">
-          {item.container ? `${item.container.kind} · ${item.container.name}` : "inbox"}
-        </button>
-        {item.archivedAt && <span className="font-mono text-[10px] text-warn">archived</span>}
-        <span className={`font-mono text-[10px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
+        <span className="font-mono text-[11px] text-fg-faint">#{item.id}</span>
+        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted">
+          <TypeIcon type={item.type} />
+          {TYPE_LABEL[item.type]}
+        </span>
+        <StatusDot status={item.status} error={item.error} />
+        <Chip icon={item.container ? KIND_ICON[item.container.kind] : InboxIcon} onClick={() => setMovePicker(true)}>
+          {item.container ? item.container.name : "Inbox"}
+        </Chip>
+        {item.archivedAt && <span className="text-[11.5px] text-warn">Archived</span>}
+        <span className={`text-[12px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
         <span className="flex-1" />
-        {item.status === "failed" && (
-          <button onClick={() => void retry()} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong">
-            Retry
-          </button>
-        )}
-        <button
-          onClick={() => setPreview((p) => !p)}
-          className={`h-7 px-2 rounded-md text-[12px] border ${preview ? "border-accent text-accent" : "border-line hover:border-line-strong"}`}
-        >
-          {preview ? "Edit" : "Preview"}
-        </button>
-        <button
+        {item.status === "failed" && <IconButton label="Retry" icon={RefreshCw} onClick={() => void retry()} />}
+        <IconButton label={preview ? "Edit" : "Preview"} icon={preview ? Pencil : Eye} active={preview} onClick={() => setPreview((p) => !p)} />
+        <IconButton
+          label={confirmDelete ? "Confirm delete" : "Delete"}
+          icon={Trash2}
+          danger={confirmDelete}
           onClick={() => void remove()}
           onBlur={() => setConfirmDelete(false)}
-          className={`h-7 px-2 rounded-md text-[12px] border ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}
-        >
-          {confirmDelete ? "Confirm delete" : "Delete"}
-        </button>
-        <button onClick={() => void patchMeta({ archived: !item.archivedAt })} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong">
-          {item.archivedAt ? "Restore" : "Archive"}
-        </button>
+        />
+        <IconButton
+          label={item.archivedAt ? "Restore" : "Archive"}
+          icon={item.archivedAt ? RotateCcw : Archive}
+          onClick={() => void patchMeta({ archived: !item.archivedAt })}
+        />
       </header>
 
-      {item.error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{item.error}</div>}
-      {actionError && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{actionError}</div>}
+      {item.error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{item.error}</div>}
+      {actionError && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{actionError}</div>}
 
       <input
         value={title}
@@ -239,28 +238,32 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         onBlur={() => {
           if (save === "dirty") void persist();
         }}
-        className="w-full bg-transparent outline-none text-2xl font-medium tracking-tight"
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full"
         placeholder="Untitled"
       />
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-fg-muted">
-        <span>created {formatDateTime(item.createdAt)}</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-fg-muted">
+        <span>
+          Created <span className="font-mono">{formatDateTime(item.createdAt)}</span>
+        </span>
         {item.sourceUrl && (
-          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline truncate max-w-md">
+          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline truncate max-w-md">
+            <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
             {item.sourceUrl}
           </a>
         )}
         {meta.site_name && <span>{meta.site_name}</span>}
-        {meta.byline && <span>by {meta.byline}</span>}
+        {meta.byline && <span>By {meta.byline}</span>}
         {meta.page_count !== undefined && <span>{meta.page_count} pages</span>}
         {item.filePath && (
-          <a href={`/api/items/${item.id}/file`} target="_blank" rel="noreferrer" className="text-accent hover:underline">
-            open file
+          <a href={`/api/items/${item.id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+            <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
+            Open file
           </a>
         )}
       </div>
 
-      <input
+      <Input
         value={tags}
         onChange={(e) => {
           setTags(e.target.value);
@@ -269,15 +272,19 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         onBlur={() => {
           if (save === "dirty") void persist();
         }}
-        placeholder="tags, comma separated"
-        className="w-full bg-transparent outline-none text-[12px] text-fg-muted border-b border-line pb-2"
+        placeholder="Add tags, separated by commas"
+        className="h-8 text-[12.5px]"
       />
 
       <div className="flex flex-wrap items-center gap-2">
         {item.people.map((p) => (
-          <Link key={p.id} href={`/people/${p.slug}`} className="font-mono text-[11px] text-fg-muted hover:text-accent">@{p.slug}</Link>
+          <Link key={p.id} href={`/people/${p.slug}`}>
+            <Chip icon={AtSign}>{p.slug}</Chip>
+          </Link>
         ))}
-        <button onClick={() => setPeoplePicker(true)} className="font-mono text-[11px] text-fg-faint hover:text-fg">+ person</button>
+        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
+          Add person
+        </Button>
       </div>
 
       {isImage && (
@@ -293,7 +300,7 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
           <Markdown>{body || "*Nothing written yet.*"}</Markdown>
         </div>
       ) : (
-        <textarea
+        <Textarea
           value={body}
           onChange={(e) => {
             setBody(e.target.value);
@@ -303,14 +310,15 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
             if (save === "dirty") void persist();
           }}
           placeholder={item.type === "note" ? "Write in markdown" : "Your notes about this item"}
-          className="w-full min-h-[240px] resize-y bg-surface-1 border border-line rounded-lg px-4 py-3 outline-none leading-relaxed font-sans"
+          className="min-h-[260px] text-[14.5px]"
         />
       )}
 
       {item.extractedText && (
-        <details className="border border-line rounded-lg bg-surface-1">
-          <summary className="px-4 h-9 flex items-center cursor-pointer font-mono text-[10px] tracking-wider uppercase text-fg-muted select-none">
-            Extracted text · {item.extractedText.length.toLocaleString()} chars
+        <details className="rounded-md border border-line bg-surface-1">
+          <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-fg-muted select-none">
+            <FileText className="w-4 h-4" aria-hidden />
+            Extracted text <span className="font-mono text-[11px] text-fg-faint">{item.extractedText.length.toLocaleString()} characters</span>
           </summary>
           <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-fg-muted font-sans max-h-[480px] overflow-y-auto border-t border-line">
             {item.extractedText}
