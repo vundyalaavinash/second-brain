@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { Archive, Search } from "lucide-react";
 import type { ContainerDTO, SearchResultDTO } from "@/lib/dto";
 import { ITEM_TYPES } from "@/db/enums";
 import { relativeTime } from "@/lib/format";
-import { StatusBadge, TypeBadge } from "./badges";
+import { Chip, EmptyState, Input, Kbd, PageHeader, Select } from "./ui";
+import { KindIcon, KIND_LABEL, StatusDot, TypeIcon, TYPE_LABEL } from "./type-icon";
 
 function Highlight({ text, query }: { text: string; query: string }) {
   const terms = (query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((t) => t.length > 1);
@@ -101,23 +103,19 @@ export function SearchPanel() {
     };
   }, [q, type, tag, from, to, container, archived]);
 
-  const select = "h-7 bg-surface-2 border border-line rounded-sm px-2 font-mono text-[11px] text-fg-muted outline-none";
   const visible = q.trim() ? results : [];
   const status = useMemo(() => {
-    if (loading) return "searching";
-    if (!q.trim()) return "type to search";
+    if (loading) return "Searching";
+    if (!q.trim()) return "Type to search by keyword or meaning";
     return `${visible.length} result${visible.length === 1 ? "" : "s"}`;
   }, [loading, q, visible.length]);
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-medium tracking-tight">Search</h1>
-        <span className="font-mono text-[10px] text-fg-faint">{status}</span>
-      </header>
+      <PageHeader title="Search" meta={status} />
 
-      <div className="flex items-center gap-2 h-11 px-4 rounded-lg border border-line bg-surface-1 focus-within:border-accent transition-colors duration-150">
-        <span className="font-mono text-fg-faint">/</span>
+      <div className="flex items-center gap-3 h-12 px-4 rounded-lg border border-line bg-surface-1 focus-within:border-line-strong transition-colors duration-150">
+        <Search className="w-4 h-4 text-fg-faint" />
         <input
           ref={inputRef}
           id="search-input"
@@ -125,72 +123,85 @@ export function SearchPanel() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search everything, by keyword or meaning"
-          className="flex-1 bg-transparent outline-none"
+          className="flex-1 bg-transparent outline-none text-[15px]"
         />
         {loading && <span className="w-1.5 h-1.5 rounded-full bg-accent live-dot" />}
+        <Kbd>/</Kbd>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select value={type} onChange={(e) => setType(e.target.value)} className={select}>
-          <option value="">any type</option>
+        <Select value={type} onChange={(e) => setType(e.target.value)} className="h-8 text-[12.5px]">
+          <option value="">Any type</option>
           {ITEM_TYPES.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {TYPE_LABEL[t]}
             </option>
           ))}
-        </select>
-        <select value={tag} onChange={(e) => setTag(e.target.value)} className={select}>
-          <option value="">any tag</option>
+        </Select>
+        <Select value={tag} onChange={(e) => setTag(e.target.value)} className="h-8 text-[12.5px]">
+          <option value="">Any tag</option>
           {tags.map((t) => (
             <option key={t} value={t}>
               #{t}
             </option>
           ))}
-        </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={select} />
-        <span className="font-mono text-[10px] text-fg-faint">to</span>
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={select} />
-        <select value={container} onChange={(e) => setContainer(e.target.value)} className={select}>
-          <option value="">any home</option>
-          <option value="inbox">inbox</option>
+        </Select>
+        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-8 text-[12.5px]" />
+        <span className="text-[12px] text-fg-faint">to</span>
+        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-8 text-[12.5px]" />
+        <Select value={container} onChange={(e) => setContainer(e.target.value)} className="h-8 text-[12.5px]">
+          <option value="">Any home</option>
+          <option value="inbox">Inbox</option>
           {containers.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.kind} · {c.name}
+              {c.name} ({KIND_LABEL[c.kind]})
             </option>
           ))}
-        </select>
-        <label className="flex items-center gap-1.5 font-mono text-[11px] text-fg-muted">
-          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-          include archived
-        </label>
+        </Select>
+        <Chip icon={Archive} active={archived} onClick={() => setArchived((a) => !a)}>
+          Include archived
+        </Chip>
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {visible.map((r) => (
-          <li key={r.item.id} className="rounded-lg border border-line bg-surface-1 px-4 py-3 hover:border-line-strong transition-colors duration-150">
-            <div className="flex items-center gap-3">
-              <TypeBadge type={r.item.type} />
-              <Link href={`/items/${r.item.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-accent">
-                {r.item.title}
-              </Link>
-              <StatusBadge status={r.item.status} />
-              <span className="font-mono text-[10px] text-fg-faint">{relativeTime(r.item.createdAt)}</span>
-            </div>
-            <p className="mt-1.5 text-[12.5px] text-fg-muted leading-relaxed">
-              <Highlight text={r.snippet} query={q} />
-            </p>
-            {r.item.tags.length > 0 && (
-              <div className="mt-1.5 flex gap-2">
-                {r.item.tags.map((t) => (
-                  <span key={t} className="font-mono text-[10px] text-fg-faint">
-                    #{t}
-                  </span>
-                ))}
+      {visible.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {visible.map((r) => (
+            <li
+              key={r.item.id}
+              className="rounded-md border border-line bg-surface-1 px-4 py-3 hover:border-line-strong transition-colors duration-150"
+            >
+              <div className="flex items-center gap-3">
+                <TypeIcon type={r.item.type} />
+                <Link href={`/items/${r.item.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-accent">
+                  {r.item.title}
+                </Link>
+                <StatusDot status={r.item.status} error={r.item.error} />
+                <span className="font-mono text-[11px] text-fg-faint">{relativeTime(r.item.createdAt)}</span>
               </div>
-            )}
-          </li>
-        ))}
-      </ul>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+                <Highlight text={r.snippet} query={q} />
+              </p>
+              {(r.item.container || r.item.tags.length > 0) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11.5px] text-fg-faint">
+                  {r.item.container && (
+                    <span className="inline-flex items-center gap-1">
+                      <KindIcon kind={r.item.container.kind} className="w-3.5 h-3.5 text-fg-faint" />
+                      {r.item.container.name}
+                    </span>
+                  )}
+                  {r.item.tags.map((t) => (
+                    <span key={t}>#{t}</span>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {q.trim() && !loading && visible.length === 0 && (
+        <EmptyState icon={Search} text="No matches. Try fewer words or a different filter." />
+      )}
     </div>
   );
 }
