@@ -306,7 +306,7 @@ describe("containers domain", () => {
     const u = updateContainer(t.db, c.id, { category: "tools", description: "Handy things", name: "Tooling" });
     expect(u.category).toBe("tools");
     expect(u.name).toBe("Tooling");
-    expect(u.slug).toBe("tools");
+    expect(u.slug).toBe("tooling"); // slugs follow the name; pages redirect on rename
     expect(() => updateContainer(t.db, 999, { name: "x" })).toThrow(ContainerError);
   });
 
