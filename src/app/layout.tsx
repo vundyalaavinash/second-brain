@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
+import { Dock } from "@/components/dock";
 import { CommandPalette } from "@/components/command-palette";
 import { Shortcuts } from "@/components/shortcuts";
 
@@ -16,9 +16,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen flex bg-bg text-fg">
-        <Sidebar />
-        <main className="flex-1 min-w-0 flex flex-col">{children}</main>
+      <body className="min-h-screen bg-bg text-fg">
+        <main className="min-h-screen pb-28">{children}</main>
+        <Dock />
         <CommandPalette />
         <Shortcuts />
       </body>

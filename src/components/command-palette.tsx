@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NAV_ITEMS } from "./sidebar";
+import { NAV_ITEMS } from "./nav";
 
 interface Command {
   id: string;
@@ -20,7 +20,7 @@ export function CommandPalette() {
 
   const commands = useMemo<Command[]>(
     () =>
-      NAV_ITEMS.filter((n) => n.enabled).map((n) => ({
+      NAV_ITEMS.map((n) => ({
         id: n.href,
         label: `Go to ${n.label}`,
         hint: n.shortcut,
@@ -47,7 +47,16 @@ export function CommandPalette() {
       }
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    function onOpen() {
+      setOpen(true);
+      setQuery("");
+      setIndex(0);
+    }
+    window.addEventListener("sb:palette", onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("sb:palette", onOpen);
+    };
   }, []);
 
   useEffect(() => {

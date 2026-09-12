@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { NAV_ITEMS } from "./sidebar";
+import { NAV_ITEMS } from "./nav";
 
 const SEQUENCE_WINDOW_MS = 900;
 
@@ -18,7 +18,7 @@ export function Shortcuts() {
   const router = useRouter();
   useEffect(() => {
     let pendingG = 0;
-    const byLetter = new Map(NAV_ITEMS.filter((n) => n.enabled).map((n) => [n.shortcut.split(" ")[1], n.href]));
+    const byLetter = new Map(NAV_ITEMS.map((n) => [n.shortcut.split(" ")[1], n.href]));
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || isTyping(e.target)) return;
       if (e.key === "/") {
