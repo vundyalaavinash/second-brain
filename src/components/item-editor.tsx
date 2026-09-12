@@ -42,6 +42,13 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
   const inflight = useRef<Promise<void> | null>(null);
   const pendingAgain = useRef(false);
   const dirtyCounter = useRef(0);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+
+  function enqueue(work: () => Promise<void>): Promise<void> {
+    const next = chain.current.then(work, work);
+    chain.current = next.catch(() => {});
+    return next;
+  }
 
   useEffect(() => {
     latest.current = { title, body, tags };
@@ -62,14 +69,16 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         const { title, body, tags } = latest.current;
         setSave("saving");
         try {
-          const res = await fetch(`/api/items/${initial.id}`, {
-            method: "PATCH",
-            keepalive,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ title, body, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) }),
+          await enqueue(async () => {
+            const res = await fetch(`/api/items/${initial.id}`, {
+              method: "PATCH",
+              keepalive,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ title, body, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) }),
+            });
+            if (!res.ok) throw new Error(res.statusText);
+            setItem((await res.json()) as ItemDTO);
           });
-          if (!res.ok) throw new Error(res.statusText);
-          setItem((await res.json()) as ItemDTO);
           const stillDirty = dirtyCounter.current !== dirtyAtStart || pendingAgain.current;
           setSave(stillDirty ? "dirty" : "saved");
         } catch {
@@ -129,12 +138,14 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
 
   async function patchMeta(body: Record<string, unknown>) {
     setActionError(null);
-    const res = await fetch(`/api/items/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!res.ok) {
-      setActionError(await readError(res));
-      return;
-    }
-    setItem((await res.json()) as ItemDTO);
+    await enqueue(async () => {
+      const res = await fetch(`/api/items/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        setActionError(await readError(res));
+        return;
+      }
+      setItem((await res.json()) as ItemDTO);
+    });
   }
 
   async function retry() {

@@ -13,6 +13,7 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
   const [all, setAll] = useState<PersonDTO[]>([]);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => selected);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,7 +35,9 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
   const exact = options.some((p) => p.name.toLowerCase() === q);
 
   function toggle(id: number) {
-    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+    const next = selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+    setSelectedIds(next);
+    onChange(next);
   }
 
   async function create() {
@@ -45,7 +48,9 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
       if (res.ok) {
         const p = (await res.json()) as PersonDTO;
         setAll((a) => [...a, p]);
-        onChange([...selected, p.id]);
+        const next = [...selectedIds, p.id];
+        setSelectedIds(next);
+        onChange(next);
         setQuery("");
       }
     } finally {
@@ -74,8 +79,8 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
         <ul className="max-h-72 overflow-y-auto py-1">
           {options.map((p) => (
             <li key={p.id} onClick={() => toggle(p.id)} className="px-4 h-9 flex items-center justify-between cursor-pointer hover:bg-surface-3">
-              <span className={selected.includes(p.id) ? "text-fg" : "text-fg-muted"}>{p.name}</span>
-              <span className="font-mono text-[10px] text-fg-faint">{selected.includes(p.id) ? "✓ linked" : `@${p.slug}`}</span>
+              <span className={selectedIds.includes(p.id) ? "text-fg" : "text-fg-muted"}>{p.name}</span>
+              <span className="font-mono text-[10px] text-fg-faint">{selectedIds.includes(p.id) ? "✓ linked" : `@${p.slug}`}</span>
             </li>
           ))}
           {q && !exact && <li onClick={() => void create()} className="px-4 h-9 flex items-center cursor-pointer text-accent">Create “{query.trim()}”</li>}
