@@ -378,6 +378,10 @@ Left sidebar with Today, Capture, Library, Search, Chat, Journal, Review, and a 
 
 Markdown editing uses a plain textarea with a preview toggle in stage one. A richer editor is a later concern.
 
+### Visual direction
+
+Dark only. A near-black ground (around `#0a0a0c`) with layered surfaces stepping up in lightness by a few percent each, thin 1 px borders at low opacity instead of shadows, and one cool accent (an electric cyan-blue) reserved for focus, primary actions, and live states such as recording. Text is a warm off-white for body and a muted grey for secondary. Typography is a geometric sans for UI (Inter or Geist) with a monospace (Geist Mono or JetBrains Mono) for timestamps, ids, shortcuts, and counts. Density is high: compact rows, keyboard shortcuts shown inline, a command palette (Cmd+K) that reaches every view and action. Motion is minimal and fast (120 to 180 ms), used for state changes only. Live elements (recording indicator, streaming transcript, streaming chat) use a subtle pulsing accent. Nothing glows, nothing is gradient-heavy; the futuristic feel comes from precision, restraint, and the monospace details, not from decoration. Tailwind tokens for these colours, radii, and spacing live in one theme file so the look is consistent across every page.
+
 ## 12. Running it
 
 `scripts/install.sh`:
