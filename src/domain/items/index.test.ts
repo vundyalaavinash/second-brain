@@ -13,6 +13,10 @@ import {
   listTagNames,
   rechunkItem,
   getItemChunks,
+  countInbox,
+  fileItem,
+  archiveItem,
+  restoreItem,
 } from "./index";
 
 describe("items domain", () => {
@@ -116,5 +120,32 @@ describe("items domain", () => {
     expect(t.db.$client.prepare("SELECT count(*) AS c FROM chunks").get()).toEqual({ c: 0 });
     expect(t.db.$client.prepare("SELECT count(*) AS c FROM item_tags").get()).toEqual({ c: 0 });
     expect(t.db.$client.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH 'farewell'").all()).toHaveLength(0);
+  });
+
+  it("files items, hides archived by default, and counts the inbox", () => {
+    const inbox1 = createItem(t.db, { type: "note", title: "in1" });
+    const inbox2 = createItem(t.db, { type: "note", title: "in2" });
+    const homed = createItem(t.db, { type: "note", title: "homed", containerId: null });
+    expect(countInbox(t.db)).toBe(3);
+
+    // A real container is needed; insert one directly so this test does not depend on the containers domain.
+    const now = new Date().toISOString();
+    t.db.$client
+      .prepare("INSERT INTO containers (kind, name, slug, created_at, updated_at) VALUES ('project', 'P', 'p', ?, ?)")
+      .run(now, now);
+    const containerId = (t.db.$client.prepare("SELECT id FROM containers WHERE slug = 'p'").get() as { id: number }).id;
+
+    expect(fileItem(t.db, homed.id, containerId).containerId).toBe(containerId);
+    expect(countInbox(t.db)).toBe(2);
+    expect(listItems(t.db, { containerId }).map((i) => i.id)).toEqual([homed.id]);
+    expect(listItems(t.db, { containerId: null }).map((i) => i.id)).toEqual([inbox2.id, inbox1.id]);
+
+    expect(archiveItem(t.db, inbox1.id).archivedAt).toBeTruthy();
+    expect(countInbox(t.db)).toBe(1);
+    expect(listItems(t.db).map((i) => i.id)).toEqual([homed.id, inbox2.id]);
+    expect(listItems(t.db, { includeArchived: true })).toHaveLength(3);
+    expect(restoreItem(t.db, inbox1.id).archivedAt).toBeNull();
+    expect(fileItem(t.db, homed.id, null).containerId).toBeNull();
+    expect(() => fileItem(t.db, homed.id, 9999)).toThrow(/not found/);
   });
 });

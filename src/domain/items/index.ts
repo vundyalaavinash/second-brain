@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -28,6 +28,8 @@ export interface UpdateItemInput {
   sourceUrl?: string | null;
   filePath?: string | null;
   mimeType?: string | null;
+  containerId?: number | null;
+  archivedAt?: string | null;
 }
 
 export interface ListItemsFilter {
@@ -40,6 +42,10 @@ export interface ListItemsFilter {
   to?: string;
   limit?: number;
   offset?: number;
+  /** A container id, or null for the Inbox. Omit for any home. */
+  containerId?: number | null;
+  /** Archived items are hidden unless this is true. */
+  includeArchived?: boolean;
 }
 
 export function createItem(db: DB, input: CreateItemInput): Item {
@@ -90,6 +96,8 @@ export function updateItem(db: DB, id: number, patch: UpdateItemInput): Item {
   if (patch.sourceUrl !== undefined) set.sourceUrl = patch.sourceUrl;
   if (patch.filePath !== undefined) set.filePath = patch.filePath;
   if (patch.mimeType !== undefined) set.mimeType = patch.mimeType;
+  if (patch.containerId !== undefined) set.containerId = patch.containerId;
+  if (patch.archivedAt !== undefined) set.archivedAt = patch.archivedAt;
   const row = db.update(items).set(set).where(eq(items.id, id)).returning().get();
   if (!row) throw new Error(`Item ${id} not found`);
   return row;
@@ -112,6 +120,9 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   }
   if (filter.from) conds.push(gte(items.createdAt, new Date(`${filter.from}T00:00:00`).toISOString()));
   if (filter.to) conds.push(lte(items.createdAt, new Date(`${filter.to}T23:59:59.999`).toISOString()));
+  if (filter.containerId === null) conds.push(isNull(items.containerId));
+  else if (typeof filter.containerId === "number") conds.push(eq(items.containerId, filter.containerId));
+  if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
   return db
     .select()
     .from(items)
@@ -195,4 +206,30 @@ export function rechunkItem(db: DB, id: number): number {
 
 export function getItemChunks(db: DB, id: number): Chunk[] {
   return db.select().from(chunks).where(eq(chunks.itemId, id)).orderBy(asc(chunks.ordinal)).all();
+}
+
+/** Move an item to a container (or the Inbox with null). */
+export function fileItem(db: DB, id: number, containerId: number | null): Item {
+  if (containerId !== null) {
+    const exists = db.$client.prepare("SELECT id FROM containers WHERE id = ?").get(containerId);
+    if (!exists) throw new Error(`Container ${containerId} not found`);
+  }
+  return updateItem(db, id, { containerId });
+}
+
+export function archiveItem(db: DB, id: number): Item {
+  return updateItem(db, id, { archivedAt: nowIso() });
+}
+
+export function restoreItem(db: DB, id: number): Item {
+  return updateItem(db, id, { archivedAt: null });
+}
+
+export function countInbox(db: DB): number {
+  const row = db
+    .select({ c: count() })
+    .from(items)
+    .where(and(isNull(items.containerId), isNull(items.archivedAt)))
+    .get();
+  return row?.c ?? 0;
 }

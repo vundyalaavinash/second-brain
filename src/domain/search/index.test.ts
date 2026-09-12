@@ -101,4 +101,23 @@ describe("search", () => {
     expect(s.endsWith("…")).toBe(true);
     expect(makeSnippet("short text", "zzz", 60)).toBe("short text");
   });
+
+  it("filters by container and hides archived items unless asked", async () => {
+    const { embed, tomato, garden } = await seed(t);
+    const now = new Date().toISOString();
+    t.db.$client
+      .prepare("INSERT INTO containers (kind, name, slug, created_at, updated_at) VALUES ('area', 'Garden', 'garden', ?, ?)")
+      .run(now, now);
+    const containerId = (t.db.$client.prepare("SELECT id FROM containers WHERE slug = 'garden'").get() as { id: number }).id;
+    t.db.$client.prepare("UPDATE items SET container_id = ? WHERE id = ?").run(containerId, garden.id);
+    t.db.$client.prepare("UPDATE items SET archived_at = ? WHERE id = ?").run(now, tomato.id);
+
+    const homed = await search(t.db, embed, "tomato garden", { containerId });
+    expect(homed.map((r) => r.item.id)).toEqual([garden.id]);
+    const inbox = await search(t.db, embed, "tomato garden", { containerId: null });
+    expect(inbox.map((r) => r.item.id)).not.toContain(garden.id);
+    expect(inbox.map((r) => r.item.id)).not.toContain(tomato.id);
+    const all = await search(t.db, embed, "tomato garden", { includeArchived: true });
+    expect(all.map((r) => r.item.id)).toContain(tomato.id);
+  });
 });
