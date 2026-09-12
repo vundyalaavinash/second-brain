@@ -58,6 +58,7 @@ export interface ContainerDTO {
   sortOrder: number;
   archivedAt: string | null;
   itemCount: number;
+  totalItemCount: number;
   createdAt: string;
   updatedAt: string;
 }

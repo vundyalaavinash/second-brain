@@ -148,4 +148,12 @@ describe("items domain", () => {
     expect(fileItem(t.db, homed.id, null).containerId).toBeNull();
     expect(() => fileItem(t.db, homed.id, 9999)).toThrow(/not found/);
   });
+
+  it("onlyArchived returns exactly the archived items", () => {
+    createItem(t.db, { type: "note", title: "a" });
+    const b = createItem(t.db, { type: "note", title: "b" });
+    createItem(t.db, { type: "note", title: "c" });
+    archiveItem(t.db, b.id);
+    expect(listItems(t.db, { onlyArchived: true }).map((i) => i.id)).toEqual([b.id]);
+  });
 });

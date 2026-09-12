@@ -49,6 +49,7 @@ export function serializeContainer(db: DB, c: Container): ContainerDTO {
     sortOrder: c.sortOrder,
     archivedAt: c.archivedAt,
     itemCount: countContainerItems(db, c.id),
+    totalItemCount: countContainerItems(db, c.id, true),
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };

@@ -12,9 +12,7 @@ export const dynamic = "force-dynamic";
 export default function ArchivePage() {
   const db = getDb();
   const containers = listContainers(db, { status: "archived" }).map((c) => serializeContainer(db, c));
-  const items = listItems(db, { includeArchived: true, limit: 500 })
-    .filter((i) => i.archivedAt)
-    .map((i) => serializeItem(db, i));
+  const items = listItems(db, { onlyArchived: true, limit: 500 }).map((i) => serializeItem(db, i));
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-6">
       <header className="flex items-baseline justify-between">

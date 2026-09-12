@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, count } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -46,6 +46,8 @@ export interface ListItemsFilter {
   containerId?: number | null;
   /** Archived items are hidden unless this is true. */
   includeArchived?: boolean;
+  /** Only archived items; implies includeArchived. */
+  onlyArchived?: boolean;
 }
 
 export function createItem(db: DB, input: CreateItemInput): Item {
@@ -122,7 +124,8 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   if (filter.to) conds.push(lte(items.createdAt, new Date(`${filter.to}T23:59:59.999`).toISOString()));
   if (filter.containerId === null) conds.push(isNull(items.containerId));
   else if (typeof filter.containerId === "number") conds.push(eq(items.containerId, filter.containerId));
-  if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
+  if (filter.onlyArchived) conds.push(isNotNull(items.archivedAt));
+  else if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
   return db
     .select()
     .from(items)

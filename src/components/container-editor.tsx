@@ -113,7 +113,7 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
             {c.status === "archived" ? "Restore" : "Archive"}
           </button>
         )}
-        {c.itemCount === 0 && (
+        {c.totalItemCount === 0 && (
           <button onClick={() => void remove()} onBlur={() => setConfirmDelete(false)} className={`h-7 px-2 rounded-md text-[12px] border ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}>
             {confirmDelete ? "Confirm delete" : "Delete"}
           </button>

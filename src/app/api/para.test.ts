@@ -70,6 +70,7 @@ describe("containers api", () => {
     const patched = (await (await r.container.PATCH(json("PATCH", `/api/containers/${project.id}`, { goal: "Ship" }), params(project.id))).json()) as ContainerDTO;
     expect(patched.goal).toBe("Ship");
     expect(patched.itemCount).toBe(1);
+    expect(patched.totalItemCount).toBe(1);
 
     const badJson = new Request(`http://localhost/api/containers/${project.id}/archive`, {
       method: "POST",
@@ -82,6 +83,8 @@ describe("containers api", () => {
     expect(archived.status).toBe("archived");
     const moved = (await (await r.item.GET(json("GET", `/api/items/${note.id}`), params(note.id))).json()) as ItemDTO;
     expect(moved.containerId).toBe(area.id);
+    const areaAfterMove = (await (await r.container.GET(json("GET", `/api/containers/${area.id}`), params(area.id))).json()) as ContainerDTO;
+    expect(areaAfterMove.totalItemCount).toBe(1);
 
     const restored = (await (await r.restore.POST(json("POST", `/api/containers/${project.id}/restore`), params(project.id))).json()) as ContainerDTO;
     expect(restored.status).toBe("active");
