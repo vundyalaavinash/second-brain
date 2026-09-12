@@ -1,0 +1,40 @@
+{
+  "name": "second-brain-scaffold",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3141",
+    "build": "next build",
+    "start": "next start -p 3141",
+    "lint": "eslint",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@mozilla/readability": "^0.6.0",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
+    "linkedom": "^0.18.13",
+    "next": "16.3.5",
+    "pdf-parse": "^2.4.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sqlite-vec": "^0.1.9",
+    "tesseract.js": "^7.0.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^5.0.0"
+  }
+}
