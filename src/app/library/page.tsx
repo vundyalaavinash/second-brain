@@ -95,20 +95,26 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         {type && <input type="hidden" name="type" value={type} />}
         {status && <input type="hidden" name="status" value={status} />}
         {tag && <input type="hidden" name="tag" value={tag} />}
-        <Select name="container" defaultValue={sp.container ?? ""} className="h-8 w-auto text-[12.5px]">
-          <option value="">Any home</option>
-          <option value="inbox">Inbox</option>
-          {containers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({KIND_LABEL[c.kind]})
-            </option>
-          ))}
-        </Select>
-        <Input type="date" name="from" defaultValue={from ?? ""} className="h-8 w-auto text-[12.5px]" />
-        <span className="text-[12.5px] text-fg-faint">to</span>
-        <Input type="date" name="to" defaultValue={to ?? ""} className="h-8 w-auto text-[12.5px]" />
-        <label className="flex items-center gap-1.5 text-[12.5px] text-fg-muted">
-          <input type="checkbox" name="archived" value="1" defaultChecked={archived} />
+        <div className="w-56">
+          <Select name="container" defaultValue={sp.container ?? ""} className="w-full h-8 text-[12.5px]">
+            <option value="">Any home</option>
+            <option value="inbox">Inbox</option>
+            {containers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({KIND_LABEL[c.kind]})
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-36">
+          <Input type="date" name="from" defaultValue={from ?? ""} className="w-full h-8 text-[12.5px]" />
+        </div>
+        <span className="text-[12px] text-fg-faint">to</span>
+        <div className="w-36">
+          <Input type="date" name="to" defaultValue={to ?? ""} className="w-full h-8 text-[12.5px]" />
+        </div>
+        <label className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-line text-[12px] text-fg-muted hover:text-fg cursor-pointer">
+          <input type="checkbox" name="archived" value="1" defaultChecked={archived} className="accent-[#4cc9ff]" />
           Include archived
         </label>
         <Button variant="secondary" size="sm" type="submit">
