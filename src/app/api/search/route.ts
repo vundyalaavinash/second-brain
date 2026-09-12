@@ -4,7 +4,7 @@ import { getDb } from "@/db/client";
 import { ITEM_TYPES } from "@/db/schema";
 import { search } from "@/domain/search";
 import { getEmbedProvider } from "@/server/providers";
-import { errorResponse, serializeItem } from "@/lib/api";
+import { errorResponse, parseContainerParam, serializeItem } from "@/lib/api";
 import type { SearchResultDTO } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,8 @@ const Query = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  container: z.string().optional(),
+  archived: z.string().optional(),
 });
 
 export async function GET(req: Request): Promise<Response> {
@@ -24,9 +26,15 @@ export async function GET(req: Request): Promise<Response> {
     const raw = Object.fromEntries([...url.searchParams.entries()].filter(([, v]) => v !== ""));
     const parsed = Query.safeParse(raw);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-    const { q, limit, ...filter } = parsed.data;
+    const { q, limit, container, archived, ...filter } = parsed.data;
     const db = getDb();
-    const results = await search(db, getEmbedProvider(), q, filter, limit);
+    const results = await search(
+      db,
+      getEmbedProvider(),
+      q,
+      { ...filter, containerId: parseContainerParam(container ?? null), includeArchived: archived === "1" },
+      limit,
+    );
     const body: SearchResultDTO[] = results.map((r) => ({
       item: serializeItem(db, r.item),
       snippet: r.snippet,

@@ -4,7 +4,7 @@ import { getDb } from "@/db/client";
 import { ITEM_STATUSES, ITEM_TYPES } from "@/db/schema";
 import { listItems } from "@/domain/items";
 import { captureNote, captureLink } from "@/domain/items/capture";
-import { errorResponse, serializeItem } from "@/lib/api";
+import { errorResponse, parseContainerParam, serializeItem } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +13,15 @@ const NoteBody = z.object({
   title: z.string().optional(),
   body: z.string().min(1),
   tags: z.array(z.string()).optional(),
+  containerId: z.number().int().positive().nullable().optional(),
 });
 const LinkBody = z.object({
   type: z.literal("link"),
   url: z.url(),
   title: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  containerId: z.number().int().positive().nullable().optional(),
+  force: z.boolean().optional(),
 });
 const CreateBody = z.discriminatedUnion("type", [NoteBody, LinkBody]);
 
@@ -51,8 +54,12 @@ export async function GET(req: Request): Promise<Response> {
     const tag = url.searchParams.get("tag") ?? undefined;
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
     const offset = Number(url.searchParams.get("offset") ?? 0) || 0;
+    const containerId = parseContainerParam(url.searchParams.get("container"));
+    const includeArchived = url.searchParams.get("archived") === "1";
     const db = getDb();
-    return NextResponse.json(listItems(db, { type, status, tag, limit, offset }).map((i) => serializeItem(db, i)));
+    return NextResponse.json(
+      listItems(db, { type, status, tag, limit, offset, containerId, includeArchived }).map((i) => serializeItem(db, i)),
+    );
   } catch (err) {
     return errorResponse(err);
   }
