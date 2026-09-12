@@ -1,5 +1,6 @@
 import type { DB } from "@/db/client";
 import type { Item } from "@/db/schema";
+import { autoLinkMentions } from "@/domain/people";
 import { enqueueJob } from "@/jobs/queue";
 import { saveFile, kindForMime } from "@/lib/files";
 import { deriveTitle } from "@/lib/text";
@@ -34,6 +35,7 @@ export function captureNote(db: DB, input: { title?: string; body: string; tags?
   const title = input.title?.trim() || deriveTitle(input.body);
   const item = createItem(db, { type: "note", title, body: input.body, containerId: input.containerId ?? null });
   if (input.tags) setItemTags(db, item.id, input.tags);
+  autoLinkMentions(db, item.id);
   queueEmbedding(db, item.id);
   return getItem(db, item.id)!;
 }
@@ -95,6 +97,7 @@ export function updateItemContent(db: DB, id: number, patch: { title?: string; b
   if (!getItem(db, id)) throw new CaptureError(`Item ${id} not found`, 404);
   updateItem(db, id, { title: patch.title, body: patch.body });
   if (patch.tags) setItemTags(db, id, patch.tags);
+  autoLinkMentions(db, id);
   queueEmbedding(db, id);
   return getItem(db, id)!;
 }
