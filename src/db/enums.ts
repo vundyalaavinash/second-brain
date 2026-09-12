@@ -18,3 +18,12 @@ export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export const CONTAINER_KINDS = ["project", "area", "resource"] as const;
+export type ContainerKind = (typeof CONTAINER_KINDS)[number];
+
+export const CONTAINER_STATUSES = ["active", "archived"] as const;
+export type ContainerStatus = (typeof CONTAINER_STATUSES)[number];
+
+export const RESOURCE_CATEGORIES = ["articles", "tools", "reference", "research", "inspiration", "videos", "other"] as const;
+export type ResourceCategory = (typeof RESOURCE_CATEGORIES)[number];

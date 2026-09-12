@@ -39,4 +39,16 @@ describe("openDatabase", () => {
     expect(again.$client.prepare("SELECT count(*) AS c FROM items").get()).toEqual({ c: 0 });
     again.$client.close();
   });
+
+  it("has containers, people, and item homes", () => {
+    t = makeTestDb();
+    const cols = (table: string) =>
+      (t.db.$client.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    expect(cols("containers")).toEqual(
+      expect.arrayContaining(["id", "kind", "name", "slug", "status", "goal", "deadline", "standard", "category", "next_steps", "sort_order", "archived_at"]),
+    );
+    expect(cols("people")).toEqual(expect.arrayContaining(["id", "name", "slug", "profile"]));
+    expect(cols("item_people")).toEqual(expect.arrayContaining(["item_id", "person_id"]));
+    expect(cols("items")).toEqual(expect.arrayContaining(["container_id", "archived_at"]));
+  });
 });
