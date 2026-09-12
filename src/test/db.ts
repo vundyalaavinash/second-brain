@@ -10,7 +10,7 @@ export interface TestDb {
 }
 
 /** Point SB_DATA_DIR at a fresh temp directory and clear the singleton database. */
-export function useTempDataDir(): string {
+export function makeTempDataDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-test-"));
   process.env.SB_DATA_DIR = dir;
   const g = globalThis as unknown as { __sbDb?: unknown };
@@ -19,7 +19,7 @@ export function useTempDataDir(): string {
 }
 
 export function makeTestDb(): TestDb {
-  const dir = useTempDataDir();
+  const dir = makeTempDataDir();
   const db = openDatabase(path.join(dir, "test.db"));
   return {
     db,

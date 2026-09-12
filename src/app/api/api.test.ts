@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
-import { useTempDataDir } from "@/test/db";
+import { makeTempDataDir } from "@/test/db";
 import { MINIMAL_PDF } from "@/test/fixtures";
 import { createFakeEmbedProvider } from "@/providers/embed/fake";
 import type { ItemDTO, SearchResultDTO } from "@/lib/dto";
@@ -26,7 +26,7 @@ const json = (method: string, url: string, body?: unknown) =>
 const params = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) });
 
 beforeAll(async () => {
-  dir = useTempDataDir();
+  dir = makeTempDataDir();
   const { setEmbedProviderForTests } = await import("@/server/providers");
   setEmbedProviderForTests(createFakeEmbedProvider());
   routes = {

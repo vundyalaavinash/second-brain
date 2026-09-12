@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { useTempDataDir } from "@/test/db";
+import { makeTempDataDir } from "@/test/db";
 import { saveFile, absoluteFilePath, kindForMime } from "./files";
 
 describe("files", () => {
   let dir: string;
   beforeEach(() => {
-    dir = useTempDataDir();
+    dir = makeTempDataDir();
   });
 
   it("saves under files/YYYY/MM with a uuid prefix and a safe name", () => {
