@@ -12,6 +12,16 @@ const SAVE_DEBOUNCE_MS = 5000;
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
+async function readError(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: unknown };
+    if (typeof data.error === "string" && data.error) return data.error;
+  } catch {
+    // not JSON, fall through
+  }
+  return res.statusText || "Request failed";
+}
+
 export function ItemEditor({ initial }: { initial: ItemDTO }) {
   const router = useRouter();
   const [item, setItem] = useState(initial);
@@ -21,39 +31,61 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
   const [save, setSave] = useState<SaveState>("idle");
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef({ title, body, tags });
-  const userEdited = useRef(false);
+  const titleTouched = useRef(false);
+  const inflight = useRef<Promise<void> | null>(null);
+  const pendingAgain = useRef(false);
+  const dirtyCounter = useRef(0);
 
   useEffect(() => {
     latest.current = { title, body, tags };
   }, [title, body, tags]);
 
   const persist = useCallback(
-    async (keepalive = false) => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = undefined;
-      const { title, body, tags } = latest.current;
-      setSave("saving");
-      try {
-        const res = await fetch(`/api/items/${initial.id}`, {
-          method: "PATCH",
-          keepalive,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ title, body, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) }),
-        });
-        if (!res.ok) throw new Error(res.statusText);
-        setItem((await res.json()) as ItemDTO);
-        setSave("saved");
-      } catch {
-        setSave("error");
+    (keepalive = false): Promise<void> => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = undefined;
       }
+      if (inflight.current) {
+        pendingAgain.current = true;
+        return inflight.current;
+      }
+      const run = (async () => {
+        const dirtyAtStart = dirtyCounter.current;
+        const { title, body, tags } = latest.current;
+        setSave("saving");
+        try {
+          const res = await fetch(`/api/items/${initial.id}`, {
+            method: "PATCH",
+            keepalive,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ title, body, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) }),
+          });
+          if (!res.ok) throw new Error(res.statusText);
+          setItem((await res.json()) as ItemDTO);
+          const stillDirty = dirtyCounter.current !== dirtyAtStart || pendingAgain.current;
+          setSave(stillDirty ? "dirty" : "saved");
+        } catch {
+          setSave("error");
+        } finally {
+          inflight.current = null;
+          if (pendingAgain.current) {
+            pendingAgain.current = false;
+            void persist();
+          }
+        }
+      })();
+      inflight.current = run;
+      return run;
     },
     [initial.id],
   );
 
   function markDirty() {
-    userEdited.current = true;
+    dirtyCounter.current += 1;
     setSave("dirty");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void persist(), SAVE_DEBOUNCE_MS);
@@ -86,13 +118,18 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
       if (!res.ok) return;
       const dto = (await res.json()) as ItemDTO;
       setItem(dto);
-      if (!userEdited.current) setTitle(dto.title);
+      if (!titleTouched.current) setTitle(dto.title);
     }, 2000);
     return () => clearInterval(id);
   }, [item.status, initial.id]);
 
   async function retry() {
-    await fetch(`/api/items/${initial.id}/retry`, { method: "POST" });
+    const res = await fetch(`/api/items/${initial.id}/retry`, { method: "POST" });
+    if (!res.ok) {
+      setActionError(await readError(res));
+      return;
+    }
+    setActionError(null);
     setItem((it) => ({ ...it, status: "pending", error: null }));
   }
 
@@ -101,7 +138,13 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
       setConfirmDelete(true);
       return;
     }
-    await fetch(`/api/items/${initial.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/items/${initial.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setActionError(await readError(res));
+      setConfirmDelete(false);
+      return;
+    }
+    setActionError(null);
     router.push("/library");
   }
 
@@ -148,10 +191,12 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
       </header>
 
       {item.error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{item.error}</div>}
+      {actionError && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{actionError}</div>}
 
       <input
         value={title}
         onChange={(e) => {
+          titleTouched.current = true;
           setTitle(e.target.value);
           markDirty();
         }}

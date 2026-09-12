@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -33,6 +33,10 @@ export interface ListItemsFilter {
   type?: ItemType;
   status?: ItemStatus;
   tag?: string;
+  /** Inclusive lower bound, YYYY-MM-DD (local start of day). */
+  from?: string;
+  /** Inclusive upper bound, YYYY-MM-DD (local end of day). */
+  to?: string;
   limit?: number;
   offset?: number;
 }
@@ -104,6 +108,8 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
     if (ids.length === 0) return [];
     conds.push(inArray(items.id, ids));
   }
+  if (filter.from) conds.push(gte(items.createdAt, `${filter.from}T00:00:00.000Z`));
+  if (filter.to) conds.push(lte(items.createdAt, `${filter.to}T23:59:59.999Z`));
   return db
     .select()
     .from(items)

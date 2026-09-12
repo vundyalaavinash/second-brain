@@ -7,7 +7,9 @@ import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type SP = { type?: string; status?: string; tag?: string };
+type SP = { type?: string; status?: string; tag?: string; from?: string; to?: string };
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isType(v: string | undefined): v is ItemType {
   return (ITEM_TYPES as readonly string[]).includes(v ?? "");
@@ -15,14 +17,19 @@ function isType(v: string | undefined): v is ItemType {
 function isStatus(v: string | undefined): v is ItemStatus {
   return (ITEM_STATUSES as readonly string[]).includes(v ?? "");
 }
+function isDate(v: string | undefined): v is string {
+  return typeof v === "string" && DATE_RE.test(v);
+}
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const type = isType(sp.type) ? sp.type : undefined;
   const status = isStatus(sp.status) ? sp.status : undefined;
   const tag = sp.tag || undefined;
+  const from = isDate(sp.from) ? sp.from : undefined;
+  const to = isDate(sp.to) ? sp.to : undefined;
   const db = getDb();
-  const items = listItems(db, { type, status, tag, limit: 200 });
+  const items = listItems(db, { type, status, tag, from, to, limit: 200 });
   const tags = listTagNames(db);
 
   const href = (patch: Partial<SP>) => {
@@ -70,6 +77,33 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           ))}
         </div>
       )}
+
+      <form action="/library" className="flex flex-wrap gap-2 items-center">
+        {type && <input type="hidden" name="type" value={type} />}
+        {status && <input type="hidden" name="status" value={status} />}
+        {tag && <input type="hidden" name="tag" value={tag} />}
+        <input
+          type="date"
+          name="from"
+          defaultValue={from ?? ""}
+          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
+        />
+        <span className="font-mono text-[10px] text-fg-faint">to</span>
+        <input
+          type="date"
+          name="to"
+          defaultValue={to ?? ""}
+          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
+        />
+        <button type="submit" className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line text-fg-muted hover:text-fg">
+          Apply
+        </button>
+        {(from || to) && (
+          <Link href={href({ from: undefined, to: undefined })} className="font-mono text-[10px] text-fg-faint hover:text-fg underline">
+            clear
+          </Link>
+        )}
+      </form>
 
       <ul className="border border-line rounded-lg divide-y divide-line bg-surface-1">
         {items.length === 0 && <li className="px-3 h-12 flex items-center text-fg-faint text-[13px]">Nothing here yet.</li>}

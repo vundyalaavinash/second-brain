@@ -60,6 +60,15 @@ describe("items domain", () => {
     expect(listItems(t.db, { limit: 1, offset: 1 }).map((i) => i.id)).toEqual([b.id]);
   });
 
+  it("filters by created_at date range", () => {
+    const old = createItem(t.db, { type: "note", title: "old" });
+    const recent = createItem(t.db, { type: "note", title: "recent" });
+    t.db.$client.prepare("UPDATE items SET created_at = ? WHERE id = ?").run("2020-01-01T00:00:00.000Z", old.id);
+
+    expect(listItems(t.db, { from: "2021-01-01" }).map((i) => i.id)).toEqual([recent.id]);
+    expect(listItems(t.db, { to: "2020-12-31" }).map((i) => i.id)).toEqual([old.id]);
+  });
+
   it("normalizes, replaces, and lists tags", () => {
     const item = createItem(t.db, { type: "note", title: "t" });
     setItemTags(t.db, item.id, ["  Work ", "work", "Idea", ""]);
