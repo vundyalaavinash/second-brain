@@ -79,7 +79,7 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
             }
           }}
           placeholder="Filter, or type a new name and press Enter"
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px]"
+          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px] focus:border-line-strong"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
           {options.map((p) => {

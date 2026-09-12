@@ -100,7 +100,7 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
             }
           }}
           placeholder={kind ? "Type to filter or create" : "Type to filter"}
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px]"
+          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px] focus:border-line-strong"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
           {rows.length === 0 && (

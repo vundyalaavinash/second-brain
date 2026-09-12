@@ -78,7 +78,7 @@ export function CommandPalette() {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[16vh]" onClick={() => setOpen(false)}>
       <div className="frost w-[560px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 h-12 px-4 border-b border-line">
+        <div className="flex items-center gap-3 h-12 px-4 border-b border-line focus-within:border-line-strong">
           <Search className="w-4 h-4 text-fg-faint" aria-hidden />
           <input
             ref={inputRef}

@@ -238,7 +238,7 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         onBlur={() => {
           if (save === "dirty") void persist();
         }}
-        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full"
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
         placeholder="Untitled"
       />
 

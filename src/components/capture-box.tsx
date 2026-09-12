@@ -104,7 +104,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
         setDuplicate(null);
       }}
-      className={`rounded-lg border bg-surface-1 transition-colors duration-150 ${dragging ? "border-accent" : "border-line"}`}
+      className={`rounded-lg border bg-surface-1 transition-colors duration-150 focus-within:border-line-strong ${dragging ? "border-accent" : "border-line"}`}
     >
       <div className="flex items-center justify-between px-4 h-9 border-b border-line">
         <span className="flex items-center gap-1.5">
@@ -170,7 +170,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           ))}
         </ul>
       )}
-      <div className="flex items-center gap-3 px-4 h-11 border-t border-line">
+      <div className="flex items-center gap-3 px-4 h-11 border-t border-line focus-within:border-line-strong">
         <Chip icon={target ? undefined : InboxIcon} onClick={() => setPicker(true)}>
           {target ? (
             <>

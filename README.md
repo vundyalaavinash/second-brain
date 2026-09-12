@@ -50,6 +50,10 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 
 PARA. Every capture lands in the Inbox. Processing the Inbox files each item into exactly one home: a **Project** (an outcome with a deadline), an **Area** (a responsibility with a standard), or a **Resource** (a topic, grouped by category). Anything inactive is **Archived**, and completing a project asks where its items should go. People are a light CRM: mention `@slug` in a note to link it to a person.
 
+### Design
+
+The interface is dark, dense, and quiet: one accent colour for what is live or selected, Lucide icons, Geist type, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.
+
 ## Design docs
 
 - Spec: `docs/superpowers/specs/2026-09-12-second-brain-design.md`
