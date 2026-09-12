@@ -40,10 +40,15 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 | Keys | Action |
 |---|---|
 | `⌘K` | Command palette |
-| `g c`, `g l`, `g s` | Go to Capture, Library, Search |
+| `g i` `g p` `g a` `g r` `g e` `g l` `g x` `g s` `g c` | Inbox, Projects, Areas, Resources, People, Library, Archive, Search, Capture |
 | `/` | Focus search |
 | `⌘↵` | Capture |
-| `⌘S` | Save item |
+| `⌘S` | Save item, container, or person |
+| In the Inbox: `p` `a` `r` `e` `x` `j` `k` `l` | File to project / area / resource, archive, delete, next, previous, list view |
+
+## How things are organised
+
+PARA. Every capture lands in the Inbox. Processing the Inbox files each item into exactly one home: a **Project** (an outcome with a deadline), an **Area** (a responsibility with a standard), or a **Resource** (a topic, grouped by category). Anything inactive is **Archived**, and completing a project asks where its items should go. People are a light CRM: mention `@slug` in a note to link it to a person.
 
 ## Design docs
 
