@@ -83,7 +83,7 @@ Each domain module exposes plain functions that take a database handle. Route ha
 
 ## 3. Data model
 
-All tables have integer primary keys, `created_at`, and `updated_at` as ISO strings.
+Entity tables (`items`, `projects`, `tasks`, `jobs`, `conversations`, `messages`, `daily_plan_entries`) have integer primary keys, `created_at`, and `updated_at` as ISO strings. Lookup and derived tables do not carry timestamps: `tags` (integer key, unique name), `item_tags` (composite key of item and tag), `chunks` (integer key; regenerated from the parent item), and `settings` (text key).
 
 ### items
 
