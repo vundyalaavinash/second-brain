@@ -37,6 +37,8 @@ describe("people domain", () => {
       ["ada-lovelace", 1],
       ["ada-lovelace-2", 0],
     ]);
+    updateItem(t.db, item.id, { archivedAt: new Date().toISOString() });
+    expect(listPeople(t.db).find((x) => x.id === ada.id)?.itemCount).toBe(0);
     const u = updatePerson(t.db, ada.id, { name: "Countess Ada", profile: "Mathematician" });
     expect(u.slug).toBe("countess-ada");
     expect(getPerson(t.db, ada.id)?.profile).toBe("Mathematician");
@@ -55,6 +57,7 @@ describe("people domain", () => {
     expect(getItemPeople(t.db, a.id).map((x) => x.id)).toEqual([p.id]);
     expect(getPersonTimeline(t.db, p.id).map((i) => i.id)).toEqual([b.id, a.id]);
     updateItem(t.db, b.id, { archivedAt: new Date().toISOString() });
+    expect(listPeople(t.db).find((x) => x.id === p.id)?.itemCount).toBe(1);
     expect(getPersonTimeline(t.db, p.id).map((i) => i.id)).toEqual([a.id]);
     expect(getPersonTimeline(t.db, p.id, true)).toHaveLength(2);
     setItemPeople(t.db, a.id, []);
