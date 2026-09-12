@@ -7,6 +7,8 @@ import Markdown from "react-markdown";
 import type { ItemDTO } from "@/lib/dto";
 import { formatDateTime } from "@/lib/format";
 import { StatusBadge, TypeBadge } from "./badges";
+import { ContainerPicker } from "./container-picker";
+import { PeoplePicker } from "./people-picker";
 
 const SAVE_DEBOUNCE_MS = 5000;
 
@@ -32,6 +34,8 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [movePicker, setMovePicker] = useState(false);
+  const [peoplePicker, setPeoplePicker] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef({ title, body, tags });
   const titleTouched = useRef(false);
@@ -123,6 +127,16 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
     return () => clearInterval(id);
   }, [item.status, initial.id]);
 
+  async function patchMeta(body: Record<string, unknown>) {
+    setActionError(null);
+    const res = await fetch(`/api/items/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      setActionError(await readError(res));
+      return;
+    }
+    setItem((await res.json()) as ItemDTO);
+  }
+
   async function retry() {
     const res = await fetch(`/api/items/${initial.id}/retry`, { method: "POST" });
     if (!res.ok) {
@@ -168,6 +182,10 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         <span className="font-mono text-[10px] text-fg-faint">#{item.id}</span>
         <TypeBadge type={item.type} />
         <StatusBadge status={item.status} error={item.error} />
+        <button onClick={() => setMovePicker(true)} className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line hover:border-accent hover:text-accent">
+          {item.container ? `${item.container.kind} · ${item.container.name}` : "inbox"}
+        </button>
+        {item.archivedAt && <span className="font-mono text-[10px] text-warn">archived</span>}
         <span className={`font-mono text-[10px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
         <span className="flex-1" />
         {item.status === "failed" && (
@@ -187,6 +205,9 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
           className={`h-7 px-2 rounded-md text-[12px] border ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}
         >
           {confirmDelete ? "Confirm delete" : "Delete"}
+        </button>
+        <button onClick={() => void patchMeta({ archived: !item.archivedAt })} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong">
+          {item.archivedAt ? "Restore" : "Archive"}
         </button>
       </header>
 
@@ -237,6 +258,13 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         className="w-full bg-transparent outline-none text-[12px] text-fg-muted border-b border-line pb-2"
       />
 
+      <div className="flex flex-wrap items-center gap-2">
+        {item.people.map((p) => (
+          <Link key={p.id} href={`/people/${p.slug}`} className="font-mono text-[11px] text-fg-muted hover:text-accent">@{p.slug}</Link>
+        ))}
+        <button onClick={() => setPeoplePicker(true)} className="font-mono text-[11px] text-fg-faint hover:text-fg">+ person</button>
+      </div>
+
       {isImage && (
         // eslint-disable-next-line @next/next/no-img-element -- same-origin API route, next/image cannot proxy it
         <img src={`/api/items/${item.id}/file`} alt={item.title} className="max-h-96 rounded-md border border-line object-contain self-start" />
@@ -273,6 +301,20 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
             {item.extractedText}
           </pre>
         </details>
+      )}
+
+      {movePicker && (
+        <ContainerPicker
+          allowInbox
+          onClose={() => setMovePicker(false)}
+          onPick={(c) => {
+            setMovePicker(false);
+            void patchMeta({ containerId: c ? c.id : null });
+          }}
+        />
+      )}
+      {peoplePicker && (
+        <PeoplePicker selected={item.people.map((p) => p.id)} onChange={(ids) => void patchMeta({ people: ids })} onClose={() => setPeoplePicker(false)} />
       )}
     </div>
   );
