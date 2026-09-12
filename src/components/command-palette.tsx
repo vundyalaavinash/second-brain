@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NAV_ITEMS } from "./nav";
+import { Search } from "lucide-react";
+import { NAV_ITEMS, type IconName } from "./nav";
+import { Icon } from "./icons";
+import { Kbd } from "./ui";
 
 interface Command {
   id: string;
   label: string;
   hint?: string;
+  iconName?: IconName;
   run: () => void;
 }
 
@@ -22,8 +26,9 @@ export function CommandPalette() {
     () =>
       NAV_ITEMS.map((n) => ({
         id: n.href,
-        label: `Go to ${n.label}`,
+        label: n.label,
         hint: n.shortcut,
+        iconName: n.icon,
         run: () => router.push(n.href),
       })),
     [router],
@@ -71,43 +76,45 @@ export function CommandPalette() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center pt-[18vh]" onClick={() => setOpen(false)}>
-      <div
-        className="w-[520px] max-w-[92vw] bg-surface-2 border border-line-strong rounded-lg shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setIndex(0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setIndex((i) => Math.min(i + 1, filtered.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setIndex((i) => Math.max(i - 1, 0));
-            } else if (e.key === "Enter" && filtered[index]) {
-              choose(filtered[index]);
-            }
-          }}
-          placeholder="Type a command"
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none"
-        />
-        <ul className="max-h-72 overflow-y-auto py-1">
-          {filtered.length === 0 && <li className="px-4 py-2 text-fg-faint">No matches</li>}
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[16vh]" onClick={() => setOpen(false)}>
+      <div className="frost w-[560px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 h-12 px-4 border-b border-line">
+          <Search className="w-4 h-4 text-fg-faint" aria-hidden />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setIndex((i) => Math.min(i + 1, filtered.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter" && filtered[index]) {
+                choose(filtered[index]);
+              }
+            }}
+            placeholder="Jump to a view or run a command"
+            className="flex-1 bg-transparent outline-none text-[14px]"
+          />
+          <Kbd>esc</Kbd>
+        </div>
+        <ul className="max-h-80 overflow-y-auto py-1.5">
+          {filtered.length === 0 && <li className="px-4 py-3 text-[13px] text-fg-faint">No matching commands.</li>}
           {filtered.map((c, i) => (
             <li
               key={c.id}
               onMouseEnter={() => setIndex(i)}
               onClick={() => choose(c)}
-              className={`px-4 h-9 flex items-center justify-between cursor-pointer ${i === index ? "bg-surface-3 text-fg" : "text-fg-muted"}`}
+              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-surface-3 text-fg" : "text-fg-muted"}`}
             >
-              <span>{c.label}</span>
-              {c.hint && <span className="kbd">{c.hint}</span>}
+              {c.iconName && <Icon name={c.iconName} className="w-4 h-4" />}
+              <span className="flex-1">{c.label}</span>
+              {c.hint && <Kbd>{c.hint}</Kbd>}
             </li>
           ))}
         </ul>
