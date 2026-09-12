@@ -26,9 +26,11 @@ export function Dock() {
     }
     void load();
     const id = setInterval(load, POLL_MS);
+    window.addEventListener("sb:inbox-changed", load);
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener("sb:inbox-changed", load);
     };
   }, [pathname]);
 

@@ -50,6 +50,11 @@ export function InboxProcessor() {
 
   const current = items[index];
 
+  function openPicker(kind: ContainerKind) {
+    setConfirmDelete(false);
+    setPicker(kind);
+  }
+
   function removeCurrent() {
     setItems((all) => all.filter((_, i) => i !== index));
     setTotal((t) => Math.max(0, t - 1));
@@ -70,6 +75,7 @@ export function InboxProcessor() {
       return;
     }
     removeCurrent();
+    window.dispatchEvent(new Event("sb:inbox-changed"));
   }
 
   async function remove() {
@@ -84,6 +90,7 @@ export function InboxProcessor() {
       return;
     }
     removeCurrent();
+    window.dispatchEvent(new Event("sb:inbox-changed"));
   }
 
   useEffect(() => {
@@ -95,7 +102,7 @@ export function InboxProcessor() {
         case "r":
           if (!current) return;
           e.preventDefault();
-          setPicker(e.key === "p" ? "project" : e.key === "a" ? "area" : "resource");
+          openPicker(e.key === "p" ? "project" : e.key === "a" ? "area" : "resource");
           break;
         case "e":
           e.preventDefault();
@@ -203,9 +210,9 @@ export function InboxProcessor() {
           <div className="flex flex-wrap items-center gap-2 px-4 h-12 border-t border-line">
             {(
               [
-                ["p", "Project", () => setPicker("project")],
-                ["a", "Area", () => setPicker("area")],
-                ["r", "Resource", () => setPicker("resource")],
+                ["p", "Project", () => openPicker("project")],
+                ["a", "Area", () => openPicker("area")],
+                ["r", "Resource", () => openPicker("resource")],
                 ["e", "Archive", () => void patch({ archived: true })],
               ] as const
             ).map(([key, label, run]) => (
@@ -230,9 +237,13 @@ export function InboxProcessor() {
       {picker && (
         <ContainerPicker
           kind={picker}
-          onClose={() => setPicker(null)}
+          onClose={() => {
+            setPicker(null);
+            setConfirmDelete(false);
+          }}
           onPick={(c) => {
             setPicker(null);
+            setConfirmDelete(false);
             void patch({ containerId: c ? c.id : null });
           }}
         />
