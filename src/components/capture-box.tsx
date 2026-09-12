@@ -96,6 +96,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         e.preventDefault();
         setDragging(false);
         setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
+        setDuplicate(null);
       }}
       className={`rounded-lg border bg-surface-1 transition-colors duration-150 ${dragging ? "border-accent" : "border-line"}`}
     >
@@ -109,12 +110,16 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         ref={textareaRef}
         autoFocus
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDuplicate(null);
+        }}
         onPaste={(e) => {
           const pasted = Array.from(e.clipboardData.files);
           if (pasted.length) {
             e.preventDefault();
             setFiles((f) => [...f, ...pasted]);
+            setDuplicate(null);
           }
         }}
         onKeyDown={(e) => {
@@ -132,7 +137,14 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           {files.map((f, i) => (
             <li key={`${f.name}-${i}`} className="font-mono text-[11px] bg-surface-3 border border-line rounded-sm px-2 py-1 flex items-center gap-2">
               {f.name}
-              <button type="button" onClick={() => setFiles((all) => all.filter((_, j) => j !== i))} className="text-fg-faint hover:text-danger">
+              <button
+                type="button"
+                onClick={() => {
+                  setFiles((all) => all.filter((_, j) => j !== i));
+                  setDuplicate(null);
+                }}
+                className="text-fg-faint hover:text-danger"
+              >
                 ×
               </button>
             </li>
@@ -154,7 +166,10 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           type="file"
           multiple
           hidden
-          onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files ?? [])])}
+          onChange={(e) => {
+            setFiles((f) => [...f, ...Array.from(e.target.files ?? [])]);
+            setDuplicate(null);
+          }}
         />
         <button
           type="button"
@@ -188,6 +203,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           onPick={(c: ContainerDTO | null) => {
             setPicker(false);
             setTarget(c ? { id: c.id, name: c.name, slug: c.slug, kind: c.kind } : null);
+            setDuplicate(null);
           }}
         />
       )}
