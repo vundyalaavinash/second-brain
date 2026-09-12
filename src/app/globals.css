@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0a0a0c;
-  --color-surface-1: #111114;
-  --color-surface-2: #17171b;
-  --color-surface-3: #1e1e23;
-  --color-line: rgba(255, 255, 255, 0.08);
-  --color-line-strong: rgba(255, 255, 255, 0.14);
-  --color-fg: #ededf0;
-  --color-fg-muted: #8b8b94;
-  --color-fg-faint: #5c5c66;
+  --color-bg: #09090b;
+  --color-surface-1: rgba(255, 255, 255, 0.03);
+  --color-surface-2: rgba(255, 255, 255, 0.05);
+  --color-surface-3: rgba(255, 255, 255, 0.08);
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
+  --color-fg: #f2f2f0;
+  --color-fg-muted: #9b9ba4;
+  --color-fg-faint: #62626b;
   --color-accent: #4cc9ff;
-  --color-accent-dim: rgba(76, 201, 255, 0.15);
+  --color-accent-dim: rgba(76, 201, 255, 0.14);
   --color-danger: #ff5c6c;
   --color-success: #52d38a;
   --color-warn: #f5c451;
@@ -19,9 +19,11 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-float: 0 24px 64px -24px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 
 :root {
@@ -34,6 +36,7 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   font-size: 14px;
+  line-height: 1.55;
 }
 
 * {
@@ -58,8 +61,21 @@ textarea::placeholder {
 }
 
 :focus-visible {
-  outline: 1px solid var(--color-accent);
-  outline-offset: 1px;
+  outline: none;
+}
+
+/* Frosted floating chrome: dock, palette, pickers. */
+.frost {
+  background: rgba(18, 18, 22, 0.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: var(--shadow-float);
+}
+
+/* Focus ring used by every interactive primitive. */
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(76, 201, 255, 0.55);
 }
 
 @keyframes pulse-accent {
@@ -81,9 +97,19 @@ textarea::placeholder {
   font-size: 10.5px;
   color: var(--color-fg-faint);
   border: 1px solid var(--color-line-strong);
-  border-radius: 4px;
+  border-radius: 5px;
   padding: 1px 5px;
   line-height: 1.4;
+  background: var(--color-surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .md {
