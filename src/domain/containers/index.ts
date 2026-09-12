@@ -1,0 +1,198 @@
+import { and, asc, eq, isNull, isNotNull, sql, count } from "drizzle-orm";
+import type { DB } from "@/db/client";
+import { containers, items, type Container, type ContainerKind, type ContainerStatus, type ResourceCategory } from "@/db/schema";
+import { nowIso } from "@/lib/time";
+
+export class ContainerError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number = 400,
+  ) {
+    super(message);
+    this.name = "ContainerError";
+  }
+}
+
+export interface CreateContainerInput {
+  kind: ContainerKind;
+  name: string;
+  description?: string;
+  goal?: string;
+  deadline?: string | null;
+  standard?: string;
+  category?: ResourceCategory | null;
+  nextSteps?: string;
+}
+
+export interface UpdateContainerInput {
+  name?: string;
+  description?: string;
+  goal?: string;
+  deadline?: string | null;
+  standard?: string;
+  category?: ResourceCategory | null;
+  nextSteps?: string;
+  sortOrder?: number;
+}
+
+export function slugify(name: string): string {
+  const base = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "container";
+}
+
+function uniqueSlug(db: DB, name: string, excludeId?: number): string {
+  const base = slugify(name);
+  let candidate = base;
+  for (let n = 2; ; n++) {
+    const existing = db.select({ id: containers.id }).from(containers).where(eq(containers.slug, candidate)).get();
+    if (!existing || existing.id === excludeId) return candidate;
+    candidate = `${base}-${n}`;
+  }
+}
+
+function requireContainer(db: DB, id: number): Container {
+  const c = getContainer(db, id);
+  if (!c) throw new ContainerError(`Container ${id} not found`, 404);
+  return c;
+}
+
+export function createContainer(db: DB, input: CreateContainerInput): Container {
+  const now = nowIso();
+  const name = input.name.trim();
+  if (!name) throw new ContainerError("Name is required");
+  const row = db
+    .insert(containers)
+    .values({
+      kind: input.kind,
+      name,
+      slug: uniqueSlug(db, name),
+      description: input.description ?? "",
+      goal: input.goal ?? "",
+      deadline: input.deadline ?? null,
+      standard: input.standard ?? "",
+      category: input.kind === "resource" ? (input.category ?? "other") : null,
+      nextSteps: input.nextSteps ?? "",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  if (!row) throw new Error("Insert returned no row");
+  return row;
+}
+
+export function getContainer(db: DB, id: number): Container | undefined {
+  return db.select().from(containers).where(eq(containers.id, id)).get();
+}
+
+export function getContainerBySlug(db: DB, slug: string): Container | undefined {
+  return db.select().from(containers).where(eq(containers.slug, slug)).get();
+}
+
+export function listContainers(db: DB, filter: { kind?: ContainerKind; status?: ContainerStatus } = {}): Container[] {
+  const conds = [];
+  if (filter.kind) conds.push(eq(containers.kind, filter.kind));
+  if (filter.status) conds.push(eq(containers.status, filter.status));
+  const order =
+    filter.kind === "project"
+      ? [sql`${containers.deadline} IS NULL`, asc(containers.deadline), asc(containers.sortOrder), asc(containers.name)]
+      : [asc(containers.kind), asc(containers.sortOrder), asc(containers.name)];
+  return db
+    .select()
+    .from(containers)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(...order)
+    .all();
+}
+
+export function updateContainer(db: DB, id: number, patch: UpdateContainerInput): Container {
+  const current = requireContainer(db, id);
+  const set: Partial<typeof containers.$inferInsert> = { updatedAt: nowIso() };
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new ContainerError("Name is required");
+    set.name = name;
+    if (name !== current.name) set.slug = uniqueSlug(db, name, id);
+  }
+  if (patch.description !== undefined) set.description = patch.description;
+  if (patch.goal !== undefined) set.goal = patch.goal;
+  if (patch.deadline !== undefined) set.deadline = patch.deadline;
+  if (patch.standard !== undefined) set.standard = patch.standard;
+  if (patch.category !== undefined) set.category = current.kind === "resource" ? patch.category : null;
+  if (patch.nextSteps !== undefined) set.nextSteps = patch.nextSteps;
+  if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
+  const row = db.update(containers).set(set).where(eq(containers.id, id)).returning().get();
+  if (!row) throw new ContainerError(`Container ${id} not found`, 404);
+  return row;
+}
+
+export function countContainerItems(db: DB, id: number, includeArchived = false): number {
+  const conds = [eq(items.containerId, id)];
+  if (!includeArchived) conds.push(isNull(items.archivedAt));
+  const row = db.select({ c: count() }).from(items).where(and(...conds)).get();
+  return row?.c ?? 0;
+}
+
+/**
+ * Archive a container. Without moveItemsTo its active items are archived with it.
+ * With moveItemsTo (a container id, or null for the Inbox) its items are re-homed and stay active.
+ */
+export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: number | null } = {}): Container {
+  requireContainer(db, id);
+  if (typeof opts.moveItemsTo === "number") requireContainer(db, opts.moveItemsTo);
+  const now = nowIso();
+  return db.transaction((tx) => {
+    if (opts.moveItemsTo !== undefined) {
+      tx.update(items)
+        .set({ containerId: opts.moveItemsTo, updatedAt: now })
+        .where(and(eq(items.containerId, id), isNull(items.archivedAt)))
+        .run();
+    } else {
+      tx.update(items)
+        .set({ archivedAt: now, updatedAt: now })
+        .where(and(eq(items.containerId, id), isNull(items.archivedAt)))
+        .run();
+    }
+    const row = tx
+      .update(containers)
+      .set({ status: "archived", archivedAt: now, updatedAt: now })
+      .where(eq(containers.id, id))
+      .returning()
+      .get();
+    if (!row) throw new ContainerError(`Container ${id} not found`, 404);
+    return row;
+  });
+}
+
+/** Restore a container and every archived item still filed in it. */
+export function restoreContainer(db: DB, id: number): Container {
+  requireContainer(db, id);
+  const now = nowIso();
+  return db.transaction((tx) => {
+    tx.update(items)
+      .set({ archivedAt: null, updatedAt: now })
+      .where(and(eq(items.containerId, id), isNotNull(items.archivedAt)))
+      .run();
+    const row = tx
+      .update(containers)
+      .set({ status: "active", archivedAt: null, updatedAt: now })
+      .where(eq(containers.id, id))
+      .returning()
+      .get();
+    if (!row) throw new ContainerError(`Container ${id} not found`, 404);
+    return row;
+  });
+}
+
+export function deleteContainer(db: DB, id: number): void {
+  requireContainer(db, id);
+  if (countContainerItems(db, id, true) > 0) {
+    throw new ContainerError("Container still has items; move or archive them first", 409);
+  }
+  db.delete(containers).where(eq(containers.id, id)).run();
+}

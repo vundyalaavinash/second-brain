@@ -15,6 +15,7 @@ export interface CreateItemInput {
   status?: ItemStatus;
   journalDate?: string;
   reviewWeek?: string;
+  containerId?: number | null;
 }
 
 export interface UpdateItemInput {
@@ -56,6 +57,7 @@ export function createItem(db: DB, input: CreateItemInput): Item {
       meta: JSON.stringify(input.meta ?? {}),
       journalDate: input.journalDate ?? null,
       reviewWeek: input.reviewWeek ?? null,
+      containerId: input.containerId ?? null,
       createdAt: now,
       updatedAt: now,
     })
