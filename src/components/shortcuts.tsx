@@ -20,7 +20,7 @@ export function Shortcuts() {
     let pendingG = 0;
     const byLetter = new Map(NAV_ITEMS.filter((n) => n.enabled).map((n) => [n.shortcut.split(" ")[1], n.href]));
     function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || isTyping(e.target)) return;
       if (e.key === "/") {
         const input = document.getElementById("search-input") as HTMLInputElement | null;
         if (input) {

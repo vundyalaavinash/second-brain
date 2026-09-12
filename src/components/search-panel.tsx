@@ -40,16 +40,22 @@ export function SearchPanel() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     fetch("/api/tags")
       .then((r) => (r.ok ? r.json() : []))
-      .then((t: string[]) => setTags(t))
-      .catch(() => setTags([]));
+      .then((t: string[]) => {
+        if (!cancelled) setTags(t);
+      })
+      .catch(() => {
+        if (!cancelled) setTags([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!q.trim()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing results when the query is emptied, not a derived-state anti-pattern
-      setResults([]);
       return;
     }
     const ctrl = new AbortController();
@@ -76,11 +82,12 @@ export function SearchPanel() {
   }, [q, type, tag, from, to]);
 
   const select = "h-7 bg-surface-2 border border-line rounded-sm px-2 font-mono text-[11px] text-fg-muted outline-none";
+  const visible = q.trim() ? results : [];
   const status = useMemo(() => {
     if (loading) return "searching";
     if (!q.trim()) return "type to search";
-    return `${results.length} result${results.length === 1 ? "" : "s"}`;
-  }, [loading, q, results.length]);
+    return `${visible.length} result${visible.length === 1 ? "" : "s"}`;
+  }, [loading, q, visible.length]);
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
@@ -126,7 +133,7 @@ export function SearchPanel() {
       </div>
 
       <ul className="flex flex-col gap-2">
-        {results.map((r) => (
+        {visible.map((r) => (
           <li key={r.item.id} className="rounded-lg border border-line bg-surface-1 px-4 py-3 hover:border-line-strong transition-colors duration-150">
             <div className="flex items-center gap-3">
               <TypeBadge type={r.item.type} />
