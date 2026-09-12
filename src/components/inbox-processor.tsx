@@ -219,7 +219,7 @@ export function InboxProcessor() {
           {items.map((item, i) => (
             <Row
               key={item.id}
-              className={`cursor-pointer ${i === index ? "bg-surface-3" : ""}`}
+              className={i === index ? "cursor-pointer bg-surface-3 hover:bg-surface-3" : "cursor-pointer"}
             >
               <button
                 type="button"
@@ -227,12 +227,12 @@ export function InboxProcessor() {
                   setIndex(i);
                   setMode("focus");
                 }}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                className="flex items-center gap-3 w-full min-w-0 text-left"
               >
                 <TypeIcon type={item.type} />
                 <span className="flex-1 truncate text-[13.5px]">{item.title}</span>
+                <span className="font-mono text-[11px] text-fg-faint">{relativeTime(item.createdAt)}</span>
               </button>
-              <span className="font-mono text-[11px] text-fg-faint">{relativeTime(item.createdAt)}</span>
             </Row>
           ))}
         </List>
