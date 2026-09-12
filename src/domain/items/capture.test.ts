@@ -5,7 +5,7 @@ import { MINIMAL_PDF } from "@/test/fixtures";
 import { listJobs } from "@/jobs/queue";
 import { getItemChunks, getItemTags } from "./index";
 import { absoluteFilePath } from "@/lib/files";
-import { captureNote, captureLink, captureFile, updateItemContent, deriveTitle, isProbablyUrl, CaptureError } from "./capture";
+import { captureNote, captureLink, captureFile, updateItemContent, deriveTitle, isProbablyUrl, CaptureError, DuplicateError } from "./capture";
 
 describe("capture", () => {
   let t: TestDb;
@@ -77,5 +77,30 @@ describe("capture", () => {
     expect(getItemTags(t.db, item.id)).toEqual(["a", "b"]);
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["embed", "embed"]);
     expect(() => updateItemContent(t.db, 999, { body: "x" })).toThrow(CaptureError);
+  });
+
+  it("captures into a container and rejects duplicate links unless forced", () => {
+    const now = new Date().toISOString();
+    t.db.$client
+      .prepare("INSERT INTO containers (kind, name, slug, created_at, updated_at) VALUES ('project', 'P', 'p', ?, ?)")
+      .run(now, now);
+    const containerId = (t.db.$client.prepare("SELECT id FROM containers WHERE slug = 'p'").get() as { id: number }).id;
+
+    const note = captureNote(t.db, { body: "homed note", containerId });
+    expect(note.containerId).toBe(containerId);
+    const first = captureLink(t.db, { url: "https://example.test/dup?utm_source=a", containerId });
+    expect(first.containerId).toBe(containerId);
+    try {
+      captureLink(t.db, { url: "https://example.test/dup" });
+      throw new Error("expected DuplicateError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(DuplicateError);
+      expect((e as DuplicateError).status).toBe(409);
+      expect((e as DuplicateError).existingId).toBe(first.id);
+    }
+    const forced = captureLink(t.db, { url: "https://example.test/dup", force: true });
+    expect(forced.id).not.toBe(first.id);
+    const file = captureFile(t.db, { bytes: Buffer.from("t"), name: "n.txt", mime: "text/plain", containerId });
+    expect(file.containerId).toBe(containerId);
   });
 });

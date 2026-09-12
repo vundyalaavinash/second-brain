@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
