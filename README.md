@@ -2,12 +2,25 @@
 
 A personal capture, search, task, and meeting system that runs locally on a Mac. Stage one covers capture (notes, links, PDFs, images), background processing, and hybrid keyword plus semantic search.
 
+## Install and run
+
+    npm run setup
+
+One command: installs dependencies, builds, downloads the embedding model, installs a launchd agent that starts the app at login and keeps it running on http://localhost:3141, and opens it. After that:
+
+    npm run status      # agent and server state
+    npm run restart     # restart; add -- --build after pulling changes
+    npm run stop        # stop the agent
+    npm run logs        # tail the server log
+
+The script behind these is `scripts/brain.sh`.
+
 ## Run in development
 
     npm install
     npm run dev
 
-Open http://localhost:3141. Data lives in `~/Library/Application Support/second-brain/` (override with `SB_DATA_DIR`). The first capture downloads the embedding model (about 35 MB) into the `models/` folder there.
+Open http://localhost:3141. Stop the launch agent first (`npm run stop`) if it is running, since both use the same port. Data lives in `~/Library/Application Support/second-brain/` (override with `SB_DATA_DIR`). The first capture downloads the embedding model (about 35 MB) into the `models/` folder there.
 
 ## Run tests
 

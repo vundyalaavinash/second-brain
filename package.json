@@ -8,7 +8,12 @@
     "start": "next start -p 3141",
     "lint": "eslint",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "setup": "scripts/brain.sh setup",
+    "restart": "scripts/brain.sh restart",
+    "stop": "scripts/brain.sh stop",
+    "status": "scripts/brain.sh status",
+    "logs": "scripts/brain.sh logs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
