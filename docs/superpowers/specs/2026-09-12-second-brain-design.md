@@ -103,6 +103,8 @@ The single table for everything captured.
 | meta | JSON for type-specific data (see below) |
 | journal_date | `YYYY-MM-DD`, journals only, unique |
 | review_week | `YYYY-Www`, reviews only, unique |
+| container_id | nullable reference to `containers`. Null means the item is in the Inbox |
+| archived_at | timestamp or null. Archived items are hidden from Inbox, Library, and Search by default |
 
 Type-specific `meta`:
 
@@ -127,13 +129,36 @@ A companion FTS5 virtual table `chunks_fts(text, content=chunks)` is kept in syn
 
 Chunks are built from `title + body + extracted_text`. Re-chunking happens whenever body or extracted_text changes. Old chunks and vectors are deleted first.
 
-### projects
+### containers (PARA)
+
+One table holds Projects, Areas, and Resources. Every item, and later every task, has exactly one home here or sits in the Inbox.
+
+| Column | Notes |
+|---|---|
+| kind | `project`, `area`, `resource` |
+| name | required |
+| slug | unique, derived from the name |
+| description | markdown |
+| status | `active`, `archived` |
+| goal | projects: the outcome that makes the project done |
+| deadline | projects: `YYYY-MM-DD` or null |
+| standard | areas: what "good" looks like for this responsibility |
+| category | resources: `articles`, `tools`, `reference`, `research`, `inspiration`, `videos`, `other` |
+| next_steps | projects: markdown checklist, replaced by real tasks when the tasks slice lands |
+| sort_order | manual ordering within a kind |
+| archived_at | timestamp or null |
+
+### people
+
+A lightweight CRM, from COG's people profiles.
 
 | Column | Notes |
 |---|---|
 | name | required |
-| description | markdown |
-| status | `active`, `done`, `archived` |
+| slug | unique |
+| profile | markdown, the compiled current picture of the person |
+
+`item_people` joins items to people. A person's timeline is their linked items in date order. A `@name` written in a note body links automatically when it matches an existing person's name or slug.
 
 ### tasks
 
@@ -144,7 +169,7 @@ Chunks are built from `title + body + extracted_text`. Re-chunking happens whene
 | status | `open`, `done`, `dropped` |
 | priority | `low`, `normal`, `high` |
 | due_date | `YYYY-MM-DD` or null |
-| project_id | nullable. Null means Inbox |
+| container_id | nullable reference to `containers`. Null means Inbox |
 | source_item_id | nullable. The item the task came from |
 | recurrence | rule string or null |
 | completed_at | timestamp |
@@ -211,6 +236,10 @@ Type-specific first jobs:
 
 Notes and journals are also re-embedded on every edit, debounced by five seconds.
 
+Every capture lands in the Inbox (`container_id` null) unless a home is chosen in the capture box. The capture box offers a "file to" picker listing recent containers and defaults to the container currently being viewed.
+
+Link capture runs a duplicate check first (COG's scout step): the URL is normalised (lowercase scheme and host, trailing slash removed, `utm_*`, `fbclid`, `gclid`, and `ref` query parameters stripped) and compared against existing link items; a match returns the existing item with HTTP 409 and the capture box shows "already saved" with a link to it. A `force` flag saves a second copy anyway.
+
 Uploaded files are copied into `files/YYYY/MM/<uuid>-<original name>`. The database stores the relative path.
 
 ### Job worker
@@ -236,18 +265,28 @@ The embedding model loads once at startup in a worker thread so the first query 
 
 Search is exposed as `search(query, filters, limit)` in `domain/search` and used by both the Search page and the assistant's search tool.
 
+## 5.1 PARA organisation
+
+The organising method is PARA: Projects (an outcome with a deadline), Areas (an ongoing responsibility with a standard to maintain), Resources (topics of interest), and Archive (anything inactive). Rules the app enforces:
+
+- Single home: an item belongs to exactly one container or to the Inbox. Tags are free-form on top and never substitute for a home.
+- Inbox processing: the Inbox view walks unfiled items one at a time with keyboard actions: `p` file to a project, `a` to an area, `r` to a resource, `e` archive, `x` delete, `n` create a new container and file there. The dock shows the inbox count.
+- Completing a project archives it and prompts to move its items to an area or resource, or archive them with it. Archiving an area or resource archives its items. Restoring a container restores its items.
+- Resources are grouped by category, each category acting as an index page, matching COG's bookmark booklets.
+- Archive is a view over `archived_at`, with restore. Archived items stay searchable when the "include archived" toggle is on.
+
 ## 6. Tasks, projects, and daily plan
 
 Views:
 
 - **Today**: the daily plan for today in manual order, then a section of tasks due today or overdue that are not on the plan, then quick links to today's journal and, from Friday onward, the weekly review if it is not done.
 - **Upcoming**: tasks grouped by due date for the next 14 days.
-- **Inbox**: open tasks with no project.
-- **Project page**: the project's open tasks in manual order, done tasks collapsed.
+- **Inbox**: open tasks with no container.
+- **Project page**: the project's open tasks in manual order, done tasks collapsed. Area pages list their tasks the same way.
 
 Interactions:
 
-- Add a task inline from any view with a title. Optional fields expand on demand.
+- Add a task inline from any view with a title. Optional fields expand on demand. A task added from a project or area page is filed there.
 - Drag to reorder within the daily plan and within a project.
 - "Plan for today" on any task adds it to today's daily plan entries.
 - Unfinished plan entries roll forward: opening Today shows yesterday's unfinished plan tasks with a one-click "carry over".
@@ -367,12 +406,16 @@ Marking the review done sets `meta.done = true` and clears the Today reminder.
 
 ## 11. UI
 
-Left sidebar with Today, Capture, Library, Search, Chat, Journal, Review, and a Projects list. Content area to the right. Layout is desktop-first and single-column below 900 px.
+Navigation is a floating dock: a pill centred at the bottom of the viewport with icons for Inbox (with an unread count badge), Projects, Areas, Resources, People, Archive, Search, Capture, and the command palette. Labels appear on hover, the active entry is lit with the accent, and every entry has a `g` shortcut (`g i`, `g p`, `g a`, `g r`, `g e` for people, `g l` library, `g s` search, `g c` capture). Today, Journal, Chat, and Review take their slots as their slices land. Content uses the full width up to a comfortable maximum. Layout is desktop-first and single-column below 900 px.
 
 - **Capture**: one text area that accepts typed markdown, a pasted URL (detected by pattern and captured as a link), dropped or pasted files, and a Record button. A global keyboard shortcut opens Capture as an overlay from any page.
-- **Library**: items list with type, tag, and date filters, status badges for pending and failed, and retry on failed.
+- **Library**: items list with type, tag, container, and date filters, status badges for pending and failed, and retry on failed. Archived items are hidden unless "include archived" is on.
+- **Inbox**: the processing flow described in section 5.1, plus a plain list mode.
+- **Projects, Areas, Resources**: a list per kind (projects ordered by deadline, resources grouped by category) and a container page with its fields, its items, and later its tasks. Project pages carry the next-steps checklist until tasks exist.
+- **People**: a list and a person page with the profile on the left and the timeline of linked items on the right.
+- **Archive**: archived containers and items with restore.
 - **Item page**: title, tags, markdown editor for `body`, and a collapsible panel with `extracted_text` for links and files. Meeting pages add audio playback, the transcript, the summary, and proposed actions.
-- **Search**: query box with filters, results with highlighted snippets.
+- **Search**: query box with type, tag, container, and date filters, results with highlighted snippets, archived hidden by default.
 - **Chat**: conversation list, streaming responses, citations as links, and a visible note when the assistant created a task.
 - **Journal, Review, Today, Projects**: as described in their sections.
 
@@ -436,9 +479,10 @@ Manual checklist for the recorder helper: permission prompt appears, system audi
 
 Each slice ends with a usable app.
 
-1. Project skeleton, database, items, notes, Library, and keyword search.
-2. Links, files, job worker, embeddings, and hybrid search.
-3. Projects, tasks, recurrence, daily plan, Today, Upcoming, Inbox.
+1. Project skeleton, database, items, notes, Library, and keyword search. (done)
+2. Links, files, job worker, embeddings, and hybrid search. (done)
+2a. PARA spine: containers, inbox processing, duplicate check, people, the floating dock, and container filters in Library and Search.
+3. Tasks, recurrence, daily plan, Today, Upcoming, on top of containers.
 4. Daily journal.
 5. Recorder helper, live transcription, final transcript, meeting page.
 6. Assistant chat with tools, meeting summary and proposed actions.
