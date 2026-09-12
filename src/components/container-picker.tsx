@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Inbox as InboxIcon, Plus } from "lucide-react";
 import type { ContainerDTO } from "@/lib/dto";
 import type { ContainerKind } from "@/db/enums";
+import { KindIcon, KIND_LABEL } from "./type-icon";
 
 interface Props {
   kind?: ContainerKind;
@@ -11,8 +13,6 @@ interface Props {
   onPick: (container: ContainerDTO | null) => void;
   onClose: () => void;
 }
-
-const KIND_LABEL: Record<ContainerKind, string> = { project: "Project", area: "Area", resource: "Resource" };
 
 export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClose }: Props) {
   const [all, setAll] = useState<ContainerDTO[]>([]);
@@ -42,10 +42,19 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
   }, [all, kind, q]);
   const exact = options.some((c) => c.name.toLowerCase() === q);
   const canCreate = Boolean(kind && q && !exact);
-  const rows: Array<{ key: string; label: string; hint: string; run: () => void }> = [];
-  if (allowInbox && !q) rows.push({ key: "inbox", label: "Inbox", hint: "unfiled", run: () => onPick(null) });
-  for (const c of options) rows.push({ key: String(c.id), label: c.name, hint: KIND_LABEL[c.kind], run: () => onPick(c) });
-  if (canCreate) rows.push({ key: "new", label: `Create ${KIND_LABEL[kind!].toLowerCase()} “${query.trim()}”`, hint: "new", run: () => void create() });
+  const rows: Array<{ key: string; label: string; hint: string; icon: ReactNode; run: () => void }> = [];
+  if (allowInbox && !q)
+    rows.push({ key: "inbox", label: "Inbox", hint: "Unfiled", icon: <InboxIcon className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />, run: () => onPick(null) });
+  for (const c of options)
+    rows.push({ key: String(c.id), label: c.name, hint: KIND_LABEL[c.kind], icon: <KindIcon kind={c.kind} />, run: () => onPick(c) });
+  if (canCreate)
+    rows.push({
+      key: "new",
+      label: `Create ${KIND_LABEL[kind!].toLowerCase()} “${query.trim()}”`,
+      hint: "New",
+      icon: <Plus className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />,
+      run: () => void create(),
+    });
 
   async function create() {
     if (!kind || busy) return;
@@ -64,8 +73,9 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center pt-[18vh]" onClick={onClose}>
-      <div className="w-[520px] max-w-[92vw] bg-surface-2 border border-line-strong rounded-lg shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 h-8 flex items-center font-mono text-[10px] tracking-wider uppercase text-fg-faint border-b border-line">
+      <div className="frost w-[560px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 h-10 flex items-center gap-2 text-[13px] text-fg-muted border-b border-line">
+          {kind ? <KindIcon kind={kind} /> : <InboxIcon className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />}
           {title ?? (kind ? `File to ${KIND_LABEL[kind].toLowerCase()}` : "Move to")}
         </div>
         <input
@@ -90,19 +100,24 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
             }
           }}
           placeholder={kind ? "Type to filter or create" : "Type to filter"}
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none"
+          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px]"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
-          {rows.length === 0 && <li className="px-4 py-2 text-fg-faint">Nothing here yet</li>}
+          {rows.length === 0 && (
+            <li className="px-4 py-2 text-fg-faint text-[13px]">
+              {kind ? "Nothing here yet. Type a name to create one." : "Nothing here yet."}
+            </li>
+          )}
           {rows.map((r, i) => (
             <li
               key={r.key}
               onMouseEnter={() => setIndex(i)}
               onClick={r.run}
-              className={`px-4 h-9 flex items-center justify-between cursor-pointer ${i === index ? "bg-surface-3 text-fg" : "text-fg-muted"}`}
+              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-surface-3 text-fg" : "text-fg-muted"}`}
             >
-              <span className="truncate">{r.label}</span>
-              <span className="font-mono text-[10px] text-fg-faint">{r.hint}</span>
+              {r.icon}
+              <span className="flex-1 truncate">{r.label}</span>
+              <span className="text-[11.5px] text-fg-faint">{r.hint}</span>
             </li>
           ))}
         </ul>

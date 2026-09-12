@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { ItemDTO } from "@/lib/dto";
 import { relativeTime } from "@/lib/format";
-import { StatusBadge, TypeBadge } from "./badges";
+import { SectionHeading, List, Row } from "./ui";
+import { TypeIcon, StatusDot } from "./type-icon";
 
 export function RecentCaptures({ refreshKey }: { refreshKey: number }) {
   const [items, setItems] = useState<ItemDTO[]>([]);
@@ -36,19 +37,19 @@ export function RecentCaptures({ refreshKey }: { refreshKey: number }) {
 
   return (
     <section>
-      <h2 className="font-mono text-[10px] tracking-wider uppercase text-fg-faint mb-2">Recent</h2>
-      <ul className="border border-line rounded-lg divide-y divide-line bg-surface-1">
+      <SectionHeading>Recent</SectionHeading>
+      <List>
         {items.map((item) => (
-          <li key={item.id} className="flex items-center gap-3 px-3 h-9 hover:bg-surface-2 transition-colors duration-150">
-            <TypeBadge type={item.type} />
-            <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13px] hover:text-accent">
+          <Row key={item.id}>
+            <TypeIcon type={item.type} />
+            <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
               {item.title}
             </Link>
-            <StatusBadge status={item.status} error={item.error} />
-            <span className="font-mono text-[10px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
-          </li>
+            <StatusDot status={item.status} error={item.error} />
+            <span className="font-mono text-[11px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
+          </Row>
         ))}
-      </ul>
+      </List>
     </section>
   );
 }

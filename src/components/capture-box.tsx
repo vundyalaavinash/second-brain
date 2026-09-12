@@ -2,9 +2,12 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
+import { Paperclip, CornerDownLeft, Inbox as InboxIcon, FileText, Link2, File as FileIcon, X } from "lucide-react";
 import { isProbablyUrl } from "@/lib/text";
 import type { ContainerDTO, ContainerRefDTO, ItemDTO } from "@/lib/dto";
 import { ContainerPicker } from "./container-picker";
+import { Button, Chip, Kbd } from "./ui";
+import { KindIcon } from "./type-icon";
 
 interface Props {
   onCaptured: (item: ItemDTO) => void;
@@ -104,10 +107,22 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       className={`rounded-lg border bg-surface-1 transition-colors duration-150 ${dragging ? "border-accent" : "border-line"}`}
     >
       <div className="flex items-center justify-between px-4 h-9 border-b border-line">
-        <span className="font-mono text-[10px] tracking-wider text-fg-muted uppercase">
-          {mode === "file" ? `${files.length} file${files.length > 1 ? "s" : ""}` : mode}
+        <span className="flex items-center gap-1.5">
+          {mode === "file" ? (
+            <FileIcon className="w-3.5 h-3.5 text-fg-muted" />
+          ) : mode === "link" ? (
+            <Link2 className="w-3.5 h-3.5 text-fg-muted" />
+          ) : (
+            <FileText className="w-3.5 h-3.5 text-fg-muted" />
+          )}
+          <span className="text-[12px] text-fg-muted">
+            {mode === "file" ? `${files.length} file${files.length > 1 ? "s" : ""}` : mode === "link" ? "Link" : "Note"}
+          </span>
         </span>
-        <span className="font-mono text-[10px] text-fg-faint">⌘↵ to capture</span>
+        <span className="text-[12px] text-fg-faint flex items-center gap-1.5">
+          <Kbd>⌘</Kbd>
+          <Kbd>↵</Kbd> to capture
+        </span>
       </div>
       <textarea
         ref={textareaRef}
@@ -133,35 +148,43 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         }}
         placeholder="Type a thought, paste a link, or drop a file"
         rows={6}
-        className="w-full resize-y bg-transparent px-4 py-3 outline-none leading-relaxed"
+        className="w-full resize-y bg-transparent px-4 py-3 outline-none leading-relaxed text-[14.5px]"
       />
       {files.length > 0 && (
         <ul className="px-4 pb-2 flex flex-wrap gap-2">
           {files.map((f, i) => (
-            <li key={`${f.name}-${i}`} className="font-mono text-[11px] bg-surface-3 border border-line rounded-sm px-2 py-1 flex items-center gap-2">
+            <li key={`${f.name}-${i}`} className="rounded-full border border-line bg-surface-2 px-2.5 h-7 text-[12px] flex items-center gap-2">
               {f.name}
               <button
                 type="button"
+                aria-label="Remove file"
                 onClick={() => {
                   setFiles((all) => all.filter((_, j) => j !== i));
                   setDuplicate(null);
                 }}
                 className="text-fg-faint hover:text-danger"
               >
-                ×
+                <X className="w-3 h-3" />
               </button>
             </li>
           ))}
         </ul>
       )}
       <div className="flex items-center gap-3 px-4 h-11 border-t border-line">
-        <button type="button" onClick={() => setPicker(true)} className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line hover:border-accent hover:text-accent shrink-0">
-          {target ? `${target.kind} · ${target.name}` : "inbox"}
-        </button>
+        <Chip icon={target ? undefined : InboxIcon} onClick={() => setPicker(true)}>
+          {target ? (
+            <>
+              <KindIcon kind={target.kind} className="w-3.5 h-3.5" />
+              {target.name}
+            </>
+          ) : (
+            "Inbox"
+          )}
+        </Chip>
         <input
           value={tags}
           onChange={(e) => setTags(e.target.value)}
-          placeholder="tags, comma separated"
+          placeholder="Add tags, separated by commas"
           className="flex-1 bg-transparent outline-none text-[13px]"
         />
         <input
@@ -174,25 +197,16 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
             setDuplicate(null);
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="text-[12px] text-fg-muted hover:text-fg transition-colors duration-150"
-        >
+        <Button variant="ghost" size="sm" icon={Paperclip} onClick={() => fileInputRef.current?.click()}>
           Attach
-        </button>
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={() => void submit()}
-          className="h-7 px-3 rounded-md text-[12px] font-medium bg-accent text-bg disabled:opacity-40 transition-opacity duration-150"
-        >
+        </Button>
+        <Button variant="primary" size="sm" icon={CornerDownLeft} disabled={!canSubmit} onClick={() => void submit()}>
           {busy ? "Capturing" : "Capture"}
-        </button>
+        </Button>
       </div>
-      {error && <div className="px-4 py-2 text-[12px] text-danger border-t border-line">{error}</div>}
+      {error && <div className="px-4 py-2.5 text-[12.5px] text-danger border-t border-line">{error}</div>}
       {duplicate && (
-        <div className="px-4 py-2 text-[12px] border-t border-line flex items-center gap-3">
+        <div className="px-4 py-2.5 border-t border-line flex items-center gap-3 text-[12.5px]">
           <span className="text-warn">Already saved.</span>
           <Link href={`/items/${duplicate.existingId}`} className="text-accent hover:underline">Open it</Link>
           <button type="button" onClick={() => void submit(true)} className="text-fg-muted hover:text-fg">Save anyway</button>

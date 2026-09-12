@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ItemDTO } from "@/lib/dto";
 import type { ContainerKind } from "@/db/enums";
-import { StatusBadge, TypeBadge } from "./badges";
+import { Inbox as InboxIcon, Archive, Trash2, Flag, Layers, BookMarked, List as ListIcon, Focus, ExternalLink } from "lucide-react";
+import { Button, Kbd, PageHeader, EmptyState, List, Row } from "./ui";
+import { TypeIcon, StatusDot } from "./type-icon";
 import { relativeTime } from "@/lib/format";
 import { ContainerPicker } from "./container-picker";
 
@@ -185,63 +187,83 @@ export function InboxProcessor() {
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-medium tracking-tight">Inbox</h1>
-        <span className="font-mono text-[10px] text-fg-faint">
-          {loaded ? (items.length ? `${index + 1} of ${total}` : "inbox zero") : "loading"} · <button onClick={() => setMode((m) => (m === "focus" ? "list" : "focus"))} className="hover:text-fg">{mode === "focus" ? "list (l)" : "focus (l)"}</button>
-        </span>
-      </header>
+      <PageHeader
+        title="Inbox"
+        meta={loaded ? (items.length ? `${index + 1} of ${total} to process` : "Everything is filed.") : "Loading"}
+        actions={
+          <Button variant="ghost" size="sm" icon={mode === "focus" ? ListIcon : Focus} onClick={() => setMode((m) => (m === "focus" ? "list" : "focus"))}>
+            {mode === "focus" ? "List" : "Focus"}
+            <Kbd>l</Kbd>
+          </Button>
+        }
+      />
 
       {error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{error}</div>}
 
       {loaded && items.length === 0 && (
-        <div className="rounded-lg border border-line bg-surface-1 p-8 text-center">
-          <div className="text-fg">Nothing waiting.</div>
-          <Link href="/capture" className="mt-2 inline-block text-[12px] text-accent hover:underline">
-            Capture something
-          </Link>
-        </div>
+        <EmptyState
+          icon={InboxIcon}
+          text="Nothing waiting. Capture something and it will show up here."
+          action={
+            <Link href="/capture">
+              <Button variant="primary" size="sm">
+                Capture something
+              </Button>
+            </Link>
+          }
+        />
       )}
 
       {mode === "list" && items.length > 0 && (
-        <ul className="border border-line rounded-lg divide-y divide-line bg-surface-1">
+        <List>
           {items.map((item, i) => (
-            <li
+            <Row
               key={item.id}
-              onClick={() => {
-                setIndex(i);
-                setMode("focus");
-              }}
-              className={`flex items-center gap-3 px-3 h-9 cursor-pointer ${i === index ? "bg-surface-3" : "hover:bg-surface-2"}`}
+              className={`cursor-pointer ${i === index ? "bg-surface-3" : ""}`}
             >
-              <TypeBadge type={item.type} />
-              <span className="flex-1 truncate text-[13px]">{item.title}</span>
-              <span className="font-mono text-[10px] text-fg-faint">{relativeTime(item.createdAt)}</span>
-            </li>
+              <button
+                type="button"
+                onClick={() => {
+                  setIndex(i);
+                  setMode("focus");
+                }}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <TypeIcon type={item.type} />
+                <span className="flex-1 truncate text-[13.5px]">{item.title}</span>
+              </button>
+              <span className="font-mono text-[11px] text-fg-faint">{relativeTime(item.createdAt)}</span>
+            </Row>
           ))}
-        </ul>
+        </List>
       )}
 
       {mode === "focus" && current && (
-        <section className="rounded-lg border border-line bg-surface-1">
-          <div className="flex items-center gap-3 px-4 h-10 border-b border-line">
-            <TypeBadge type={current.type} />
+        <section className="rounded-lg border border-line bg-surface-1 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 h-11 border-b border-line">
+            <TypeIcon type={current.type} />
             <Link href={`/items/${current.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-accent">
               {current.title}
             </Link>
-            <StatusBadge status={current.status} error={current.error} />
-            <span className="font-mono text-[10px] text-fg-faint">{relativeTime(current.createdAt)}</span>
+            <StatusDot status={current.status} error={current.error} />
+            <span className="font-mono text-[11px] text-fg-faint">{relativeTime(current.createdAt)}</span>
           </div>
-          <div className="px-4 py-3 text-[13px] leading-relaxed text-fg-muted min-h-24">
+          <div className="px-4 py-4 text-[14px] leading-relaxed text-fg-muted min-h-28">
             {current.sourceUrl && (
-              <a href={current.sourceUrl} target="_blank" rel="noreferrer" className="block font-mono text-[11px] text-accent truncate mb-2">
+              <a
+                href={current.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 font-mono text-[11.5px] text-accent truncate mb-2"
+              >
+                <ExternalLink className="w-3 h-3 shrink-0" />
                 {current.sourceUrl}
               </a>
             )}
             {preview || <span className="text-fg-faint">No text yet.</span>}
           </div>
           {(current.tags.length > 0 || current.people.length > 0) && (
-            <div className="px-4 pb-3 flex flex-wrap gap-2 font-mono text-[10px] text-fg-faint">
+            <div className="px-4 pb-3 flex flex-wrap gap-2 text-[12px] text-fg-faint">
               {current.tags.map((t) => (
                 <span key={t}>#{t}</span>
               ))}
@@ -250,38 +272,44 @@ export function InboxProcessor() {
               ))}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2 px-4 h-12 border-t border-line">
+          <div className="flex flex-wrap items-center gap-2 px-3 h-14 border-t border-line bg-surface-1">
             {(
               [
-                ["p", "Project"],
-                ["a", "Area"],
-                ["r", "Resource"],
-                ["e", "Archive"],
+                ["p", "Project", Flag],
+                ["a", "Area", Layers],
+                ["r", "Resource", BookMarked],
+                ["e", "Archive", Archive],
               ] as const
-            ).map(([key, label]) => (
-              <button
+            ).map(([key, label, LabelIcon]) => (
+              <Button
                 key={key}
+                variant="secondary"
+                size="sm"
+                icon={LabelIcon}
+                disabled={busyState}
                 onClick={() => {
                   if (key === "e") void patch({ archived: true });
                   else openPicker(key === "p" ? "project" : key === "a" ? "area" : "resource");
                 }}
-                disabled={busyState}
-                className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong flex items-center gap-2 disabled:opacity-40"
               >
-                <span className="kbd">{key}</span>
                 {label}
-              </button>
+                <Kbd>{key}</Kbd>
+              </Button>
             ))}
-            <button
-              onClick={() => void remove()}
+            <Button
+              variant={confirmDelete ? "danger" : "secondary"}
+              size="sm"
+              icon={Trash2}
               disabled={busyState}
-              className={`h-7 px-2 rounded-md text-[12px] border flex items-center gap-2 disabled:opacity-40 ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}
+              onClick={() => void remove()}
             >
-              <span className="kbd">x</span>
-              {confirmDelete ? "Confirm delete" : "Delete"}
-            </button>
+              {confirmDelete ? "Delete for good" : "Delete"}
+            </Button>
             <span className="flex-1" />
-            <span className="font-mono text-[10px] text-fg-faint">j / k to move</span>
+            <span className="text-[12px] text-fg-faint flex items-center gap-1.5">
+              <Kbd>j</Kbd>
+              <Kbd>k</Kbd> move
+            </span>
           </div>
         </section>
       )}
