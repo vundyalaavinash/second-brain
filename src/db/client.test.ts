@@ -51,4 +51,18 @@ describe("openDatabase", () => {
     expect(cols("item_people")).toEqual(expect.arrayContaining(["item_id", "person_id"]));
     expect(cols("items")).toEqual(expect.arrayContaining(["container_id", "archived_at"]));
   });
+
+  it("sets items.container_id to NULL when the referenced container is deleted", () => {
+    t = makeTestDb();
+    const now = new Date().toISOString();
+    t.db.$client
+      .prepare("INSERT INTO containers (id, kind, name, slug, created_at, updated_at) VALUES (1, 'project', 'P', 'p', ?, ?)")
+      .run(now, now);
+    t.db.$client
+      .prepare("INSERT INTO items (id, type, title, container_id, created_at, updated_at) VALUES (1, 'note', 'T', 1, ?, ?)")
+      .run(now, now);
+    t.db.$client.prepare("DELETE FROM containers WHERE id = 1").run();
+    const row = t.db.$client.prepare("SELECT container_id FROM items WHERE id = 1").get() as { container_id: number | null };
+    expect(row.container_id).toBeNull();
+  });
 });

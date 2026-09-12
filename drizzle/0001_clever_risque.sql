@@ -36,7 +36,7 @@ CREATE TABLE `people` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `people_slug_unique` ON `people` (`slug`);--> statement-breakpoint
-ALTER TABLE `items` ADD `container_id` integer REFERENCES containers(id);--> statement-breakpoint
+ALTER TABLE `items` ADD `container_id` integer REFERENCES containers(id) ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE `items` ADD `archived_at` text;--> statement-breakpoint
 CREATE INDEX `items_container_idx` ON `items` (`container_id`);--> statement-breakpoint
 CREATE INDEX `items_archived_idx` ON `items` (`archived_at`);
