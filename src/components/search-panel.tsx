@@ -130,35 +130,45 @@ export function SearchPanel() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={type} onChange={(e) => setType(e.target.value)} className="h-8 text-[12.5px]">
-          <option value="">Any type</option>
-          {ITEM_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABEL[t]}
-            </option>
-          ))}
-        </Select>
-        <Select value={tag} onChange={(e) => setTag(e.target.value)} className="h-8 text-[12.5px]">
-          <option value="">Any tag</option>
-          {tags.map((t) => (
-            <option key={t} value={t}>
-              #{t}
-            </option>
-          ))}
-        </Select>
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-8 text-[12.5px]" />
+        <div className="w-40">
+          <Select value={type} onChange={(e) => setType(e.target.value)} className="w-full h-8 text-[12.5px]">
+            <option value="">Any type</option>
+            {ITEM_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TYPE_LABEL[t]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-40">
+          <Select value={tag} onChange={(e) => setTag(e.target.value)} className="w-full h-8 text-[12.5px]">
+            <option value="">Any tag</option>
+            {tags.map((t) => (
+              <option key={t} value={t}>
+                #{t}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="w-36">
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full h-8 text-[12.5px]" />
+        </div>
         <span className="text-[12px] text-fg-faint">to</span>
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-8 text-[12.5px]" />
-        <Select value={container} onChange={(e) => setContainer(e.target.value)} className="h-8 text-[12.5px]">
-          <option value="">Any home</option>
-          <option value="inbox">Inbox</option>
-          {containers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({KIND_LABEL[c.kind]})
-            </option>
-          ))}
-        </Select>
-        <Chip icon={Archive} active={archived} onClick={() => setArchived((a) => !a)}>
+        <div className="w-36">
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full h-8 text-[12.5px]" />
+        </div>
+        <div className="w-56">
+          <Select value={container} onChange={(e) => setContainer(e.target.value)} className="w-full h-8 text-[12.5px]">
+            <option value="">Any home</option>
+            <option value="inbox">Inbox</option>
+            {containers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({KIND_LABEL[c.kind]})
+              </option>
+            ))}
+          </Select>
+        </div>
+        <Chip icon={Archive} active={archived} aria-pressed={archived} onClick={() => setArchived((a) => !a)}>
           Include archived
         </Chip>
       </div>
