@@ -5,6 +5,7 @@ import { ITEM_TYPES } from "@/db/schema";
 import { search } from "@/domain/search";
 import { getEmbedProvider } from "@/server/providers";
 import { errorResponse, parseContainerParam, serializeItem } from "@/lib/api";
+import { DateString } from "@/lib/validation";
 import type { SearchResultDTO } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,8 @@ const Query = z.object({
   q: z.string().default(""),
   type: z.enum(ITEM_TYPES).optional(),
   tag: z.string().optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: DateString.optional(),
+  to: DateString.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   container: z.string().optional(),
   archived: z.string().optional(),

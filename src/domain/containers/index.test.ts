@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { createItem, getItem } from "@/domain/items";
+import { createItem, getItem, updateItem } from "@/domain/items";
 import {
   slugify,
   createContainer,
@@ -84,12 +84,36 @@ describe("containers domain", () => {
     expect(restored.status).toBe("active");
     expect(getItem(t.db, i2.id)?.archivedAt).toBeNull();
 
+    // Both items are still filed in p (untouched by the archive/restore above); moving them out
+    // should re-home both, not just the one the old assertion happened to check.
+    expect(getItem(t.db, i1.id)?.containerId).toBe(p.id);
+    expect(getItem(t.db, i2.id)?.containerId).toBe(p.id);
     archiveContainer(t.db, p.id, { moveItemsTo: a.id });
     expect(getItem(t.db, i1.id)?.containerId).toBe(a.id);
+    expect(getItem(t.db, i2.id)?.containerId).toBe(a.id);
     expect(getItem(t.db, i1.id)?.archivedAt).toBeNull();
     restoreContainer(t.db, p.id);
     archiveContainer(t.db, p.id, { moveItemsTo: null });
     expect(getItem(t.db, i1.id)?.containerId).toBe(a.id);
+  });
+
+  it("rejects moving a container's items into itself", () => {
+    const p = createContainer(t.db, { kind: "project", name: "Self" });
+    expect(() => archiveContainer(t.db, p.id, { moveItemsTo: p.id })).toThrow(ContainerError);
+    expect(() => archiveContainer(t.db, p.id, { moveItemsTo: p.id })).toThrow(/itself/);
+  });
+
+  it("restores only items archived alongside the container, not ones archived individually", () => {
+    const p = createContainer(t.db, { kind: "project", name: "Solo" });
+    const a = createItem(t.db, { type: "note", title: "individually archived", containerId: p.id });
+    const b = createItem(t.db, { type: "note", title: "archived with container", containerId: p.id });
+    updateItem(t.db, a.id, { archivedAt: "2026-01-01T00:00:00.000Z" });
+
+    archiveContainer(t.db, p.id);
+    restoreContainer(t.db, p.id);
+
+    expect(getItem(t.db, b.id)?.archivedAt).toBeNull();
+    expect(getItem(t.db, a.id)?.archivedAt).toBe("2026-01-01T00:00:00.000Z");
   });
 
   it("deletes only empty containers", () => {

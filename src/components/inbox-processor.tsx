@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ItemDTO } from "@/lib/dto";
 import type { ContainerKind } from "@/db/enums";
@@ -24,12 +24,15 @@ export function InboxProcessor() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const busy = useRef(false);
+  const [busyState, setBusyState] = useState(false);
+  const refetchedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/inbox", { cache: "no-store" });
+        const res = await fetch("/api/inbox?limit=500", { cache: "no-store" });
         if (!res.ok) throw new Error(res.statusText);
         const data = (await res.json()) as { count: number; items: ItemDTO[] };
         if (cancelled) return;
@@ -48,6 +51,31 @@ export function InboxProcessor() {
     };
   }, []);
 
+  // Inbox count and the loaded page can disagree (e.g. a fetch raced a change); refetch once rather
+  // than claim "inbox zero" while the server still reports items outstanding.
+  useEffect(() => {
+    if (!loaded || items.length !== 0 || total <= 0 || refetchedRef.current) return;
+    refetchedRef.current = true;
+    let cancelled = false;
+    async function reload() {
+      try {
+        const res = await fetch("/api/inbox?limit=500", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { count: number; items: ItemDTO[] };
+        if (cancelled) return;
+        setItems(data.items);
+        setTotal(data.count);
+        setIndex((i) => Math.min(i, Math.max(0, data.items.length - 1)));
+      } catch {
+        /* leave state as-is; the initial load already surfaced any error */
+      }
+    }
+    void reload();
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, items.length, total]);
+
   const current = items[index];
 
   function openPicker(kind: ContainerKind) {
@@ -63,38 +91,53 @@ export function InboxProcessor() {
   }
 
   async function patch(body: Record<string, unknown>) {
-    if (!current) return;
+    if (!current || busy.current) return;
+    busy.current = true;
+    setBusyState(true);
     setError(null);
-    const res = await fetch(`/api/items/${current.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
-      return;
+    try {
+      const res = await fetch(`/api/items/${current.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
+        return;
+      }
+      removeCurrent();
+      window.dispatchEvent(new Event("sb:inbox-changed"));
+    } finally {
+      busy.current = false;
+      setBusyState(false);
     }
-    removeCurrent();
-    window.dispatchEvent(new Event("sb:inbox-changed"));
   }
 
   async function remove() {
-    if (!current) return;
+    if (!current || busy.current) return;
     if (!confirmDelete) {
       setConfirmDelete(true);
       return;
     }
-    const res = await fetch(`/api/items/${current.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError("Delete failed");
-      return;
+    busy.current = true;
+    setBusyState(true);
+    try {
+      const res = await fetch(`/api/items/${current.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setError("Delete failed");
+        return;
+      }
+      removeCurrent();
+      window.dispatchEvent(new Event("sb:inbox-changed"));
+    } finally {
+      busy.current = false;
+      setBusyState(false);
     }
-    removeCurrent();
-    window.dispatchEvent(new Event("sb:inbox-changed"));
   }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.repeat) return;
       if (picker || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       switch (e.key) {
         case "p":
@@ -210,20 +253,29 @@ export function InboxProcessor() {
           <div className="flex flex-wrap items-center gap-2 px-4 h-12 border-t border-line">
             {(
               [
-                ["p", "Project", () => openPicker("project")],
-                ["a", "Area", () => openPicker("area")],
-                ["r", "Resource", () => openPicker("resource")],
-                ["e", "Archive", () => void patch({ archived: true })],
+                ["p", "Project"],
+                ["a", "Area"],
+                ["r", "Resource"],
+                ["e", "Archive"],
               ] as const
-            ).map(([key, label, run]) => (
-              <button key={key} onClick={run} className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong flex items-center gap-2">
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => {
+                  if (key === "e") void patch({ archived: true });
+                  else openPicker(key === "p" ? "project" : key === "a" ? "area" : "resource");
+                }}
+                disabled={busyState}
+                className="h-7 px-2 rounded-md text-[12px] border border-line hover:border-line-strong flex items-center gap-2 disabled:opacity-40"
+              >
                 <span className="kbd">{key}</span>
                 {label}
               </button>
             ))}
             <button
               onClick={() => void remove()}
-              className={`h-7 px-2 rounded-md text-[12px] border flex items-center gap-2 ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}
+              disabled={busyState}
+              className={`h-7 px-2 rounded-md text-[12px] border flex items-center gap-2 disabled:opacity-40 ${confirmDelete ? "border-danger text-danger" : "border-line hover:border-line-strong"}`}
             >
               <span className="kbd">x</span>
               {confirmDelete ? "Confirm delete" : "Delete"}

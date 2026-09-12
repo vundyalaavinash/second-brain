@@ -7,6 +7,7 @@ import { createEmbedHandler } from "./embed";
 import { createFetchLinkHandler } from "./fetch-link";
 import { createExtractPdfHandler } from "./extract-pdf";
 import { createOcrImageHandler } from "./ocr-image";
+import { createBackupHandler } from "./backup";
 
 export interface HandlerDeps {
   db: DB;
@@ -22,5 +23,6 @@ export function createJobHandlers(deps: HandlerDeps): JobHandlers {
     fetch_link: createFetchLinkHandler({ db: deps.db, fetchImpl: deps.fetchImpl }),
     extract_pdf: createExtractPdfHandler({ db: deps.db, extract: deps.extractPdf }),
     ocr_image: createOcrImageHandler({ db: deps.db, ocr: deps.ocr }),
+    backup: createBackupHandler({ db: deps.db }),
   };
 }

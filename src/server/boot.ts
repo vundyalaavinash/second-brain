@@ -1,10 +1,20 @@
+import fs from "node:fs";
+import type { DB } from "@/db/client";
 import { getDb } from "@/db/client";
 import { JobWorker } from "@/jobs/worker";
 import { createJobHandlers } from "@/jobs/handlers";
-import { resetRunningJobs } from "@/jobs/queue";
+import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
+import { backupFilePath } from "@/jobs/handlers/backup";
 import { getEmbedProvider } from "./providers";
 
-const g = globalThis as unknown as { __sbWorker?: JobWorker };
+const g = globalThis as unknown as { __sbWorker?: JobWorker; __sbBackupInterval?: NodeJS.Timeout };
+
+/** Every 6 hours we check whether today's backup exists yet; cheap enough to just poll. */
+const BACKUP_CHECK_MS = 6 * 60 * 60 * 1000;
+
+function ensureTodayBackupQueued(db: DB): void {
+  if (!fs.existsSync(backupFilePath())) enqueueJob(db, "backup", {});
+}
 
 export function boot(): JobWorker {
   if (g.__sbWorker) return g.__sbWorker;
@@ -22,6 +32,10 @@ export function boot(): JobWorker {
       .catch((err) => console.warn(`[boot] embedding model unavailable: ${err instanceof Error ? err.message : String(err)}`));
   }
   g.__sbWorker = worker;
+  ensureTodayBackupQueued(db);
+  if (!g.__sbBackupInterval) {
+    g.__sbBackupInterval = setInterval(() => ensureTodayBackupQueued(db), BACKUP_CHECK_MS);
+  }
   console.log("[boot] job worker started");
   return worker;
 }

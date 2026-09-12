@@ -138,14 +138,18 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
 
   async function patchMeta(body: Record<string, unknown>) {
     setActionError(null);
-    await enqueue(async () => {
-      const res = await fetch(`/api/items/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) {
-        setActionError(await readError(res));
-        return;
-      }
-      setItem((await res.json()) as ItemDTO);
-    });
+    try {
+      await enqueue(async () => {
+        const res = await fetch(`/api/items/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        if (!res.ok) {
+          setActionError(await readError(res));
+          return;
+        }
+        setItem((await res.json()) as ItemDTO);
+      });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function retry() {

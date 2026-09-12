@@ -44,7 +44,7 @@ export function Dock() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                aria-label={item.label}
+                aria-label={count > 0 ? `${item.label}, ${count} waiting` : item.label}
                 className={`group relative flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-150 hover:-translate-y-0.5 ${
                   active ? "text-accent bg-accent-dim" : "text-fg-muted hover:text-fg hover:bg-surface-3"
                 }`}

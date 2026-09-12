@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, isNotNull, sql, count } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { containers, items, type Container, type ContainerKind, type ContainerStatus, type ResourceCategory } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -144,6 +144,7 @@ export function countContainerItems(db: DB, id: number, includeArchived = false)
  */
 export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: number | null } = {}): Container {
   requireContainer(db, id);
+  if (opts.moveItemsTo === id) throw new ContainerError("A container cannot be moved into itself");
   if (typeof opts.moveItemsTo === "number") requireContainer(db, opts.moveItemsTo);
   const now = nowIso();
   return db.transaction((tx) => {
@@ -169,15 +170,21 @@ export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: numbe
   });
 }
 
-/** Restore a container and every archived item still filed in it. */
+/**
+ * Restore a container and the items that were archived along with it — not items a user
+ * archived individually while the container was still active. `archiveContainer` stamps the
+ * container and its items with the same timestamp, so only items sharing that timestamp qualify.
+ */
 export function restoreContainer(db: DB, id: number): Container {
-  requireContainer(db, id);
+  const container = requireContainer(db, id);
   const now = nowIso();
   return db.transaction((tx) => {
-    tx.update(items)
-      .set({ archivedAt: null, updatedAt: now })
-      .where(and(eq(items.containerId, id), isNotNull(items.archivedAt)))
-      .run();
+    if (container.archivedAt) {
+      tx.update(items)
+        .set({ archivedAt: null, updatedAt: now })
+        .where(and(eq(items.containerId, id), eq(items.archivedAt, container.archivedAt)))
+        .run();
+    }
     const row = tx
       .update(containers)
       .set({ status: "active", archivedAt: null, updatedAt: now })

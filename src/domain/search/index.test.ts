@@ -119,5 +119,9 @@ describe("search", () => {
     expect(inbox.map((r) => r.item.id)).not.toContain(tomato.id);
     const all = await search(t.db, embed, "tomato garden", { includeArchived: true });
     expect(all.map((r) => r.item.id)).toContain(tomato.id);
+    // tomato is homed in the inbox (container_id null) and archived; the inbox filter combined
+    // with includeArchived should still surface it.
+    const inboxArchived = await search(t.db, embed, "tomato", { containerId: null, includeArchived: true });
+    expect(inboxArchived.map((r) => r.item.id)).toContain(tomato.id);
   });
 });

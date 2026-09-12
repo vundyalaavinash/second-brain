@@ -44,15 +44,8 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       setError(null);
       try {
         const created: ItemDTO[] = [];
-        for (const file of files) {
-          const form = new FormData();
-          form.append("file", file);
-          form.append("tags", tagList.join(","));
-          if (target) form.append("containerId", String(target.id));
-          const res = await fetch("/api/upload", { method: "POST", body: form });
-          if (!res.ok) throw new Error(await readError(res));
-          created.push((await res.json()) as ItemDTO);
-        }
+        // Text/link goes first: a 409 duplicate must not have already uploaded (and thus
+        // re-uploaded on "Save anyway") any attached files.
         if (text.trim()) {
           const body = isProbablyUrl(text)
             ? { type: "link", url: text.trim(), tags: tagList, containerId: target?.id ?? null, force }
@@ -70,11 +63,21 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           if (!res.ok) throw new Error(await readError(res));
           created.push((await res.json()) as ItemDTO);
         }
+        for (const file of files) {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("tags", tagList.join(","));
+          if (target) form.append("containerId", String(target.id));
+          const res = await fetch("/api/upload", { method: "POST", body: form });
+          if (!res.ok) throw new Error(await readError(res));
+          created.push((await res.json()) as ItemDTO);
+        }
         setText("");
         setFiles([]);
         setTags("");
         setDuplicate(null);
         created.forEach(onCaptured);
+        window.dispatchEvent(new Event("sb:inbox-changed"));
         textareaRef.current?.focus();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));

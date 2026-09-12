@@ -140,6 +140,9 @@ describe("people api", () => {
     expect(cleared.people).toEqual([]);
     const list = (await (await r.people.GET()).json()) as PersonDTO[];
     expect(list.map((p) => p.slug)).toContain("ada-lovelace");
+    expect((await r.person.GET(json("GET", "/api/people/99999"), params(99999))).status).toBe(404);
+    expect((await r.person.PATCH(json("PATCH", `/api/people/${ada.id}`, { name: "" }), params(ada.id))).status).toBe(400);
+    expect((await r.person.DELETE(json("DELETE", "/api/people/99999"), params(99999))).status).toBe(404);
     expect((await r.person.DELETE(json("DELETE", `/api/people/${ada.id}`), params(ada.id))).status).toBe(204);
   });
 });
