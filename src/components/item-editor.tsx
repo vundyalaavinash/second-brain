@@ -212,16 +212,16 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
         {item.status === "failed" && <IconButton label="Retry" icon={RefreshCw} onClick={() => void retry()} />}
         <IconButton label={preview ? "Edit" : "Preview"} icon={preview ? Pencil : Eye} active={preview} onClick={() => setPreview((p) => !p)} />
         <IconButton
+          label={item.archivedAt ? "Restore" : "Archive"}
+          icon={item.archivedAt ? RotateCcw : Archive}
+          onClick={() => void patchMeta({ archived: !item.archivedAt })}
+        />
+        <IconButton
           label={confirmDelete ? "Confirm delete" : "Delete"}
           icon={Trash2}
           danger={confirmDelete}
           onClick={() => void remove()}
           onBlur={() => setConfirmDelete(false)}
-        />
-        <IconButton
-          label={item.archivedAt ? "Restore" : "Archive"}
-          icon={item.archivedAt ? RotateCcw : Archive}
-          onClick={() => void patchMeta({ archived: !item.archivedAt })}
         />
       </header>
 
@@ -278,9 +278,9 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
 
       <div className="flex flex-wrap items-center gap-2">
         {item.people.map((p) => (
-          <Link key={p.id} href={`/people/${p.slug}`}>
-            <Chip icon={AtSign}>{p.slug}</Chip>
-          </Link>
+          <Chip key={p.id} href={`/people/${p.slug}`} icon={AtSign} className="font-mono">
+            {p.slug}
+          </Chip>
         ))}
         <Button variant="ghost" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
           Add person

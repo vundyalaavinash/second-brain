@@ -64,7 +64,7 @@ export function PersonEditor({ initial }: { initial: PersonDTO }) {
           <ArrowLeft className="w-3.5 h-3.5" />
           People
         </Link>
-        <Chip className="font-mono">@{initial.slug}</Chip>
+        <Chip as="span" className="font-mono">@{initial.slug}</Chip>
         <span className={`text-[12px] ${error ? "text-danger" : "text-fg-faint"}`}>{saving ? "Saving" : dirty ? "Unsaved, ⌘S to save" : ""}</span>
         <span className="flex-1" />
         <IconButton label={preview ? "Edit" : "Preview"} icon={preview ? Pencil : Eye} active={preview} onClick={() => setPreview((p) => !p)} />

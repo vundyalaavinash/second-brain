@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
@@ -17,12 +18,24 @@ export function Button({
   variant = "secondary",
   size = "md",
   icon: Icon,
+  href,
   className = "",
   children,
+  "aria-label": ariaLabel,
+  title,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon; href?: string }) {
+  const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`;
+  if (href) {
+    return (
+      <Link href={href} className={cls} aria-label={ariaLabel} title={title}>
+        {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
+        {children}
+      </Link>
+    );
+  }
   return (
-    <button type="button" className={`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`} {...props}>
+    <button type="button" className={cls} aria-label={ariaLabel} title={title} {...props}>
       {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
       {children}
     </button>
@@ -69,18 +82,35 @@ export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSe
 export function Chip({
   icon: Icon,
   active = false,
+  href,
+  as,
   className = "",
   children,
+  "aria-label": ariaLabel,
+  title,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: LucideIcon; active?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: LucideIcon; active?: boolean; href?: string; as?: "span" }) {
+  const cls = `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
+    active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
+  } ${className}`;
+  if (href) {
+    return (
+      <Link href={href} className={cls} aria-label={ariaLabel} title={title}>
+        {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
+        {children}
+      </Link>
+    );
+  }
+  if (as === "span") {
+    return (
+      <span className={cls} aria-label={ariaLabel} title={title}>
+        {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
+        {children}
+      </span>
+    );
+  }
   return (
-    <button
-      type="button"
-      className={`focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
-        active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
-      } ${className}`}
-      {...props}
-    >
+    <button type="button" className={cls} aria-label={ariaLabel} title={title} {...props}>
       {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
       {children}
     </button>

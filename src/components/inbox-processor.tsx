@@ -205,11 +205,9 @@ export function InboxProcessor() {
           icon={InboxIcon}
           text="Nothing waiting. Capture something and it will show up here."
           action={
-            <Link href="/capture">
-              <Button variant="primary" size="sm">
-                Capture something
-              </Button>
-            </Link>
+            <Button href="/capture" variant="primary" size="sm">
+              Capture something
+            </Button>
           }
         />
       )}

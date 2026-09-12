@@ -26,43 +26,45 @@
   --shadow-float: 0 24px 64px -24px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 
-:root {
-  color-scheme: dark;
-}
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
 
-body {
-  background: var(--color-bg);
-  color: var(--color-fg);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  font-size: 14px;
-  line-height: 1.55;
-}
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+    line-height: 1.55;
+  }
 
-* {
-  border-color: var(--color-line);
-}
+  * {
+    border-color: var(--color-line);
+  }
 
-::selection {
-  background: var(--color-accent-dim);
-}
+  ::selection {
+    background: var(--color-accent-dim);
+  }
 
-input,
-textarea,
-select,
-button {
-  font: inherit;
-  color: inherit;
-}
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
 
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-fg-faint);
-}
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-fg-faint);
+  }
 
-:focus-visible {
-  outline: 2px solid rgba(76, 201, 255, 0.55);
-  outline-offset: 2px;
+  :focus-visible {
+    outline: 2px solid rgba(76, 201, 255, 0.55);
+    outline-offset: 2px;
+  }
 }
 
 /* Frosted floating chrome: dock, palette, pickers. */

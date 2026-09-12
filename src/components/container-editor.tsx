@@ -104,11 +104,9 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
         {c.status === "archived" && <span className="text-[11.5px] text-warn">Archived</span>}
         <span className={`text-[12px] ${error ? "text-danger" : "text-fg-faint"}`}>{saveText}</span>
         <span className="flex-1" />
-        <Link href={`/capture?to=${c.slug}`}>
-          <Button variant="secondary" size="sm" icon={Plus}>
-            Capture here
-          </Button>
-        </Link>
+        <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
+          Capture here
+        </Button>
         {c.status === "active" && c.kind === "project" && (
           <Button variant="primary" icon={Check} onClick={() => setComplete(true)}>
             Complete
@@ -228,11 +226,9 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
             icon={FileText}
             text="Nothing filed here yet."
             action={
-              <Link href={`/capture?to=${c.slug}`}>
-                <Button variant="secondary" size="sm" icon={Plus}>
-                  Capture here
-                </Button>
-              </Link>
+              <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
+                Capture here
+              </Button>
             }
           />
         ) : (
