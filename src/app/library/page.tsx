@@ -2,12 +2,13 @@ import Link from "next/link";
 import { getDb } from "@/db/client";
 import { ITEM_STATUSES, ITEM_TYPES, type ItemStatus, type ItemType } from "@/db/enums";
 import { listItems, listTagNames } from "@/domain/items";
+import { listContainers } from "@/domain/containers";
 import { StatusBadge, TypeBadge } from "@/components/badges";
 import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type SP = { type?: string; status?: string; tag?: string; from?: string; to?: string };
+type SP = { type?: string; status?: string; tag?: string; from?: string; to?: string; container?: string; archived?: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -20,6 +21,13 @@ function isStatus(v: string | undefined): v is ItemStatus {
 function isDate(v: string | undefined): v is string {
   return typeof v === "string" && DATE_RE.test(v);
 }
+/** `container=<id>` → id, `container=inbox` → null, absent/invalid → undefined. Mirrors parseContainerParam in lib/api. */
+function parseContainer(v: string | undefined): number | null | undefined {
+  if (!v) return undefined;
+  if (v === "inbox") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -28,9 +36,12 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const tag = sp.tag || undefined;
   const from = isDate(sp.from) ? sp.from : undefined;
   const to = isDate(sp.to) ? sp.to : undefined;
+  const containerId = parseContainer(sp.container);
+  const archived = sp.archived === "1";
   const db = getDb();
-  const items = listItems(db, { type, status, tag, from, to, limit: 200 });
+  const items = listItems(db, { type, status, tag, from, to, containerId, includeArchived: archived, limit: 200 });
   const tags = listTagNames(db);
+  const containers = listContainers(db, { status: "active" });
 
   const href = (patch: Partial<SP>) => {
     const merged: SP = { ...sp, ...patch };
@@ -82,6 +93,19 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         {type && <input type="hidden" name="type" value={type} />}
         {status && <input type="hidden" name="status" value={status} />}
         {tag && <input type="hidden" name="tag" value={tag} />}
+        <select
+          name="container"
+          defaultValue={sp.container ?? ""}
+          className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
+        >
+          <option value="">any home</option>
+          <option value="inbox">inbox</option>
+          {containers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.kind} · {c.name}
+            </option>
+          ))}
+        </select>
         <input
           type="date"
           name="from"
@@ -95,11 +119,18 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           defaultValue={to ?? ""}
           className="h-6 px-2 rounded-sm font-mono text-[11px] text-fg-muted bg-surface-2 border border-line"
         />
+        <label className="flex items-center gap-1.5 font-mono text-[10px] text-fg-muted">
+          <input type="checkbox" name="archived" value="1" defaultChecked={archived} />
+          include archived
+        </label>
         <button type="submit" className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line text-fg-muted hover:text-fg">
           Apply
         </button>
-        {(from || to) && (
-          <Link href={href({ from: undefined, to: undefined })} className="font-mono text-[10px] text-fg-faint hover:text-fg underline">
+        {(from || to || sp.container || archived) && (
+          <Link
+            href={href({ from: undefined, to: undefined, container: undefined, archived: undefined })}
+            className="font-mono text-[10px] text-fg-faint hover:text-fg underline"
+          >
             clear
           </Link>
         )}

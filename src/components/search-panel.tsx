@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { SearchResultDTO } from "@/lib/dto";
+import type { ContainerDTO, SearchResultDTO } from "@/lib/dto";
 import { ITEM_TYPES } from "@/db/enums";
 import { relativeTime } from "@/lib/format";
 import { StatusBadge, TypeBadge } from "./badges";
@@ -34,7 +34,10 @@ export function SearchPanel() {
   const [tag, setTag] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [container, setContainer] = useState("");
+  const [archived, setArchived] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  const [containers, setContainers] = useState<ContainerDTO[]>([]);
   const [results, setResults] = useState<SearchResultDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +58,21 @@ export function SearchPanel() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/api/containers?status=active")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((c: ContainerDTO[]) => {
+        if (!cancelled) setContainers(c);
+      })
+      .catch(() => {
+        if (!cancelled) setContainers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!q.trim()) {
       return;
     }
@@ -67,6 +85,8 @@ export function SearchPanel() {
         if (tag) p.set("tag", tag);
         if (from) p.set("from", from);
         if (to) p.set("to", to);
+        if (container) p.set("container", container);
+        if (archived) p.set("archived", "1");
         const res = await fetch(`/api/search?${p.toString()}`, { signal: ctrl.signal });
         if (res.ok) setResults((await res.json()) as SearchResultDTO[]);
       } catch {
@@ -79,7 +99,7 @@ export function SearchPanel() {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q, type, tag, from, to]);
+  }, [q, type, tag, from, to, container, archived]);
 
   const select = "h-7 bg-surface-2 border border-line rounded-sm px-2 font-mono text-[11px] text-fg-muted outline-none";
   const visible = q.trim() ? results : [];
@@ -130,6 +150,19 @@ export function SearchPanel() {
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={select} />
         <span className="font-mono text-[10px] text-fg-faint">to</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={select} />
+        <select value={container} onChange={(e) => setContainer(e.target.value)} className={select}>
+          <option value="">any home</option>
+          <option value="inbox">inbox</option>
+          {containers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.kind} · {c.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 font-mono text-[11px] text-fg-muted">
+          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
+          include archived
+        </label>
       </div>
 
       <ul className="flex flex-col gap-2">

@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
 import { isProbablyUrl } from "@/lib/text";
-import type { ItemDTO } from "@/lib/dto";
+import type { ContainerDTO, ContainerRefDTO, ItemDTO } from "@/lib/dto";
+import { ContainerPicker } from "./container-picker";
 
 interface Props {
   onCaptured: (item: ItemDTO) => void;
+  defaultContainer?: ContainerRefDTO | null;
 }
 
 async function readError(res: Response): Promise<string> {
@@ -17,57 +20,70 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-export function CaptureBox({ onCaptured }: Props) {
+export function CaptureBox({ onCaptured, defaultContainer }: Props) {
   const [text, setText] = useState("");
   const [tags, setTags] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [target, setTarget] = useState<ContainerRefDTO | null>(defaultContainer ?? null);
+  const [picker, setPicker] = useState(false);
+  const [duplicate, setDuplicate] = useState<{ existingId: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mode: "note" | "link" | "file" = files.length ? "file" : isProbablyUrl(text) ? "link" : "note";
   const canSubmit = !busy && (text.trim().length > 0 || files.length > 0);
 
-  const submit = useCallback(async () => {
-    if (!canSubmit) return;
-    const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
-    setBusy(true);
-    setError(null);
-    try {
-      const created: ItemDTO[] = [];
-      for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("tags", tagList.join(","));
-        const res = await fetch("/api/upload", { method: "POST", body: form });
-        if (!res.ok) throw new Error(await readError(res));
-        created.push((await res.json()) as ItemDTO);
+  const submit = useCallback(
+    async (force = false) => {
+      if (!canSubmit) return;
+      const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
+      setBusy(true);
+      setError(null);
+      try {
+        const created: ItemDTO[] = [];
+        for (const file of files) {
+          const form = new FormData();
+          form.append("file", file);
+          form.append("tags", tagList.join(","));
+          if (target) form.append("containerId", String(target.id));
+          const res = await fetch("/api/upload", { method: "POST", body: form });
+          if (!res.ok) throw new Error(await readError(res));
+          created.push((await res.json()) as ItemDTO);
+        }
+        if (text.trim()) {
+          const body = isProbablyUrl(text)
+            ? { type: "link", url: text.trim(), tags: tagList, containerId: target?.id ?? null, force }
+            : { type: "note", body: text, tags: tagList, containerId: target?.id ?? null };
+          const res = await fetch("/api/items", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (res.status === 409) {
+            const data = (await res.json()) as { existingId: number };
+            setDuplicate({ existingId: data.existingId });
+            return;
+          }
+          if (!res.ok) throw new Error(await readError(res));
+          created.push((await res.json()) as ItemDTO);
+        }
+        setText("");
+        setFiles([]);
+        setTags("");
+        setDuplicate(null);
+        created.forEach(onCaptured);
+        textareaRef.current?.focus();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
       }
-      if (text.trim()) {
-        const body = isProbablyUrl(text)
-          ? { type: "link", url: text.trim(), tags: tagList }
-          : { type: "note", body: text, tags: tagList };
-        const res = await fetch("/api/items", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error(await readError(res));
-        created.push((await res.json()) as ItemDTO);
-      }
-      setText("");
-      setFiles([]);
-      setTags("");
-      created.forEach(onCaptured);
-      textareaRef.current?.focus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [canSubmit, files, text, tags, onCaptured]);
+    },
+    [canSubmit, files, text, tags, target, onCaptured],
+  );
 
   return (
     <section
@@ -124,6 +140,9 @@ export function CaptureBox({ onCaptured }: Props) {
         </ul>
       )}
       <div className="flex items-center gap-3 px-4 h-11 border-t border-line">
+        <button type="button" onClick={() => setPicker(true)} className="h-6 px-2 rounded-sm font-mono text-[10px] tracking-wider uppercase border border-line hover:border-accent hover:text-accent shrink-0">
+          {target ? `${target.kind} · ${target.name}` : "inbox"}
+        </button>
         <input
           value={tags}
           onChange={(e) => setTags(e.target.value)}
@@ -154,6 +173,24 @@ export function CaptureBox({ onCaptured }: Props) {
         </button>
       </div>
       {error && <div className="px-4 py-2 text-[12px] text-danger border-t border-line">{error}</div>}
+      {duplicate && (
+        <div className="px-4 py-2 text-[12px] border-t border-line flex items-center gap-3">
+          <span className="text-warn">Already saved.</span>
+          <Link href={`/items/${duplicate.existingId}`} className="text-accent hover:underline">Open it</Link>
+          <button type="button" onClick={() => void submit(true)} className="text-fg-muted hover:text-fg">Save anyway</button>
+        </div>
+      )}
+      {picker && (
+        <ContainerPicker
+          allowInbox
+          title="Capture into"
+          onClose={() => setPicker(false)}
+          onPick={(c: ContainerDTO | null) => {
+            setPicker(false);
+            setTarget(c ? { id: c.id, name: c.name, slug: c.slug, kind: c.kind } : null);
+          }}
+        />
+      )}
     </section>
   );
 }
