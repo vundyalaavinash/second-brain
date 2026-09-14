@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Archive } from "lucide-react";
 import { getDb } from "@/db/client";
 import { listContainers } from "@/domain/containers";
 import { listItems } from "@/domain/items";
@@ -6,7 +7,7 @@ import { serializeContainer, serializeItem } from "@/lib/api";
 import { KindIcon, TypeIcon } from "@/components/type-icon";
 import { RestoreButton } from "@/components/restore-button";
 import { formatDate } from "@/lib/format";
-import { List, PageHeader, Row, SectionHeading } from "@/components/ui";
+import { EmptyState, List, PageHeader, Row, SectionHeading } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +21,14 @@ export default function ArchivePage() {
         title="Archive"
         meta={
           <>
-            <span className="font-mono">{containers.length} containers</span> <span className="font-mono">{items.length} items</span>
+            <span className="font-mono">{containers.length}</span> containers and <span className="font-mono">{items.length}</span> items archived.
           </>
         }
       />
       <section className="flex flex-col gap-2">
         <SectionHeading count={containers.length}>Containers</SectionHeading>
         {containers.length === 0 ? (
-          <List>
-            <Row>
-              <span className="text-fg-faint text-[13.5px]">No archived containers.</span>
-            </Row>
-          </List>
+          <EmptyState icon={Archive} text="No archived containers." />
         ) : (
           <List>
             {containers.map((c) => (
@@ -50,11 +47,7 @@ export default function ArchivePage() {
       <section className="flex flex-col gap-2">
         <SectionHeading count={items.length}>Items</SectionHeading>
         {items.length === 0 ? (
-          <List>
-            <Row>
-              <span className="text-fg-faint text-[13.5px]">No archived items.</span>
-            </Row>
-          </List>
+          <EmptyState icon={Archive} text="No archived items." />
         ) : (
           <List>
             {items.map((i) => (

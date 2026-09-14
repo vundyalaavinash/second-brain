@@ -273,7 +273,7 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
           if (save === "dirty") void persist();
         }}
         placeholder="Add tags, separated by commas"
-        className="h-8 text-[12.5px]"
+        size="sm"
       />
 
       <div className="flex flex-wrap items-center gap-2">

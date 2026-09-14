@@ -16,7 +16,7 @@ export default function ProjectsPage() {
         title="Projects"
         meta={
           <>
-            <span>Outcomes with a deadline.</span> <span className="font-mono">{projects.length} active</span>
+            <span>Outcomes with a deadline.</span> <span className="font-mono">{projects.length}</span> active
           </>
         }
       />

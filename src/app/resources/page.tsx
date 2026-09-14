@@ -5,12 +5,9 @@ import { serializeContainer } from "@/lib/api";
 import { ContainerList } from "@/components/container-list";
 import { NewContainerForm } from "@/components/new-container-form";
 import { PageHeader, SectionHeading } from "@/components/ui";
+import { titleCase } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-function titleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 export default function ResourcesPage() {
   const db = getDb();
@@ -22,7 +19,7 @@ export default function ResourcesPage() {
         title="Resources"
         meta={
           <>
-            <span>Topics of interest.</span> <span className="font-mono">{resources.length} active</span>
+            <span>Topics of interest.</span> <span className="font-mono">{resources.length}</span> active
           </>
         }
       />

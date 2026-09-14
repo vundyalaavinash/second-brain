@@ -225,7 +225,7 @@ export function InboxProcessor() {
                   setIndex(i);
                   setMode("focus");
                 }}
-                className="flex items-center gap-3 w-full min-w-0 text-left"
+                className="flex items-center gap-3 w-full h-full min-w-0 text-left"
               >
                 <TypeIcon type={item.type} />
                 <span className="flex-1 truncate text-[13.5px]">{item.title}</span>
@@ -302,6 +302,7 @@ export function InboxProcessor() {
               onClick={() => void remove()}
             >
               {confirmDelete ? "Delete for good" : "Delete"}
+              <Kbd>x</Kbd>
             </Button>
             <span className="flex-1" />
             <span className="text-[12px] text-fg-faint flex items-center gap-1.5">

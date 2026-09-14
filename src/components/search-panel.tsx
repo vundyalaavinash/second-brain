@@ -131,7 +131,7 @@ export function SearchPanel() {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-40">
-          <Select value={type} onChange={(e) => setType(e.target.value)} className="w-full h-8 text-[12.5px]">
+          <Select value={type} onChange={(e) => setType(e.target.value)} size="sm" className="w-full">
             <option value="">Any type</option>
             {ITEM_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -141,7 +141,7 @@ export function SearchPanel() {
           </Select>
         </div>
         <div className="w-40">
-          <Select value={tag} onChange={(e) => setTag(e.target.value)} className="w-full h-8 text-[12.5px]">
+          <Select value={tag} onChange={(e) => setTag(e.target.value)} size="sm" className="w-full">
             <option value="">Any tag</option>
             {tags.map((t) => (
               <option key={t} value={t}>
@@ -151,14 +151,14 @@ export function SearchPanel() {
           </Select>
         </div>
         <div className="w-36">
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full h-8 text-[12.5px]" />
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} size="sm" className="w-full" />
         </div>
         <span className="text-[12px] text-fg-faint">to</span>
         <div className="w-36">
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full h-8 text-[12.5px]" />
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} size="sm" className="w-full" />
         </div>
         <div className="w-56">
-          <Select value={container} onChange={(e) => setContainer(e.target.value)} className="w-full h-8 text-[12.5px]">
+          <Select value={container} onChange={(e) => setContainer(e.target.value)} size="sm" className="w-full">
             <option value="">Any home</option>
             <option value="inbox">Inbox</option>
             {containers.map((c) => (

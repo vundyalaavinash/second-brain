@@ -79,7 +79,7 @@ export function Dock() {
             <Command className="w-5 h-5" strokeWidth={1.75} aria-hidden />
             <span
               role="tooltip"
-              className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line-strong bg-[rgba(24,24,28,0.95)] px-2.5 py-1 text-[12px] text-fg opacity-0 translate-y-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0"
+              className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line-strong bg-[rgba(24,24,28,0.95)] px-2.5 py-1 text-[12px] text-fg opacity-0 translate-y-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0"
             >
               Commands
               <span className="kbd ml-2">⌘K</span>

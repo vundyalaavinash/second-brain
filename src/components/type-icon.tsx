@@ -1,7 +1,7 @@
 import { FileText, Link2, File, Mic, BookOpen, ClipboardCheck, Flag, Layers, BookMarked, type LucideIcon } from "lucide-react";
 import type { ContainerKind, ItemStatus, ItemType } from "@/db/enums";
 
-export const TYPE_ICON: Record<ItemType, LucideIcon> = {
+const TYPE_ICON: Record<ItemType, LucideIcon> = {
   note: FileText,
   link: Link2,
   file: File,
@@ -24,12 +24,12 @@ export const KIND_LABEL: Record<ContainerKind, string> = { project: "Project", a
 
 export function TypeIcon({ type, className = "w-4 h-4 text-fg-muted shrink-0" }: { type: ItemType; className?: string }) {
   const Icon = TYPE_ICON[type];
-  return <Icon className={className} aria-label={TYPE_LABEL[type]} />;
+  return <Icon className={className} role="img" aria-label={TYPE_LABEL[type]} />;
 }
 
 export function KindIcon({ kind, className = "w-4 h-4 text-fg-muted shrink-0" }: { kind: ContainerKind; className?: string }) {
   const Icon = KIND_ICON[kind];
-  return <Icon className={className} aria-label={KIND_LABEL[kind]} />;
+  return <Icon className={className} role="img" aria-label={KIND_LABEL[kind]} />;
 }
 
 const STATUS: Record<ItemStatus, { dot: string; label: string; text: string }> = {

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } from "lucide-react";
 import type { ContainerDTO, ItemDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
-import { relativeTime } from "@/lib/format";
+import { relativeTime, titleCase } from "@/lib/format";
 import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select, Textarea } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
@@ -162,7 +162,8 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
               setDeadline(e.target.value);
               mark();
             }}
-            className="font-mono text-[12px]"
+            size="sm"
+            className="font-mono"
           />
         </div>
       )}
@@ -187,7 +188,7 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
         >
           {RESOURCE_CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>
-              {cat}
+              {titleCase(cat)}
             </option>
           ))}
         </Select>
@@ -214,7 +215,8 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
             }}
             placeholder={"- [ ] First step"}
             rows={4}
-            className="font-mono text-[12.5px]"
+            size="sm"
+            className="font-mono"
           />
         </section>
       )}
@@ -236,7 +238,7 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
             {items.map((item) => (
               <Row key={item.id}>
                 <TypeIcon type={item.type} />
-                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13px] hover:text-accent">
+                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
                   {item.title}
                 </Link>
                 <StatusDot status={item.status} error={item.error} />

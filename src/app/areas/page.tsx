@@ -16,7 +16,7 @@ export default function AreasPage() {
         title="Areas"
         meta={
           <>
-            <span>Responsibilities with a standard.</span> <span className="font-mono">{areas.length} active</span>
+            <span>Responsibilities with a standard.</span> <span className="font-mono">{areas.length}</span> active
           </>
         }
       />

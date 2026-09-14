@@ -1,4 +1,11 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type {
+  AnchorHTMLAttributes,
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
@@ -14,6 +21,13 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
 };
 const BUTTON_SIZE = { sm: "h-7 px-2.5 text-[12px]", md: "h-8 px-3 text-[13px]" } as const;
 
+type ButtonVisualProps = { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon; children?: ReactNode };
+type ButtonAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
+
+type ButtonProps =
+  | (ButtonHTMLAttributes<HTMLButtonElement> & ButtonVisualProps & { href?: undefined })
+  | (ButtonAnchorProps & ButtonVisualProps & { href: string });
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -24,7 +38,7 @@ export function Button({
   "aria-label": ariaLabel,
   title,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon; href?: string }) {
+}: ButtonProps) {
   const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`;
   if (href) {
     return (
@@ -64,19 +78,51 @@ export function IconButton({
   );
 }
 
-const FIELD = "focus-ring w-full rounded-md border border-line bg-surface-2 px-3 text-[13.5px] text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-line-strong focus:border-line-strong";
+// Appended size utilities do not override these (Tailwind orders by value); use the `size` prop.
+const FIELD = "focus-ring w-full rounded-md border border-line bg-surface-2 px-3 text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-line-strong focus:border-line-strong";
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${FIELD} h-9 ${className}`} {...props} />;
+const FIELD_SIZE = { sm: "h-8 text-[12.5px]", md: "h-9 text-[13.5px]" } as const;
+const TEXTAREA_SIZE = { sm: "text-[12.5px]", md: "text-[13.5px]" } as const;
+
+export function Input({
+  size: fieldSize = "md",
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & { size?: "sm" | "md" }) {
+  return <input className={`${FIELD} ${FIELD_SIZE[fieldSize]} ${className}`} {...props} />;
 }
 
-export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${FIELD} py-2 leading-relaxed resize-y ${className}`} {...props} />;
+export function Textarea({
+  size = "md",
+  className = "",
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { size?: "sm" | "md" }) {
+  return <textarea className={`${FIELD} py-2 leading-relaxed resize-y ${TEXTAREA_SIZE[size]} ${className}`} {...props} />;
 }
 
-export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${FIELD} h-9 pr-8 appearance-none bg-no-repeat bg-[right_0.6rem_center] ${className}`} style={{ backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9ba4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")" }} {...props} />;
+export function Select({
+  size: fieldSize = "md",
+  className = "",
+  ...props
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: "sm" | "md" }) {
+  return (
+    <select
+      className={`${FIELD} ${FIELD_SIZE[fieldSize]} pr-8 appearance-none bg-no-repeat bg-[right_0.6rem_center] ${className}`}
+      style={{
+        backgroundImage:
+          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9ba4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
+      }}
+      {...props}
+    />
+  );
 }
+
+type ChipVisualProps = { icon?: LucideIcon; active?: boolean; children?: ReactNode };
+type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
+
+type ChipProps =
+  | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span" })
+  | (ChipAnchorProps & ChipVisualProps & { href: string; as?: undefined });
 
 /** A small selectable pill: filters, homes, tags. */
 export function Chip({
@@ -89,7 +135,7 @@ export function Chip({
   "aria-label": ariaLabel,
   title,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: LucideIcon; active?: boolean; href?: string; as?: "span" }) {
+}: ChipProps) {
   const cls = `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
     active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
   } ${className}`;
