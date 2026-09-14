@@ -41,8 +41,9 @@ export function Button({
 }: ButtonProps) {
   const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`;
   if (href) {
+    const { target, rel } = props as ButtonAnchorProps;
     return (
-      <Link href={href} className={cls} aria-label={ariaLabel} title={title}>
+      <Link href={href} className={cls} aria-label={ariaLabel} title={title} target={target} rel={rel}>
         {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
         {children}
       </Link>
@@ -140,8 +141,9 @@ export function Chip({
     active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
   } ${className}`;
   if (href) {
+    const { target, rel } = props as ChipAnchorProps;
     return (
-      <Link href={href} className={cls} aria-label={ariaLabel} title={title}>
+      <Link href={href} className={cls} aria-label={ariaLabel} title={title} target={target} rel={rel}>
         {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
         {children}
       </Link>
