@@ -683,7 +683,7 @@ function extend(db: DB, s: ActivitySession, at: string): ActivitySession {
 }
 
 function keyOf(s: { appId: string | null; domain: string | null; title: string | null }): string {
-  return [s.appId ?? "", s.domain ?? "", s.title ?? ""].join("");
+  return JSON.stringify([s.appId, s.domain, s.title]);
 }
 
 function meetingsCategoryId(db: DB): number | null {
