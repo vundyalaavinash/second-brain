@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDuration, fractionOfDay, addDaysLocal } from "./format";
+import { formatDuration, fractionOfDay, addDaysLocal, formatDayHeading, formatClock } from "./format";
 
 describe("activity format", () => {
   it("formats durations", () => {
@@ -15,5 +15,11 @@ describe("activity format", () => {
   it("adds days", () => {
     expect(addDaysLocal("2026-09-30", 1)).toBe("2026-10-01");
     expect(addDaysLocal("2026-09-01", -1)).toBe("2026-08-31");
+  });
+  it("formats a day heading without locale APIs", () => {
+    expect(formatDayHeading("2026-09-16")).toBe("Wednesday 16 September");
+  });
+  it("formats a 24-hour clock without locale APIs", () => {
+    expect(formatClock(new Date(2026, 8, 16, 9, 5).toISOString())).toBe("09:05");
   });
 });
