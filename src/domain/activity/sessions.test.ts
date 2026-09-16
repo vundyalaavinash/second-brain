@@ -81,6 +81,21 @@ describe("session folding", () => {
     expect(all()[1].closed).toBe(1);
   });
 
+  it("does not collide keys across field boundaries", () => {
+    ingestHeartbeat(t.db, { at: at(0), appId: "ab", appName: "AB", title: "cd", url: null });
+    ingestHeartbeat(t.db, { at: at(5), appId: "a", appName: "A", title: "bcd", url: null });
+    expect(all()).toHaveLength(2);
+  });
+
+  it("respects the gap rule when closing on an excluded sample", () => {
+    ingestHeartbeat(t.db, code(0));
+    ingestHeartbeat(t.db, code(5));
+    expect(ingestHeartbeat(t.db, chrome(5 + 20 * 60, "https://chase.com/x"))).toBeNull();
+    const s = all();
+    expect(s).toHaveLength(1);
+    expect(s[0]).toMatchObject({ endedAt: at(5), closed: 1 });
+  });
+
   it("recategorises after rules change and labels by hand", () => {
     ingestHeartbeat(t.db, chrome(0, "https://example.org"));
     const cats = Object.fromEntries(listCategories(t.db).map((c) => [c.name, c.id]));
@@ -92,6 +107,7 @@ describe("session folding", () => {
     const labelled = labelSession(t.db, all()[0].id, { categoryId: cats.Leisure });
     expect(labelled.categoryId).toBe(cats.Leisure);
     expect(() => labelSession(t.db, 999, { categoryId: null })).toThrow(/not found/);
+    expect(() => labelSession(t.db, all()[0].id, { categoryId: 999 })).toThrow(/Category not found/);
   });
 
   it("prunes by retention", () => {

@@ -45,7 +45,7 @@ function extend(db: DB, s: ActivitySession, at: string): ActivitySession {
 }
 
 function keyOf(s: { appId: string | null; domain: string | null; title: string | null }): string {
-  return [s.appId ?? "", s.domain ?? "", s.title ?? ""].join("");
+  return JSON.stringify([s.appId, s.domain, s.title]);
 }
 
 function meetingsCategoryId(db: DB): number | null {
@@ -94,7 +94,10 @@ export function ingestHeartbeat(db: DB, hb: Heartbeat): ActivitySession | null {
     : { appId: hb.appId ?? null, appName: hb.appName ?? null, title: hb.title ?? null, url: hb.url ?? null };
 
   if (sample && (sample.appId === EXCLUDED_APP_ID || isExcluded(listExclusions(db), sample))) {
-    if (latest && !latest.closed) close(db, latest, hb.at);
+    if (latest && !latest.closed) {
+      const gapped = t - Date.parse(latest.endedAt) > GAP_MS;
+      close(db, latest, gapped ? latest.endedAt : hb.at);
+    }
     return null;
   }
   if (!latest || latest.closed) return open(db, hb.at, sample);
@@ -132,7 +135,12 @@ export function ingestHeartbeat(db: DB, hb: Heartbeat): ActivitySession | null {
 
 export function labelSession(db: DB, id: number, patch: { categoryId?: number | null; meetingId?: number | null }): ActivitySession {
   const set: Partial<typeof activitySessions.$inferInsert> = {};
-  if (patch.categoryId !== undefined) set.categoryId = patch.categoryId;
+  if (patch.categoryId !== undefined) {
+    if (patch.categoryId !== null && !listCategories(db).some((c) => c.id === patch.categoryId)) {
+      throw new ActivityError("Category not found", 404);
+    }
+    set.categoryId = patch.categoryId;
+  }
   if (patch.meetingId !== undefined) {
     if (patch.meetingId !== null && !db.select().from(calendarEvents).where(eq(calendarEvents.id, patch.meetingId)).get()) {
       throw new ActivityError("Meeting not found", 404);
