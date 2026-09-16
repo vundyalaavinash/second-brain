@@ -29,6 +29,8 @@ Both stay local. Nothing leaves the machine.
   "title": "item-editor.tsx — second-brain", "url": null, "idle_seconds": 2 }
 ```
 
+`title` is null when Accessibility is not granted; `url` is null outside supported browsers or when Automation is not granted.
+
 - Idle above 180 seconds sends `{ "at": ..., "afk": true }` instead, once per 5 seconds, until activity resumes.
 - Once a minute it posts today's and tomorrow's calendar events read via EventKit to `POST /api/activity/calendar`: `{ events: [{ external_id, title, starts_at, ends_at, attendees, has_call_link }] }`. `has_call_link` is true when the location, URL, or notes contain a Zoom, Meet, Teams, or Webex link. Attendees is a count.
 - The heartbeat response returns `{ exclusions: { apps: string[], domains: string[] }, paused: boolean }`. The helper drops samples whose app id or URL host matches an exclusion before they are sent, and sends nothing while paused except one `paused` heartbeat per minute so the UI can show state.
@@ -38,7 +40,7 @@ Both stay local. Nothing leaves the machine.
 
 ### 2.2 Data model
 
-New tables via drizzle migrations.
+Five new tables via drizzle migrations, plus three settings keys.
 
 ```
 activity_categories: id, name (unique), color (hex), sort_order
