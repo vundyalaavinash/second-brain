@@ -1120,9 +1120,9 @@ describe("activity reports", () => {
     // Code 600s, Chrome 300s, afk 90s (excluded from active), Notes 60s inside the day; the two 5s hand-offs count too.
     expect(d.activeMs).toBe(600_000 + 5_000 + 300_000 + 5_000 + 60_000);
     const coding = d.byCategory.find((c) => c.categoryId === cats.Coding)!;
-    expect(coding.ms).toBe(600_000 + 5_000 + 300_000);
+    expect(coding.ms).toBe(600_000 + 5_000 + 300_000 + 5_000);
     expect(d.byApp[0]).toMatchObject({ appId: "com.microsoft.VSCode" });
-    expect(d.bySite.find((s) => s.key === "github.com")?.ms).toBe(300_000);
+    expect(d.bySite.find((s) => s.key === "github.com")?.ms).toBe(305_000);
     expect(d.sessions.some((s) => s.afk)).toBe(true);
     expect(d.sessions.every((s) => s.startedAt >= start && s.endedAt <= end)).toBe(true);
   });
