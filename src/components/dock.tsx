@@ -6,12 +6,17 @@ import { usePathname } from "next/navigation";
 import { Command } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { Icon } from "./icons";
+import { todayLocal } from "./activity/format";
+import type { ActivityDayDTO } from "@/lib/dto";
 
 const POLL_MS = 20_000;
+const ACTIVITY_POLL_MS = 60_000;
+const HELPER_STALE_MS = 120_000;
 
 export function Dock() {
   const pathname = usePathname();
   const [inboxCount, setInboxCount] = useState(0);
+  const [helperDown, setHelperDown] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,17 +40,42 @@ export function Dock() {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/activity/day?date=${todayLocal()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as ActivityDayDTO;
+        if (cancelled) return;
+        setHelperDown(!data.paused && (!data.helper.lastSeen || Date.now() - Date.parse(data.helper.lastSeen) > HELPER_STALE_MS));
+      } catch {
+        /* offline */
+      }
+    }
+    void load();
+    const id = setInterval(load, ACTIVITY_POLL_MS);
+    window.addEventListener("sb:activity-changed", load);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("sb:activity-changed", load);
+    };
+  }, [pathname]);
+
   return (
     <nav aria-label="Main" className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
       <ul className="frost flex items-center gap-1 px-2 py-1.5 rounded-[14px]">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const count = item.badge === "inbox" ? inboxCount : 0;
+          const down = item.badge === "activity" && helperDown;
+          const label = count > 0 ? `${item.label}, ${count} waiting` : item.label;
           return (
             <li key={item.href}>
               <Link
                 href={item.href}
-                aria-label={count > 0 ? `${item.label}, ${count} waiting` : item.label}
+                aria-label={down ? `${label}, not recording` : label}
                 className={`focus-ring group relative flex items-center justify-center w-11 h-11 rounded-[10px] transition-all duration-150 motion-safe:hover:-translate-y-0.5 ${
                   active ? "text-accent" : "text-fg-muted hover:text-fg hover:bg-surface-3"
                 }`}
@@ -57,6 +87,7 @@ export function Dock() {
                     {count > 99 ? "99+" : count}
                   </span>
                 )}
+                {down && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-danger" aria-hidden />}
                 <span
                   role="tooltip"
                   className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line-strong bg-[rgba(24,24,28,0.95)] px-2.5 py-1 text-[12px] text-fg opacity-0 translate-y-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0"
