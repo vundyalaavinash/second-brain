@@ -31,6 +31,7 @@ describe("calendar", () => {
     expect(findMeetingFor(t.db, at(700))?.externalId).toBe("b");
     expect(findMeetingFor(t.db, at(100))?.externalId).toBe("a");
     expect(findMeetingFor(t.db, at(5000))).toBeUndefined();
+    expect(findMeetingFor(t.db, at(0))?.externalId).toBe("a");
     replaceCalendarEvents(t.db, [{ externalId: "a", title: "Weekly sync (moved)", startsAt: at(0), endsAt: at(900), attendees: 4, hasCallLink: false }]);
     const rows = t.db.select().from(calendarEvents).all();
     expect(rows).toHaveLength(1);

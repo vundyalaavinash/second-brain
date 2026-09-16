@@ -72,3 +72,38 @@ export interface PersonDTO {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ActivityCategoryDTO { id: number; name: string; color: string; sortOrder: number }
+export interface ActivityRuleDTO { id: number; matchKind: "app" | "domain" | "title_contains"; pattern: string; categoryId: number; sortOrder: number }
+export interface ActivityExclusionDTO { id: number; kind: "app" | "domain"; pattern: string }
+export interface HelperStateDTO {
+  lastSeen: string | null;
+  version: string | null;
+  permissions: { accessibility: boolean; calendar: boolean; automation: Record<string, boolean> } | null;
+}
+export interface ActivitySessionDTO {
+  id: number; startedAt: string; endedAt: string; appId: string | null; appName: string | null; title: string | null;
+  domain: string | null; categoryId: number | null; afk: boolean; meetingId: number | null;
+}
+export interface ActivityMeetingDTO {
+  id: number; title: string; startsAt: string; endsAt: string; attendees: number; hasCallLink: boolean; interview: boolean;
+  scheduledMs: number; actualMs: number; itemId: number | null;
+}
+export interface ActivityDayDTO {
+  day: string;
+  activeMs: number;
+  sessions: ActivitySessionDTO[];
+  byCategory: { categoryId: number | null; ms: number }[];
+  byApp: { appId: string | null; appName: string | null; ms: number }[];
+  bySite: { key: string; label: string; ms: number }[];
+  meetings: ActivityMeetingDTO[];
+  categories: ActivityCategoryDTO[];
+  helper: HelperStateDTO;
+  paused: boolean;
+  retentionDays: number;
+}
+export interface ActivityWeekDTO {
+  start: string;
+  days: { day: string; activeMs: number; byCategory: { categoryId: number | null; ms: number }[] }[];
+  categories: ActivityCategoryDTO[];
+}

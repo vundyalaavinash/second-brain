@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, items, type CalendarEvent, type Item } from "@/db/schema";
 import { createItem } from "@/domain/items";
@@ -58,7 +58,7 @@ export function findMeetingFor(db: DB, at: string): CalendarEvent | undefined {
   return db
     .select()
     .from(calendarEvents)
-    .where(and(lt(calendarEvents.startsAt, at), gt(calendarEvents.endsAt, at)))
+    .where(and(lte(calendarEvents.startsAt, at), gt(calendarEvents.endsAt, at)))
     .orderBy(desc(calendarEvents.hasCallLink), asc(calendarEvents.startsAt))
     .get();
 }

@@ -5,6 +5,7 @@ import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
 import { getContainer, countContainerItems, ContainerError } from "@/domain/containers";
 import { getItemPeople, PersonError } from "@/domain/people";
+import { ActivityError } from "@/domain/activity/rules";
 import type { ItemDTO, ContainerDTO, PersonDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
@@ -71,7 +72,7 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof DuplicateError) {
     return NextResponse.json({ error: err.message, existingId: err.existingId }, { status: err.status });
   }
-  if (err instanceof CaptureError || err instanceof ContainerError || err instanceof PersonError) {
+  if (err instanceof CaptureError || err instanceof ContainerError || err instanceof PersonError || err instanceof ActivityError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   const message = err instanceof Error ? err.message : String(err);

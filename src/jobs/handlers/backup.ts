@@ -3,6 +3,7 @@ import path from "node:path";
 import type { DB } from "@/db/client";
 import type { JobHandler } from "@/jobs/worker";
 import { dataDir } from "@/lib/paths";
+import { pruneActivity, retentionDays } from "@/domain/activity";
 
 const KEEP = 7;
 const NAME_RE = /^brain-.*\.db$/;
@@ -39,5 +40,7 @@ export function createBackupHandler(deps: { db: DB }): JobHandler {
     const file = backupFilePath();
     await deps.db.$client.backup(file);
     pruneOldBackups(dir, KEEP);
+    const pruned = pruneActivity(deps.db, retentionDays(deps.db));
+    if (pruned.sessions || pruned.events) console.log(`[backup] pruned ${pruned.sessions} activity session(s), ${pruned.events} event(s)`);
   };
 }
