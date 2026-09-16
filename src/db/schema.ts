@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, primaryKey, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, integer, text, primaryKey, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES } from "./enums";
 
 export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES } from "./enums";
@@ -129,6 +129,82 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+export const ACTIVITY_MATCH_KINDS = ["app", "domain", "title_contains"] as const;
+export const ACTIVITY_EXCLUSION_KINDS = ["app", "domain"] as const;
+
+export const activityCategories = sqliteTable("activity_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const activityRules = sqliteTable(
+  "activity_rules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    matchKind: text("match_kind", { enum: ACTIVITY_MATCH_KINDS }).notNull(),
+    pattern: text("pattern").notNull(),
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => activityCategories.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [index("activity_rules_order_idx").on(t.sortOrder)],
+);
+
+export const activityExclusions = sqliteTable(
+  "activity_exclusions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind", { enum: ACTIVITY_EXCLUSION_KINDS }).notNull(),
+    pattern: text("pattern").notNull(),
+  },
+  (t) => [uniqueIndex("activity_exclusions_kind_pattern_unique").on(t.kind, t.pattern)],
+);
+
+export const calendarEvents = sqliteTable(
+  "calendar_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    externalId: text("external_id").notNull().unique(),
+    title: text("title").notNull(),
+    startsAt: text("starts_at").notNull(),
+    endsAt: text("ends_at").notNull(),
+    attendees: integer("attendees").notNull().default(0),
+    hasCallLink: integer("has_call_link").notNull().default(0),
+    day: text("day").notNull(),
+  },
+  (t) => [index("calendar_events_day_idx").on(t.day)],
+);
+
+export const activitySessions = sqliteTable(
+  "activity_sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    startedAt: text("started_at").notNull(),
+    endedAt: text("ended_at").notNull(),
+    closed: integer("closed").notNull().default(0),
+    appId: text("app_id"),
+    appName: text("app_name"),
+    title: text("title"),
+    url: text("url"),
+    domain: text("domain"),
+    categoryId: integer("category_id").references(() => activityCategories.id, { onDelete: "set null" }),
+    afk: integer("afk").notNull().default(0),
+    meetingId: integer("meeting_id").references(() => calendarEvents.id, { onDelete: "set null" }),
+    heartbeats: integer("heartbeats").notNull().default(1),
+    titleChangedAt: text("title_changed_at"),
+  },
+  (t) => [index("activity_sessions_started_idx").on(t.startedAt), index("activity_sessions_ended_idx").on(t.endedAt)],
+);
+
+export type ActivityCategory = typeof activityCategories.$inferSelect;
+export type ActivityRule = typeof activityRules.$inferSelect;
+export type ActivityExclusion = typeof activityExclusions.$inferSelect;
+export type ActivitySession = typeof activitySessions.$inferSelect;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
 
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;
