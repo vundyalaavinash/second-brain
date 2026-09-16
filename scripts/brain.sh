@@ -12,6 +12,12 @@ LOG_FILE="$LOG_DIR/app.log"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 URL="http://localhost:$PORT"
+HELPER_LABEL="com.second-brain.activity"
+HELPER_PLIST="$HOME/Library/LaunchAgents/$HELPER_LABEL.plist"
+HELPER_SRC="$ROOT/helper/activity"
+HELPER_BIN="$DATA_DIR/bin/sb-activity"
+HELPER_LOG="$LOG_DIR/activity.log"
+TOKEN_FILE="$DATA_DIR/activity-token"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -21,7 +27,7 @@ usage() {
   cat <<USAGE
 Usage: scripts/brain.sh <command>
 
-  setup            install deps, build, download the embedding model, install the launch agent, start
+  setup            install deps, build, download the embedding model, install the launch agent and the activity helper, start
   start            start the launch agent and open the browser
   stop             stop the launch agent
   restart [--build] stop, optionally rebuild, start
@@ -51,6 +57,84 @@ wait_for_server() {
     sleep 1
   done
   return 1
+}
+
+helper_loaded() { launchctl print "$DOMAIN/$HELPER_LABEL" >/dev/null 2>&1; }
+
+ensure_token() {
+  if [ ! -s "$TOKEN_FILE" ]; then
+    mkdir -p "$DATA_DIR"
+    (umask 077; head -c 32 /dev/urandom | xxd -p -c 64 > "$TOKEN_FILE")
+    ok "activity token written"
+  fi
+}
+
+build_helper() {
+  if ! command -v swift >/dev/null; then
+    say "swift not found; skipping the activity helper. Install the Xcode command line tools and rerun setup to enable it."
+    return 1
+  fi
+  say "building the activity helper"
+  (cd "$HELPER_SRC" && swift build -c release 2>&1 | tail -3)
+  mkdir -p "$(dirname "$HELPER_BIN")"
+  cp "$HELPER_SRC/.build/release/sb-activity" "$HELPER_BIN"
+  ok "helper built at $HELPER_BIN"
+}
+
+write_helper_plist() {
+  cat > "$HELPER_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$HELPER_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$HELPER_BIN</string>
+    <string>--server</string>
+    <string>$URL</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SB_DATA_DIR</key><string>$DATA_DIR</string>
+    <key>HOME</key><string>$HOME</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HELPER_LOG</string>
+  <key>StandardErrorPath</key><string>$HELPER_LOG</string>
+</dict>
+</plist>
+PLIST
+  ok "helper launch agent written to $HELPER_PLIST"
+}
+
+helper_start() {
+  if [ ! -f "$HELPER_PLIST" ] || [ ! -x "$HELPER_BIN" ]; then
+    say "activity helper not installed (run setup with swift available)"
+    return 0
+  fi
+  if helper_loaded; then say "helper already loaded"; else launchctl bootstrap "$DOMAIN" "$HELPER_PLIST"; ok "helper loaded"; fi
+}
+
+helper_stop() {
+  if helper_loaded; then launchctl bootout "$DOMAIN/$HELPER_LABEL" || true; ok "helper stopped"; fi
+}
+
+helper_status() {
+  if helper_loaded; then ok "activity helper loaded"; else say "activity helper not loaded"; fi
+  if [ -x "$HELPER_BIN" ]; then
+    local out
+    out="$(SB_DATA_DIR="$DATA_DIR" "$HELPER_BIN" --once 2>/dev/null || true)"
+    if [ -n "$out" ]; then
+      printf '%s' "$out" | node -e '
+        let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+          try { const p = JSON.parse(s).permissions;
+            console.log(`  accessibility: ${p.accessibility ? "granted" : "missing"}  calendar: ${p.calendar ? "granted" : "missing"}`);
+          } catch { console.log("  helper check failed"); }
+        });'
+    fi
+  fi
 }
 
 write_plist() {
@@ -113,6 +197,8 @@ cmd_setup() {
   npm run build
   mkdir -p "$DATA_DIR/files" "$LOG_DIR"
   download_model
+  ensure_token
+  if build_helper; then write_helper_plist; fi
   if is_loaded; then
     say "stopping the running agent before reinstalling it"
     launchctl bootout "$DOMAIN/$LABEL" || true
@@ -137,6 +223,7 @@ cmd_start() {
   say "waiting for $URL"
   if wait_for_server; then
     ok "server is up at $URL"
+    helper_start
     if [ "$open_browser" = 1 ] && command -v open >/dev/null; then open "$URL"; fi
   else
     fail "server did not answer within 60 s. Check: scripts/brain.sh logs"
@@ -144,6 +231,7 @@ cmd_start() {
 }
 
 cmd_stop() {
+  helper_stop
   if is_loaded; then
     launchctl bootout "$DOMAIN/$LABEL"
     # bootout returns before the service is fully removed; wait so a following start can bootstrap.
@@ -183,6 +271,7 @@ cmd_status() {
   if is_up; then ok "server answering at $URL"; else say "server not answering at $URL"; fi
   say "data: $DATA_DIR"
   say "log:  $LOG_FILE"
+  helper_status
 }
 
 cmd_logs() {
