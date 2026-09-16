@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pause, SlidersHorizontal } from "lucide-react";
 import { Button, Chip, IconButton, PageHeader } from "../ui";
@@ -33,6 +33,7 @@ export function ActivityPage() {
   const [weekData, setWeekData] = useState<ActivityWeekDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const rulesButtonRef = useRef<HTMLButtonElement>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const reload = useCallback(() => setReloadToken((t) => t + 1), []);
 
@@ -172,7 +173,7 @@ export function ActivityPage() {
             <Button variant="ghost" size="sm" onClick={() => setDay(todayLocal())}>
               Today
             </Button>
-            <Button variant="ghost" size="sm" icon={SlidersHorizontal} onClick={() => setRulesOpen(true)}>
+            <Button ref={rulesButtonRef} variant="ghost" size="sm" icon={SlidersHorizontal} onClick={() => setRulesOpen(true)}>
               Rules
             </Button>
             <Chip icon={Pause} active={data?.paused ?? false} aria-pressed={data?.paused ?? false} onClick={() => void togglePause()}>
@@ -197,7 +198,16 @@ export function ActivityPage() {
         weekData && <Week days={weekData.days} categories={weekData.categories} onSelectDay={(d) => navigate(d, "day")} />
       )}
 
-      {rulesOpen && <RulesDrawer retentionDays={data?.retentionDays ?? 90} onClose={() => setRulesOpen(false)} reload={reload} />}
+      {rulesOpen && (
+        <RulesDrawer
+          retentionDays={data?.retentionDays ?? 90}
+          onClose={() => {
+            setRulesOpen(false);
+            rulesButtonRef.current?.focus();
+          }}
+          reload={reload}
+        />
+      )}
     </div>
   );
 }

@@ -190,7 +190,7 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
 
   return (
     <>
-      <button type="button" aria-label="Close" onClick={onClose} className="fixed inset-0 bg-black/40" />
+      <button type="button" aria-label="Close rules" onClick={onClose} className="focus-ring fixed inset-0 bg-black/40" />
       <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Activity rules" className="fixed inset-y-0 right-0 w-[420px] frost p-5 overflow-y-auto z-50">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-medium">Activity rules</h2>
@@ -209,13 +209,20 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
                 <Row key={rule.id}>
                   <Chip as="span">{RULE_KIND_LABEL[rule.matchKind]}</Chip>
                   <span className="flex-1 min-w-0 truncate font-mono text-[12px]">{rule.pattern}</span>
-                  <Select size="sm" value={rule.categoryId} onChange={(e) => void changeRuleCategory(rule.id, Number(e.target.value))}>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
+                  <div className="w-40 shrink-0">
+                    <Select
+                      size="sm"
+                      className="w-full"
+                      value={rule.categoryId}
+                      onChange={(e) => void changeRuleCategory(rule.id, Number(e.target.value))}
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                   <IconButton label="Move up" icon={ArrowUp} disabled={i === 0} onClick={() => void moveRule(i, -1)} />
                   <IconButton label="Move down" icon={ArrowDown} disabled={i === rules.length - 1} onClick={() => void moveRule(i, 1)} />
                   <IconButton label="Delete rule" icon={Trash2} danger onClick={() => void deleteRule(rule.id)} />
@@ -224,11 +231,13 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
             </List>
           )}
           <div className="flex items-center gap-2 mt-3">
-            <Select size="sm" value={newRuleKind} onChange={(e) => setNewRuleKind(e.target.value as ActivityRuleDTO["matchKind"])}>
-              <option value="app">App</option>
-              <option value="domain">Domain</option>
-              <option value="title_contains">Title contains</option>
-            </Select>
+            <div className="w-40 shrink-0">
+              <Select size="sm" className="w-full" value={newRuleKind} onChange={(e) => setNewRuleKind(e.target.value as ActivityRuleDTO["matchKind"])}>
+                <option value="app">App</option>
+                <option value="domain">Domain</option>
+                <option value="title_contains">Title contains</option>
+              </Select>
+            </div>
             <Input
               size="sm"
               className="flex-1 min-w-0"
@@ -236,13 +245,15 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
               value={newRulePattern}
               onChange={(e) => setNewRulePattern(e.target.value)}
             />
-            <Select size="sm" value={ruleCategoryValue} onChange={(e) => setNewRuleCategoryId(Number(e.target.value))}>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <div className="w-40 shrink-0">
+              <Select size="sm" className="w-full" value={ruleCategoryValue} onChange={(e) => setNewRuleCategoryId(Number(e.target.value))}>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <Button variant="primary" size="sm" onClick={() => void addRule()}>
               Add rule
             </Button>
@@ -265,10 +276,12 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
             </List>
           )}
           <div className="flex items-center gap-2 mt-3">
-            <Select size="sm" value={newExclusionKind} onChange={(e) => setNewExclusionKind(e.target.value as ActivityExclusionDTO["kind"])}>
-              <option value="app">App</option>
-              <option value="domain">Domain</option>
-            </Select>
+            <div className="w-40 shrink-0">
+              <Select size="sm" className="w-full" value={newExclusionKind} onChange={(e) => setNewExclusionKind(e.target.value as ActivityExclusionDTO["kind"])}>
+                <option value="app">App</option>
+                <option value="domain">Domain</option>
+              </Select>
+            </div>
             <Input
               size="sm"
               className="flex-1 min-w-0"
@@ -292,7 +305,7 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
                   defaultValue={c.color}
                   onBlur={(e) => void updateCategoryColor(c.id, e.target.value)}
                   aria-label={`${c.name} colour`}
-                  className="w-6 h-6 rounded-sm border border-line bg-transparent"
+                  className="focus-ring w-6 h-6 rounded-sm border border-line bg-transparent"
                 />
                 <Input size="sm" className="flex-1 min-w-0" defaultValue={c.name} onBlur={(e) => void updateCategoryName(c.id, e.target.value)} />
               </Row>
@@ -302,15 +315,17 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
 
         <section>
           <SectionHeading>Retention</SectionHeading>
-          <Input
-            size="sm"
-            type="number"
-            min={1}
-            max={3650}
-            defaultValue={retentionDays}
-            onBlur={(e) => void updateRetention(Number(e.target.value))}
-            className="w-24"
-          />
+          <div className="w-36">
+            <Input
+              size="sm"
+              type="number"
+              min={1}
+              max={3650}
+              defaultValue={retentionDays}
+              onBlur={(e) => void updateRetention(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
           <p className="text-[12px] text-fg-faint mt-1.5">Sessions older than this are deleted nightly.</p>
         </section>
       </div>

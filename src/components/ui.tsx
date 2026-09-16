@@ -3,6 +3,7 @@ import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
@@ -25,7 +26,7 @@ type ButtonVisualProps = { variant?: ButtonVariant; size?: "sm" | "md"; icon?: L
 type ButtonAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ButtonProps =
-  | (ButtonHTMLAttributes<HTMLButtonElement> & ButtonVisualProps & { href?: undefined })
+  | (ButtonHTMLAttributes<HTMLButtonElement> & ButtonVisualProps & { href?: undefined; ref?: Ref<HTMLButtonElement> })
   | (ButtonAnchorProps & ButtonVisualProps & { href: string });
 
 export function Button({
