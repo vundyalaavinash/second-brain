@@ -1,8 +1,12 @@
 "use client";
 
-import { Component, useEffect, useRef, type ReactNode } from "react";
+import { Component, useEffect, useRef, type ChangeEvent, type ReactNode } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { buildExtensions } from "./extensions";
+import { EditorBubbleMenu } from "./bubble-menu";
+import { IMAGE_MIMES, handleFiles } from "./images";
+import { ItemIdProvider } from "./upload-failed";
 import { Textarea } from "../ui";
 
 export interface RichEditorProps {
@@ -67,13 +71,19 @@ export function prepareMarkdown(md: string): string {
   return out.join("\n");
 }
 
-export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", onReady }: RichEditorProps) {
+export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady }: RichEditorProps) {
   const lastMarkdown = useRef(value);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onChangeRef = useRef(onChange);
+  const editorRef = useRef<Editor | null>(null);
+  const itemIdRef = useRef(itemId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  useEffect(() => {
+    itemIdRef.current = itemId;
+  }, [itemId]);
 
   const editor = useEditor({
     extensions: buildExtensions({ placeholder }),
@@ -81,7 +91,21 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     contentType: "markdown",
     autofocus: autofocus ? "end" : false,
     immediatelyRender: false,
-    editorProps: { attributes: { class: `md rich-editor ${className}`, spellcheck: "true" } },
+    editorProps: {
+      attributes: { class: `md rich-editor ${className}`, spellcheck: "true" },
+      handlePaste: (_view, event) => {
+        const files = [...(event.clipboardData?.files ?? [])];
+        if (files.length === 0) return false;
+        event.preventDefault();
+        return handleFiles(editorRef.current!, files, itemIdRef.current);
+      },
+      handleDrop: (_view, event) => {
+        const files = [...(event.dataTransfer?.files ?? [])];
+        if (files.length === 0) return false;
+        event.preventDefault();
+        return handleFiles(editorRef.current!, files, itemIdRef.current);
+      },
+    },
     onUpdate: ({ editor, transaction }) => {
       if (transaction.getMeta("external")) return;
       if (timer.current) clearTimeout(timer.current);
@@ -108,8 +132,21 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
   });
 
   useEffect(() => {
+    editorRef.current = editor ?? null;
+  }, [editor]);
+
+  useEffect(() => {
     if (editor && onReady) onReady(editor);
   }, [editor, onReady]);
+
+  // The slash menu's "Image" item asks the editor to open the file picker.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const onPickImage = () => fileInputRef.current?.click();
+    dom.addEventListener("sb:pick-image", onPickImage);
+    return () => dom.removeEventListener("sb:pick-image", onPickImage);
+  }, [editor]);
 
   // External value changes (for example a poll refreshing the item) replace the content without emitting.
   useEffect(() => {
@@ -120,8 +157,23 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
+  function onFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (editor && files.length) handleFiles(editor, files, itemId);
+  }
+
   if (!editor) return <div className={`md rich-editor ${className}`} aria-busy="true" />;
-  return <EditorContent editor={editor} />;
+  return (
+    <ItemIdProvider itemId={itemId}>
+      <EditorContent editor={editor} />
+      <EditorBubbleMenu editor={editor} />
+      <DragHandle editor={editor}>
+        <span className="drag-handle" aria-hidden />
+      </DragHandle>
+      <input ref={fileInputRef} type="file" accept={IMAGE_MIMES.join(",")} className="hidden" aria-hidden tabIndex={-1} onChange={onFileInputChange} />
+    </ItemIdProvider>
+  );
 }
 
 interface BoundaryState { failed: boolean }
