@@ -38,4 +38,24 @@ describe("markdown round-trip", () => {
     expect(out).toContain("Before.");
     expect(out).toContain("After.");
   });
+
+  it("wraps a raw html block that follows an earlier fenced code block", () => {
+    const input = 'Before.\n\n```ts\nconst x = 1;\n```\n\n<div class="x">raw</div>\n\nAfter.\n';
+    expect(prepareMarkdown(input)).toBe(
+      'Before.\n\n```ts\nconst x = 1;\n```\n\n```html\n<div class="x">raw</div>\n```\n\nAfter.\n',
+    );
+    const out = roundTrip(input);
+    expect(out).toContain('```html\n<div class="x">raw</div>\n```');
+    expect(out).toContain("```ts\nconst x = 1;\n```");
+    expect(out).toContain("Before.");
+    expect(out).toContain("After.");
+  });
+
+  it("does not double-wrap a div line that is already inside a fence", () => {
+    const input = "```ts\n<div>fake</div>\n```\n";
+    expect(prepareMarkdown(input)).toBe(input);
+    const out = roundTrip(input);
+    expect(out).not.toContain("```html");
+    expect(out).toContain("```ts\n<div>fake</div>\n```");
+  });
 });

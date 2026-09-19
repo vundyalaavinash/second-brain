@@ -18,21 +18,53 @@ export interface RichEditorProps {
 
 const EMIT_DEBOUNCE_MS = 300;
 
+const HTML_BLOCK_START = /^<\/?[a-zA-Z][^>]*>/;
+
 /**
- * Wrap raw HTML blocks in an ```html fence so nothing is dropped. A block is a paragraph that starts with a tag.
+ * Wrap raw HTML blocks in an ```html fence so nothing is dropped. A block is a run of
+ * non-blank lines outside any existing fence whose first line starts with a tag.
+ * Fence state is tracked line by line so a fence anywhere earlier in the document
+ * cannot leak into (or block wrapping of) content that follows it.
  */
 export function prepareMarkdown(md: string): string {
-  const inFence = { on: false };
-  return md
-    .split("\n\n")
-    .map((block) => {
-      if (block.trim().startsWith("```")) inFence.on = !inFence.on || !block.trim().endsWith("```");
-      if (!inFence.on && /^<\/?[a-zA-Z][^>]*>/.test(block.trim()) && !/^<https?:/.test(block.trim())) {
-        return "```html\n" + block + "\n```";
-      }
-      return block;
-    })
-    .join("\n\n");
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let inFence = false;
+  let block: string[] = [];
+
+  const flushBlock = () => {
+    if (block.length === 0) return;
+    const firstLine = block[0].trim();
+    if (HTML_BLOCK_START.test(firstLine) && !/^<https?:/.test(firstLine)) {
+      out.push("```html", ...block, "```");
+    } else {
+      out.push(...block);
+    }
+    block = [];
+  };
+
+  for (const line of lines) {
+    const isFenceMarker = line.trim().startsWith("```");
+    if (isFenceMarker) {
+      flushBlock();
+      out.push(line);
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+    if (line.trim() === "") {
+      flushBlock();
+      out.push(line);
+      continue;
+    }
+    block.push(line);
+  }
+  flushBlock();
+
+  return out.join("\n");
 }
 
 export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", onReady }: RichEditorProps) {
@@ -54,17 +86,18 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
       if (transaction.getMeta("external")) return;
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
+        timer.current = undefined;
         const md = editor.getMarkdown();
         if (md === lastMarkdown.current) return;
         lastMarkdown.current = md;
         onChangeRef.current(md);
       }, EMIT_DEBOUNCE_MS);
     },
-    onBlur: () => {
+    onBlur: ({ editor }) => {
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = undefined;
-        const md = editor?.getMarkdown() ?? lastMarkdown.current;
+        const md = editor.getMarkdown();
         if (md !== lastMarkdown.current) {
           lastMarkdown.current = md;
           onChangeRef.current(md);
