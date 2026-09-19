@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count } from 
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
+import { deleteItemAttachments } from "@/domain/attachments";
 import { chunkText } from "./chunk";
 
 export interface CreateItemInput {
@@ -141,6 +142,7 @@ export function deleteItem(db: DB, id: number): void {
     tx.delete(chunks).where(eq(chunks.itemId, id)).run();
     tx.delete(items).where(eq(items.id, id)).run();
   });
+  deleteItemAttachments(id);
 }
 
 function normalizeTagNames(names: string[]): string[] {

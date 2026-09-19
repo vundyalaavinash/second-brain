@@ -208,6 +208,22 @@ export type ActivityExclusion = typeof activityExclusions.$inferSelect;
 export type ActivitySession = typeof activitySessions.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    bytes: integer("bytes").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("attachments_item_idx").on(t.itemId)],
+);
+export type Attachment = typeof attachments.$inferSelect;
+
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;
 export type Chunk = typeof chunks.$inferSelect;

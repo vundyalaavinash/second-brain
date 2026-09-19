@@ -13,6 +13,10 @@ export function filesDir(): string {
   return path.join(dataDir(), "files");
 }
 
+export function attachmentsDir(): string {
+  return path.join(dataDir(), "attachments");
+}
+
 export function modelsDir(): string {
   return path.join(dataDir(), "models");
 }

@@ -6,7 +6,9 @@ import { makeTestDb, type TestDb } from "@/test/db";
 import { enqueueJob } from "@/jobs/queue";
 import { activitySessions } from "@/db/schema";
 import { ingestHeartbeat } from "@/domain/activity";
-import { createBackupHandler, backupsDir, backupFilePath } from "./backup";
+import { createItem } from "@/domain/items";
+import { saveAttachment, attachmentPath } from "@/domain/attachments";
+import { createBackupHandler, backupsDir, backupFilePath, backupDateStamp } from "./backup";
 
 describe("backup handler", () => {
   let t: TestDb;
@@ -58,5 +60,18 @@ describe("backup handler", () => {
     const remaining = t.db.select().from(activitySessions).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].title).toBe("new");
+  });
+
+  it("copies the attachments directory into the backup", async () => {
+    const item = createItem(t.db, { type: "note", title: "n" });
+    const bytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const a = saveAttachment(t.db, { itemId: item.id, filename: "shot.png", mime: "image/png", bytes });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    const copied = path.join(backupsDir(), `attachments-${backupDateStamp()}`, String(item.id), path.basename(attachmentPath(a)));
+    expect(fs.existsSync(copied)).toBe(true);
+    expect(fs.readFileSync(copied)).toEqual(bytes);
   });
 });
