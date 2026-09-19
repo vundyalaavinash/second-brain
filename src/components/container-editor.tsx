@@ -7,9 +7,10 @@ import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } fr
 import type { ContainerDTO, ItemDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase } from "@/lib/format";
-import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select, Textarea } from "./ui";
+import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
+import { RichEditor } from "./editor/rich-editor";
 
 export function ContainerEditor({ initial, items }: { initial: ContainerDTO; items: ItemDTO[] }) {
   const router = useRouter();
@@ -194,29 +195,27 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
         </Select>
       )}
 
-      <Textarea
+      <RichEditor
         value={description}
-        onChange={(e) => {
-          setDescription(e.target.value);
+        onChange={(md) => {
+          setDescription(md);
           mark();
         }}
         placeholder="Description"
-        rows={3}
+        className="min-h-[120px]"
       />
 
       {c.kind === "project" && (
         <section className="flex flex-col gap-1">
           <SectionHeading>Next steps</SectionHeading>
-          <Textarea
+          <RichEditor
             value={nextSteps}
-            onChange={(e) => {
-              setNextSteps(e.target.value);
+            onChange={(md) => {
+              setNextSteps(md);
               mark();
             }}
-            placeholder={"- [ ] First step"}
-            rows={4}
-            size="sm"
-            className="font-mono"
+            placeholder="- [ ] First step"
+            className="min-h-[120px]"
           />
         </section>
       )}

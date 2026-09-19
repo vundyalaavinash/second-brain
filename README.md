@@ -54,6 +54,10 @@ PARA. Every capture lands in the Inbox. Processing the Inbox files each item int
 
 The interface is dark, dense, and quiet: one accent colour for what is live or selected, Lucide icons, Geist type, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.
 
+### Writing
+
+Notes use a block editor. Type `/` for blocks, markdown shortcuts work as you type, and you can paste or drop images into a saved note. Callouts are `> [!note]`, `> [!tip]`, and `> [!warning]` blockquotes. Everything is stored as markdown, so search and backups see plain text.
+
 ## Activity tracking
 
 A Swift helper (`helper/activity`, installed by `scripts/brain.sh setup` as the launch agent `com.second-brain.activity`) samples the frontmost app every 5 seconds and posts heartbeats to the local server. It records: the frontmost app and its window title, the browser URL for Chrome, Arc, Brave, Edge, and Safari, away time once you have been idle for 3 minutes, and calendar events for today and tomorrow.

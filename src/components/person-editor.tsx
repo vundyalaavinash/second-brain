@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
 import { ArrowLeft, Eye, Pencil, Trash2, Save } from "lucide-react";
 import type { PersonDTO } from "@/lib/dto";
-import { Button, Chip, IconButton, Textarea } from "./ui";
+import { Button, Chip, IconButton } from "./ui";
+import { RichEditor } from "./editor/rich-editor";
 
 export function PersonEditor({ initial }: { initial: PersonDTO }) {
   const router = useRouter();
@@ -93,10 +94,10 @@ export function PersonEditor({ initial }: { initial: PersonDTO }) {
           <Markdown>{profile || "*No profile yet.*"}</Markdown>
         </div>
       ) : (
-        <Textarea
+        <RichEditor
           value={profile}
-          onChange={(e) => {
-            setProfile(e.target.value);
+          onChange={(md) => {
+            setProfile(md);
             setDirty(true);
           }}
           placeholder="Who they are, their role, how you work together, open threads."

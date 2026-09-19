@@ -4,13 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
+import type { Editor } from "@tiptap/core";
 import { ArrowLeft, AtSign, Eye, Pencil, Archive, RotateCcw, Trash2, RefreshCw, ExternalLink, FileText, Plus, Inbox as InboxIcon } from "lucide-react";
 import type { ItemDTO } from "@/lib/dto";
 import { formatDateTime } from "@/lib/format";
-import { Button, Chip, IconButton, Input, Textarea } from "./ui";
+import { Button, Chip, IconButton, Input } from "./ui";
 import { TypeIcon, StatusDot, TYPE_LABEL, KIND_ICON } from "./type-icon";
 import { ContainerPicker } from "./container-picker";
 import { PeoplePicker } from "./people-picker";
+import { RichEditor } from "./editor/rich-editor";
 
 const SAVE_DEBOUNCE_MS = 5000;
 
@@ -26,7 +28,7 @@ async function readError(res: Response): Promise<string> {
   return res.statusText || "Request failed";
 }
 
-export function ItemEditor({ initial }: { initial: ItemDTO }) {
+export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEditorReady?: (editor: Editor) => void }) {
   const router = useRouter();
   const [item, setItem] = useState(initial);
   const [title, setTitle] = useState(initial.title);
@@ -300,17 +302,19 @@ export function ItemEditor({ initial }: { initial: ItemDTO }) {
           <Markdown>{body || "*Nothing written yet.*"}</Markdown>
         </div>
       ) : (
-        <Textarea
+        <RichEditor
           value={body}
-          onChange={(e) => {
-            setBody(e.target.value);
+          itemId={initial.id}
+          onChange={(md) => {
+            setBody(md);
             markDirty();
           }}
           onBlur={() => {
             if (save === "dirty") void persist();
           }}
-          placeholder={item.type === "note" ? "Write in markdown" : "Your notes about this item"}
-          className="min-h-[260px] text-[14.5px]"
+          placeholder={item.type === "note" ? "Write, or press / for blocks" : "Your notes about this item"}
+          className="min-h-[260px]"
+          onReady={onEditorReady}
         />
       )}
 
