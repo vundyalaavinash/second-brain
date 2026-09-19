@@ -28,6 +28,19 @@ const item: ItemDTO = {
 const EMIT_DEBOUNCE_MS = 300;
 const SAVE_DEBOUNCE_MS = 5000;
 
+// Polls a deadline rather than a fixed number of ticks: under full-suite parallel load the
+// next/dynamic-loaded editor can take longer than a short fixed budget to mount.
+const MOUNT_TIMEOUT_MS = 5000;
+const MOUNT_POLL_MS = 20;
+
+async function waitForEditor(hasEditor: () => boolean): Promise<void> {
+  const deadline = Date.now() + MOUNT_TIMEOUT_MS;
+  while (!hasEditor()) {
+    if (Date.now() >= deadline) throw new Error("editor did not mount within 5 s");
+    await act(async () => { await new Promise((r) => setTimeout(r, MOUNT_POLL_MS)); });
+  }
+}
+
 describe("ItemEditor with RichEditor", () => {
   it("sends the same PATCH the textarea sent, once, after typing", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -38,7 +51,7 @@ describe("ItemEditor with RichEditor", () => {
     }));
     let editor: Editor | undefined;
     render(<ItemEditor initial={item} onEditorReady={(e) => (editor = e)} />);
-    for (let i = 0; i < 20 && !editor; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await waitForEditor(() => !!editor);
     expect(patches).toHaveLength(0);
     await act(async () => { editor!.commands.focus("end"); editor!.commands.insertContent(" World"); });
     // Two separate advances, not one: the first lets RichEditor's own 300ms debounce fire and
@@ -62,7 +75,7 @@ describe("ItemEditor with RichEditor", () => {
     }));
     let editor: Editor | undefined;
     render(<ItemEditor initial={item} onEditorReady={(e) => (editor = e)} />);
-    for (let i = 0; i < 20 && !editor; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await waitForEditor(() => !!editor);
     await act(async () => { editor!.commands.focus("end"); editor!.commands.insertContent(" Saved by cmd s"); });
     // Dispatch well inside RichEditor's own 300ms emit debounce, so the PATCH can only have
     // come from the ⌘S flush, not from the debounce elapsing naturally.

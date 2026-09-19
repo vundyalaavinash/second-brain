@@ -13,11 +13,19 @@ function Boom(): never {
   throw new Error("boom");
 }
 
+// Polls a deadline rather than a fixed number of ticks: under full-suite parallel load the
+// next/dynamic-loaded editor can take longer than a short fixed budget to mount.
+const MOUNT_TIMEOUT_MS = 5000;
+const MOUNT_POLL_MS = 20;
+
 async function mount(value: string, onChange = vi.fn()) {
   let editor: Editor | undefined;
   const utils = render(<RichEditor value={value} onChange={onChange} onReady={(e) => (editor = e)} />);
-  for (let i = 0; i < 10 && !editor; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
-  if (!editor) throw new Error("editor did not mount");
+  const deadline = Date.now() + MOUNT_TIMEOUT_MS;
+  while (!editor) {
+    if (Date.now() >= deadline) throw new Error("editor did not mount within 5 s");
+    await act(async () => { await new Promise((r) => setTimeout(r, MOUNT_POLL_MS)); });
+  }
   return { editor, onChange, ...utils };
 }
 

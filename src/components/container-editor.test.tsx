@@ -34,6 +34,19 @@ const container: ContainerDTO = {
   updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
+// Polls a deadline rather than a fixed number of ticks: under full-suite parallel load the
+// next/dynamic-loaded editor can take longer than a short fixed budget to mount.
+const MOUNT_TIMEOUT_MS = 5000;
+const MOUNT_POLL_MS = 20;
+
+async function waitForEditor(hasEditor: () => boolean): Promise<void> {
+  const deadline = Date.now() + MOUNT_TIMEOUT_MS;
+  while (!hasEditor()) {
+    if (Date.now() >= deadline) throw new Error("editor did not mount within 5 s");
+    await act(async () => { await new Promise((r) => setTimeout(r, MOUNT_POLL_MS)); });
+  }
+}
+
 describe("ContainerEditor with RichEditor", () => {
   it("flushes the pending description edit and saves it on an immediate ⌘S", async () => {
     const patches: unknown[] = [];
@@ -49,7 +62,7 @@ describe("ContainerEditor with RichEditor", () => {
     );
     let editor: Editor | undefined;
     render(<ContainerEditor initial={container} items={[]} onEditorReady={(e) => (editor = e)} />);
-    for (let i = 0; i < 20 && !editor; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await waitForEditor(() => !!editor);
     expect(patches).toHaveLength(0);
     await act(async () => {
       editor!.commands.focus("end");
