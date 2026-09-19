@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { ActivityCategoryDTO, ActivityMeetingDTO, ActivitySessionDTO } from "@/lib/dto";
 import { Chip, Select } from "../ui";
 import { fractionOfDay, formatDuration } from "./format";
+import { Legend, AFK_COLOR } from "./legend";
 
 const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21];
-const AFK_COLOR = "var(--color-surface-3)";
 const DEFAULT_COLOR = "#62626b";
 
 interface Props {
@@ -20,15 +20,22 @@ interface Props {
 export function Timeline({ day, sessions, categories, meetings, onRelabel }: Props) {
   const [openId, setOpenId] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const firstChipRef = useRef<HTMLButtonElement | null>(null);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const open = sessions.find((s) => s.id === openId) ?? null;
 
+  function closePopover() {
+    setOpenId(null);
+    triggerRef.current?.focus();
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpenId(null);
+      if (e.key === "Escape") closePopover();
     }
     function onPointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpenId(null);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) closePopover();
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointerDown);
@@ -37,6 +44,10 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
       window.removeEventListener("mousedown", onPointerDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (openId !== null) firstChipRef.current?.focus();
+  }, [openId]);
 
   return (
     <div ref={containerRef} className="relative flex flex-col gap-1.5">
@@ -53,9 +64,14 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
               type="button"
               aria-label={label}
               title={label}
-              onClick={() => {
+              onClick={(e) => {
                 if (s.afk) return;
-                setOpenId((id) => (id === s.id ? null : s.id));
+                if (openId === s.id) {
+                  closePopover();
+                  return;
+                }
+                triggerRef.current = e.currentTarget;
+                setOpenId(s.id);
               }}
               className="focus-ring absolute top-0 h-full"
               style={{ left: `${startFrac * 100}%`, width: `${Math.max(0.15, (endFrac - startFrac) * 100)}%`, backgroundColor: color }}
@@ -73,14 +89,22 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
 
       {open && (
         <div
+          role="dialog"
+          aria-label="Relabel session"
           className="frost rounded-md p-2 absolute z-10 w-64"
           style={{ left: `${Math.min(70, fractionOfDay(open.startedAt, day) * 100)}%`, top: "2.75rem" }}
         >
           <p className="text-[12.5px] font-medium truncate">{open.appName ?? "Away"}</p>
           {(open.title ?? open.domain) && <p className="text-[11.5px] text-fg-muted truncate mb-2">{open.title ?? open.domain}</p>}
           <div className="flex flex-wrap gap-1.5 mb-2">
-            {categories.map((c) => (
-              <Chip key={c.id} active={open.categoryId === c.id} onClick={() => onRelabel(open.id, { categoryId: c.id })}>
+            {categories.map((c, i) => (
+              <Chip
+                key={c.id}
+                ref={i === 0 ? firstChipRef : undefined}
+                active={open.categoryId === c.id}
+                aria-pressed={c.id === open.categoryId}
+                onClick={() => onRelabel(open.id, { categoryId: c.id })}
+              >
                 {c.name}
               </Chip>
             ))}
@@ -103,18 +127,7 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-[12px] text-fg-muted">
-        {categories.map((c) => (
-          <span key={c.id} className="inline-flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} aria-hidden />
-            {c.name}
-          </span>
-        ))}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: AFK_COLOR }} aria-hidden />
-          Away
-        </span>
-      </div>
+      <Legend categories={categories} />
     </div>
   );
 }

@@ -196,6 +196,8 @@ export const activitySessions = sqliteTable(
     meetingId: integer("meeting_id").references(() => calendarEvents.id, { onDelete: "set null" }),
     heartbeats: integer("heartbeats").notNull().default(1),
     titleChangedAt: text("title_changed_at"),
+    /** Set when a person hand-labels the category; recategorise() then leaves the row alone. */
+    manual: integer("manual").notNull().default(0),
   },
   (t) => [index("activity_sessions_started_idx").on(t.startedAt), index("activity_sessions_ended_idx").on(t.endedAt)],
 );

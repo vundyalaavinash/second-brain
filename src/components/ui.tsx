@@ -123,7 +123,7 @@ type ChipVisualProps = { icon?: LucideIcon; active?: boolean; children?: ReactNo
 type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ChipProps =
-  | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span" })
+  | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span"; ref?: Ref<HTMLButtonElement> })
   | (ChipAnchorProps & ChipVisualProps & { href: string; as?: undefined });
 
 /** A small selectable pill: filters, homes, tags. */

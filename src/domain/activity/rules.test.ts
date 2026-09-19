@@ -43,4 +43,10 @@ describe("activity rules", () => {
     expect(isExcluded(ex, { appId: "com.google.Chrome", appName: "Chrome", title: null, url: "https://example.com" })).toBe(false);
     expect(() => addExclusion(t.db, { kind: "domain", pattern: "*.internal.example" })).toThrow(/already/);
   });
+
+  it("keeps app exclusion pattern case (app bundle ids are case-sensitive)", () => {
+    addExclusion(t.db, { kind: "app", pattern: "com.brave.Browser" });
+    const ex = listExclusions(t.db);
+    expect(isExcluded(ex, { appId: "com.brave.Browser", appName: "Brave", title: null, url: null })).toBe(true);
+  });
 });

@@ -42,7 +42,7 @@ export function Totals({ data }: { data: ActivityDayDTO }) {
 
   const byCategory: Entry[] = data.byCategory.map((e) => {
     const category = e.categoryId !== null ? categoryById.get(e.categoryId) : undefined;
-    return { key: String(e.categoryId ?? "none"), label: category?.name ?? "Uncategorized", ms: e.ms, color: category?.color };
+    return { key: String(e.categoryId ?? "none"), label: category?.name ?? "Other", ms: e.ms, color: category?.color };
   });
   const byApp: Entry[] = data.byApp.map((e) => ({ key: e.appId ?? "unknown", label: e.appName ?? e.appId ?? "Unknown", ms: e.ms }));
   const bySite: Entry[] = data.bySite.map((e) => ({ key: e.key, label: e.label, ms: e.ms }));

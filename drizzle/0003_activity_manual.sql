@@ -1,0 +1,1 @@
+ALTER TABLE `activity_sessions` ADD `manual` integer DEFAULT 0 NOT NULL;

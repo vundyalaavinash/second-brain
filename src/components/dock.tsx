@@ -6,8 +6,7 @@ import { usePathname } from "next/navigation";
 import { Command } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { Icon } from "./icons";
-import { todayLocal } from "./activity/format";
-import type { ActivityDayDTO } from "@/lib/dto";
+import type { HelperStateDTO } from "@/lib/dto";
 
 const POLL_MS = 20_000;
 const ACTIVITY_POLL_MS = 60_000;
@@ -44,9 +43,9 @@ export function Dock() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`/api/activity/day?date=${todayLocal()}`, { cache: "no-store" });
+        const res = await fetch("/api/activity/status", { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as ActivityDayDTO;
+        const data = (await res.json()) as { helper: HelperStateDTO; paused: boolean };
         if (cancelled) return;
         setHelperDown(!data.paused && (!data.helper.lastSeen || Date.now() - Date.parse(data.helper.lastSeen) > HELPER_STALE_MS));
       } catch {

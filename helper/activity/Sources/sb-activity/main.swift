@@ -82,6 +82,10 @@ func excluded(_ s: Sample) -> Bool {
 func flush() {
     while let first = buffer.first {
         guard let (status, body) = client.post("/api/activity/heartbeat", json: first) else { return }
+        if status >= 500 {
+            log("server error \(status), keeping \(buffer.count) heartbeat(s)")
+            return
+        }
         buffer.removeFirst()
         if status == 200, let r = try? JSONDecoder().decode(HeartbeatResponse.self, from: body) {
             exclusions = r.exclusions

@@ -11,7 +11,7 @@ LOG_DIR="$DATA_DIR/logs"
 LOG_FILE="$LOG_DIR/app.log"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
-URL="http://localhost:$PORT"
+URL="http://127.0.0.1:$PORT"
 HELPER_LABEL="com.second-brain.activity"
 HELPER_PLIST="$HOME/Library/LaunchAgents/$HELPER_LABEL.plist"
 HELPER_SRC="$ROOT/helper/activity"
@@ -75,9 +75,12 @@ build_helper() {
     return 1
   fi
   say "building the activity helper"
-  (cd "$HELPER_SRC" && swift build -c release 2>&1 | tail -3)
+  if ! (cd "$HELPER_SRC" && swift build -c release 2>&1 | tail -3); then
+    say "the activity helper did not build; skipping it"
+    return 1
+  fi
   mkdir -p "$(dirname "$HELPER_BIN")"
-  cp "$HELPER_SRC/.build/release/sb-activity" "$HELPER_BIN"
+  cp "$HELPER_SRC/.build/release/sb-activity" "$HELPER_BIN" || return 1
   ok "helper built at $HELPER_BIN"
 }
 
@@ -155,6 +158,8 @@ write_plist() {
     <string>start</string>
     <string>-p</string>
     <string>$PORT</string>
+    <string>-H</string>
+    <string>127.0.0.1</string>
   </array>
   <key>WorkingDirectory</key><string>$ROOT</string>
   <key>EnvironmentVariables</key>
@@ -197,6 +202,7 @@ cmd_setup() {
   npm run build
   mkdir -p "$DATA_DIR/files" "$LOG_DIR"
   download_model
+  helper_stop
   ensure_token
   if build_helper; then write_helper_plist; fi
   if is_loaded; then

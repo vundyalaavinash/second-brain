@@ -110,6 +110,29 @@ describe("session folding", () => {
     expect(() => labelSession(t.db, all()[0].id, { categoryId: 999 })).toThrow(/Category not found/);
   });
 
+  it("falls back to Other when no rule matches", () => {
+    ingestHeartbeat(t.db, { at: at(0), appId: "com.unknown.app", appName: "Mystery", title: "x", url: null });
+    const cats = Object.fromEntries(listCategories(t.db).map((c) => [c.name, c.id]));
+    expect(all()[0].categoryId).toBe(cats.Other);
+  });
+
+  it("keeps a manual label through recategorise, and drops back to rules when cleared", () => {
+    ingestHeartbeat(t.db, chrome(0, "https://example.org"));
+    const cats = Object.fromEntries(listCategories(t.db).map((c) => [c.name, c.id]));
+    expect(all()[0].categoryId).toBe(cats.Browsing);
+    const id = all()[0].id;
+    const labelled = labelSession(t.db, id, { categoryId: cats.Leisure });
+    expect(labelled.categoryId).toBe(cats.Leisure);
+    const r = createRule(t.db, { matchKind: "domain", pattern: "example.org", categoryId: cats.Writing });
+    reorderRules(t.db, [r.id, ...listRules(t.db).filter((x) => x.id !== r.id).map((x) => x.id)]);
+    expect(recategorise(t.db, 30, new Date(T0 + 60_000))).toBe(0);
+    expect(all()[0].categoryId).toBe(cats.Leisure);
+    const cleared = labelSession(t.db, id, { categoryId: null });
+    expect(cleared.categoryId).toBeNull();
+    expect(recategorise(t.db, 30, new Date(T0 + 60_000))).toBe(1);
+    expect(all()[0].categoryId).toBe(cats.Writing);
+  });
+
   it("prunes by retention", () => {
     ingestHeartbeat(t.db, code(0));
     ingestHeartbeat(t.db, { ...code(0), at: new Date(T0 + 100 * 86_400_000).toISOString() });

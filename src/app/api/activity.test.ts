@@ -91,6 +91,25 @@ describe("activity api", () => {
     expect((await getDay()).retentionDays).toBe(30);
   });
 
+  it("drops an excluded heartbeat without writing a session, and rejects a malformed week start", async () => {
+    const before = await getDay();
+    const res = await r.heartbeat.POST(
+      json(
+        "POST",
+        "/api/activity/heartbeat",
+        { at: at(700), appId: "com.google.Chrome", appName: "Chrome", title: "Chase", url: "https://chase.com/login" },
+        TOKEN,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.exclusions.domains).toContain("chase.com");
+    const after = await getDay();
+    expect(after.sessions.length).toBe(before.sessions.length);
+    const badWeek = await r.week.GET(json("GET", "/api/activity/week?start=2026-9-1"));
+    expect(badWeek.status).toBe(400);
+  });
+
   it("replaces calendar events and captures a meeting once", async () => {
     const res = await r.calendar.POST(json("POST", "/api/activity/calendar", { events: [{ externalId: "e1", title: "Interview: Jane", startsAt: at(1000), endsAt: at(2800), attendees: 2, hasCallLink: true }] }, TOKEN));
     expect(res.status).toBe(200);

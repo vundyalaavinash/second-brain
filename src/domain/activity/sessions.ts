@@ -52,9 +52,14 @@ function meetingsCategoryId(db: DB): number | null {
   return listCategories(db).find((c) => c.name === "Meetings")?.id ?? null;
 }
 
+/** No matching rule falls into the catch-all "Other" category rather than staying uncategorised. */
+function otherCategoryId(db: DB): number | null {
+  return listCategories(db).find((c) => c.name === "Other")?.id ?? null;
+}
+
 function open(db: DB, at: string, sample: Sample | null): ActivitySession {
   const domain = sample ? domainOf(sample.url) : null;
-  const categoryId = sample ? evaluateRules(listRules(db), sample) : null;
+  const categoryId = sample ? (evaluateRules(listRules(db), sample) ?? otherCategoryId(db)) : null;
   const meeting = sample && categoryId !== null && categoryId === meetingsCategoryId(db) ? findMeetingFor(db, at) : undefined;
   const row = db
     .insert(activitySessions)
@@ -140,6 +145,7 @@ export function labelSession(db: DB, id: number, patch: { categoryId?: number | 
       throw new ActivityError("Category not found", 404);
     }
     set.categoryId = patch.categoryId;
+    set.manual = patch.categoryId !== null ? 1 : 0;
   }
   if (patch.meetingId !== undefined) {
     if (patch.meetingId !== null && !db.select().from(calendarEvents).where(eq(calendarEvents.id, patch.meetingId)).get()) {
@@ -153,15 +159,24 @@ export function labelSession(db: DB, id: number, patch: { categoryId?: number | 
   return row;
 }
 
-/** Re-evaluate rules for non-afk sessions started in the last `days` days. Returns the number of rows changed. */
+/**
+ * Re-evaluate rules for non-afk, non-manually-labelled sessions started in the last `days` days.
+ * Returns the number of rows changed.
+ */
 export function recategorise(db: DB, days: number, now: Date = new Date()): number {
   const since = new Date(now.getTime() - days * 86_400_000).toISOString();
   const rules = listRules(db);
-  const rows = db.select().from(activitySessions).where(eq(activitySessions.afk, 0)).all().filter((s) => s.startedAt >= since);
+  const otherId = otherCategoryId(db);
+  const rows = db
+    .select()
+    .from(activitySessions)
+    .where(eq(activitySessions.afk, 0))
+    .all()
+    .filter((s) => s.startedAt >= since && s.manual !== 1);
   let changed = 0;
   db.transaction((tx) => {
     for (const s of rows) {
-      const categoryId = evaluateRules(rules, { appId: s.appId, appName: s.appName, title: s.title, url: s.url });
+      const categoryId = evaluateRules(rules, { appId: s.appId, appName: s.appName, title: s.title, url: s.url }) ?? otherId;
       if (categoryId !== s.categoryId) {
         tx.update(activitySessions).set({ categoryId }).where(eq(activitySessions.id, s.id)).run();
         changed++;

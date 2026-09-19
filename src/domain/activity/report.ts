@@ -1,7 +1,10 @@
-import { and, asc, gt, lt } from "drizzle-orm";
+import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents } from "@/db/schema";
-import { dayBounds, findCapturedMeetingItem, isInterview } from "./calendar";
+import { activitySessions, calendarEvents, items } from "@/db/schema";
+import { dayBounds, isInterview } from "./calendar";
+
+/** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
+const CLIP_LOOKBACK_MS = 2 * 86_400_000;
 
 export interface DaySession {
   id: number;
@@ -41,10 +44,11 @@ export interface ActivityDay {
 
 function clippedSessions(db: DB, day: string): DaySession[] {
   const { start, end } = dayBounds(day);
+  const lookback = new Date(Date.parse(start) - CLIP_LOOKBACK_MS).toISOString();
   return db
     .select()
     .from(activitySessions)
-    .where(and(lt(activitySessions.startedAt, end), gt(activitySessions.endedAt, start)))
+    .where(and(lt(activitySessions.startedAt, end), gt(activitySessions.endedAt, start), gte(activitySessions.startedAt, lookback)))
     .orderBy(asc(activitySessions.startedAt))
     .all()
     .map((s) => ({
@@ -89,6 +93,17 @@ export function getDay(db: DB, day: string): ActivityDay {
     .where(and(lt(calendarEvents.startsAt, end), gt(calendarEvents.endsAt, start)))
     .orderBy(asc(calendarEvents.startsAt))
     .all();
+  const eventIds = events.map((ev) => ev.id);
+  const capturedByEvent = new Map<number, number>();
+  if (eventIds.length) {
+    const eventIdExpr = sql<number>`json_extract(${items.meta}, '$.calendarEventId')`;
+    const captured = db
+      .select({ id: items.id, eventId: eventIdExpr })
+      .from(items)
+      .where(inArray(eventIdExpr, eventIds))
+      .all();
+    for (const row of captured) capturedByEvent.set(row.eventId, row.id);
+  }
   const meetings: ActivityMeeting[] = events.map((ev) => ({
     id: ev.id,
     title: ev.title,
@@ -99,7 +114,7 @@ export function getDay(db: DB, day: string): ActivityDay {
     interview: isInterview(ev.title),
     scheduledMs: Date.parse(ev.endsAt) - Date.parse(ev.startsAt),
     actualMs: active.filter((s) => s.meetingId === ev.id).reduce((a, s) => a + ms(s), 0),
-    itemId: findCapturedMeetingItem(db, ev.id)?.id ?? null,
+    itemId: capturedByEvent.get(ev.id) ?? null,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }

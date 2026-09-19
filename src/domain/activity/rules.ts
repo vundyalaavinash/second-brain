@@ -124,7 +124,8 @@ export function listExclusions(db: DB): ActivityExclusion[] {
 }
 
 export function addExclusion(db: DB, input: { kind: ActivityExclusion["kind"]; pattern: string }): ActivityExclusion {
-  const pattern = input.pattern.trim().toLowerCase();
+  const trimmed = input.pattern.trim();
+  const pattern = input.kind === "domain" ? trimmed.toLowerCase() : trimmed;
   if (!pattern) throw new ActivityError("Pattern is required");
   const dup = db
     .select()
