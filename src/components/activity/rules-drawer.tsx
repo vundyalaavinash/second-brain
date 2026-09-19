@@ -191,7 +191,13 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
   return (
     <>
       <button type="button" aria-label="Close rules" onClick={onClose} className="focus-ring fixed inset-0 bg-black/40" />
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Activity rules" className="fixed inset-y-0 right-0 w-[420px] frost p-5 overflow-y-auto z-50">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Activity rules"
+        className="fixed inset-y-0 right-0 w-[600px] max-w-[100vw] frost p-5 overflow-y-auto z-50"
+      >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-medium">Activity rules</h2>
           <IconButton label="Close" icon={X} onClick={onClose} />
@@ -208,8 +214,8 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
               {rules.map((rule, i) => (
                 <Row key={rule.id}>
                   <Chip as="span">{RULE_KIND_LABEL[rule.matchKind]}</Chip>
-                  <span className="flex-1 min-w-0 truncate font-mono text-[12px]">{rule.pattern}</span>
-                  <div className="w-40 shrink-0">
+                  <span className="flex-1 min-w-[120px] truncate font-mono text-[12px]">{rule.pattern}</span>
+                  <div className="w-36 shrink-0">
                     <Select
                       size="sm"
                       className="w-full"
@@ -223,9 +229,11 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
                       ))}
                     </Select>
                   </div>
-                  <IconButton label="Move up" icon={ArrowUp} disabled={i === 0} onClick={() => void moveRule(i, -1)} />
-                  <IconButton label="Move down" icon={ArrowDown} disabled={i === rules.length - 1} onClick={() => void moveRule(i, 1)} />
-                  <IconButton label="Delete rule" icon={Trash2} danger onClick={() => void deleteRule(rule.id)} />
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <IconButton label="Move up" icon={ArrowUp} disabled={i === 0} onClick={() => void moveRule(i, -1)} />
+                    <IconButton label="Move down" icon={ArrowDown} disabled={i === rules.length - 1} onClick={() => void moveRule(i, 1)} />
+                    <IconButton label="Delete rule" icon={Trash2} danger onClick={() => void deleteRule(rule.id)} />
+                  </div>
                 </Row>
               ))}
             </List>
@@ -269,7 +277,7 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
               {exclusions.map((ex) => (
                 <Row key={ex.id}>
                   <Chip as="span">{EXCLUSION_KIND_LABEL[ex.kind]}</Chip>
-                  <span className="flex-1 min-w-0 truncate font-mono text-[12px]">{ex.pattern}</span>
+                  <span className="flex-1 min-w-[120px] truncate font-mono text-[12px]">{ex.pattern}</span>
                   <IconButton label="Remove" icon={Trash2} danger onClick={() => void removeExclusion(ex.id)} />
                 </Row>
               ))}
