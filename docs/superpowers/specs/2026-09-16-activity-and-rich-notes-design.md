@@ -138,7 +138,7 @@ Vitest in `src/domain/activity/*.test.ts` and `src/app/api/activity/*.test.ts` u
 - Tab and Shift+Tab indent and outdent list and task items.
 - Callout serialisation: a blockquote whose first paragraph starts with `[!note]`, `[!tip]`, or `[!warning]`; the editor renders it as a tinted box with an icon and hides the marker. Any other blockquote stays a quote.
 - Tables serialise as GFM pipe tables; cells are inline-only.
-- Unsupported markdown (raw HTML blocks, footnotes) round-trips as a fenced code block labelled `html` or `markdown` so nothing is lost.
+- Unsupported markdown (raw HTML blocks) round-trips as a fenced code block labelled `html` or `markdown` so nothing is lost. Footnotes are not supported.
 
 ### 3.2 Attachments
 

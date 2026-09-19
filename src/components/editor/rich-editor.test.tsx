@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
-import { render, act } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, act, fireEvent, cleanup } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
-import { RichEditor } from "./rich-editor";
+import { RichEditor, RichEditorFallback } from "./rich-editor";
+
+// This file's vitest config has no global `afterEach`, so @testing-library/react's own
+// auto-cleanup never registers; without it a mounted RichEditor's window keydown listener
+// would outlive its test.
+afterEach(cleanup);
+
+function Boom(): never {
+  throw new Error("boom");
+}
 
 async function mount(value: string, onChange = vi.fn()) {
   let editor: Editor | undefined;
@@ -32,5 +41,31 @@ describe("RichEditor", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(editor.getText()).toBe("Two");
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("RichEditorFallback", () => {
+  it("shows a working plain textarea when the wrapped editor throws", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onChange = vi.fn();
+    const { getByPlaceholderText, rerender } = render(
+      <RichEditorFallback value="Hello" onChange={onChange} placeholder="Write something">
+        <Boom />
+      </RichEditorFallback>,
+    );
+    const textarea = getByPlaceholderText("Write something") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Hello");
+
+    fireEvent.change(textarea, { target: { value: "Hello there" } });
+    expect(onChange).toHaveBeenCalledWith("Hello there");
+
+    rerender(
+      <RichEditorFallback value="Replaced" onChange={onChange} placeholder="Write something">
+        <Boom />
+      </RichEditorFallback>,
+    );
+    expect(textarea.value).toBe("Replaced");
+
+    errorSpy.mockRestore();
   });
 });

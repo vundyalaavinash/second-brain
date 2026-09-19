@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Editor } from "@tiptap/core";
 import { ArrowLeft, AtSign, Eye, Pencil, Archive, RotateCcw, Trash2, RefreshCw, ExternalLink, FileText, Plus, Inbox as InboxIcon } from "lucide-react";
 import type { ItemDTO } from "@/lib/dto";
@@ -12,7 +14,11 @@ import { Button, Chip, IconButton, Input } from "./ui";
 import { TypeIcon, StatusDot, TYPE_LABEL, KIND_ICON } from "./type-icon";
 import { ContainerPicker } from "./container-picker";
 import { PeoplePicker } from "./people-picker";
-import { RichEditor } from "./editor/rich-editor";
+
+const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
+  ssr: false,
+  loading: () => <div className="md rich-editor" aria-busy="true" />,
+});
 
 const SAVE_DEBOUNCE_MS = 5000;
 
@@ -299,7 +305,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
 
       {preview ? (
         <div className="md min-h-[240px]">
-          <Markdown>{body || "*Nothing written yet.*"}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{body || "*Nothing written yet.*"}</Markdown>
         </div>
       ) : (
         <RichEditor
@@ -307,6 +313,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           itemId={initial.id}
           onChange={(md) => {
             setBody(md);
+            latest.current = { ...latest.current, body: md };
             markDirty();
           }}
           onBlur={() => {

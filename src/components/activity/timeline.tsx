@@ -91,7 +91,7 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
         <div
           role="dialog"
           aria-label="Relabel session"
-          className="frost rounded-md p-2 absolute z-10 w-64"
+          className="panel rounded-md p-2 absolute z-10 w-64"
           style={{ left: `${Math.min(70, fractionOfDay(open.startedAt, day) * 100)}%`, top: "2.75rem" }}
         >
           <p className="text-[12.5px] font-medium truncate">{open.appName ?? "Away"}</p>

@@ -56,7 +56,7 @@ The interface is dark, dense, and quiet: one accent colour for what is live or s
 
 ### Writing
 
-Notes use a block editor. Type `/` for blocks, markdown shortcuts work as you type, and you can paste or drop images into a saved note. Callouts are `> [!note]`, `> [!tip]`, and `> [!warning]` blockquotes. Everything is stored as markdown, so search and backups see plain text.
+Notes use a block editor. Type `/` for blocks, markdown shortcuts work as you type, and you can paste or drop images into an item's note — containers and people have nowhere to store an image, so use a note there instead. Callouts are `> [!note]`, `> [!tip]`, and `> [!warning]` blockquotes. Footnotes are not supported; the editor escapes their brackets. Everything is stored as markdown, so search and backups see plain text.
 
 ## Activity tracking
 

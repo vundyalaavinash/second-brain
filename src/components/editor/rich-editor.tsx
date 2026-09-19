@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useRef, type ChangeEvent, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useRef, type ChangeEvent, type ReactNode } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { buildExtensions } from "./extensions";
@@ -85,6 +85,18 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     itemIdRef.current = itemId;
   }, [itemId]);
 
+  /** Flush a pending debounced emission immediately: used by ⌘S and unmount so neither
+   * loses the trailing edit the 300ms debounce hasn't emitted yet. */
+  const flush = useCallback(() => {
+    if (!timer.current) return;
+    clearTimeout(timer.current);
+    timer.current = undefined;
+    const md = editorRef.current?.getMarkdown();
+    if (md === undefined || md === lastMarkdown.current) return;
+    lastMarkdown.current = md;
+    onChangeRef.current(md);
+  }, []);
+
   const editor = useEditor({
     extensions: buildExtensions({ placeholder }),
     content: prepareMarkdown(value),
@@ -99,10 +111,12 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
         event.preventDefault();
         return handleFiles(editorRef.current!, files, itemIdRef.current);
       },
-      handleDrop: (_view, event) => {
+      handleDrop: (view, event) => {
         const files = [...(event.dataTransfer?.files ?? [])];
         if (files.length === 0) return false;
         event.preventDefault();
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (coords) editorRef.current?.commands.setTextSelection(coords.pos);
         return handleFiles(editorRef.current!, files, itemIdRef.current);
       },
     },
@@ -155,7 +169,17 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     editor.chain().setMeta("external", true).setContent(prepareMarkdown(value), { contentType: "markdown", emitUpdate: false }).run();
   }, [editor, value]);
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  // Capture phase so this runs before the hosts' own ⌘S keydown listeners (bubble phase),
+  // flushing a pending debounced emission so the host's save reads the latest markdown.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") flush();
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [flush]);
+
+  useEffect(() => () => flush(), [flush]);
 
   function onFileInputChange(event: ChangeEvent<HTMLInputElement>) {
     const files = [...(event.target.files ?? [])];

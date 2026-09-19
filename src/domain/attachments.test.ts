@@ -31,6 +31,17 @@ describe("attachments", () => {
     expect(() => saveAttachment(t.db, { itemId: 999, filename: "x.png", mime: "image/png", bytes: PNG })).toThrow(/not found/);
   });
 
+  it("rejects content that does not match its declared mime type", () => {
+    const item = createItem(t.db, { type: "note", title: "n" });
+    expect(() => saveAttachment(t.db, { itemId: item.id, filename: "x.jpg", mime: "image/jpeg", bytes: PNG })).toThrow(/does not match its type/);
+    try {
+      saveAttachment(t.db, { itemId: item.id, filename: "x.jpg", mime: "image/jpeg", bytes: PNG });
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttachmentError);
+      expect((e as AttachmentError).status).toBe(415);
+    }
+  });
+
   it("sanitises file names", () => {
     const item = createItem(t.db, { type: "note", title: "n" });
     const a = saveAttachment(t.db, { itemId: item.id, filename: "../../evil name?.png", mime: "image/png", bytes: PNG });

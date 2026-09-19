@@ -19,11 +19,11 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
 
   return (
     <BubbleMenu editor={editor} shouldShow={({ editor, from, to }) => from !== to && !editor.isActive("codeBlock")} options={{ placement: "top", offset: 8 }}>
-      <div className="frost rounded-md p-1 flex items-center gap-0.5">
-        <IconButton label="Bold" icon={Bold} active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />
-        <IconButton label="Italic" icon={Italic} active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} />
-        <IconButton label="Code" icon={Code} active={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()} />
-        <IconButton label="Strikethrough" icon={Strikethrough} active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <div className="panel rounded-md p-1 flex items-center gap-0.5">
+        <IconButton label="Bold" icon={Bold} active={editor.isActive("bold")} aria-pressed={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />
+        <IconButton label="Italic" icon={Italic} active={editor.isActive("italic")} aria-pressed={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} />
+        <IconButton label="Code" icon={Code} active={editor.isActive("code")} aria-pressed={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()} />
+        <IconButton label="Strikethrough" icon={Strikethrough} active={editor.isActive("strike")} aria-pressed={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()} />
         <IconButton
           label="Link"
           icon={Link2}

@@ -1,9 +1,10 @@
 import type { Editor } from "@tiptap/core";
+import { ALLOWED_IMAGE_MIMES } from "@/lib/image-mimes";
 
-export const IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+export const IMAGE_MIMES = ALLOWED_IMAGE_MIMES;
 
 export function isImageFile(file: File): boolean {
-  return IMAGE_MIMES.includes(file.type);
+  return (IMAGE_MIMES as readonly string[]).includes(file.type);
 }
 
 export async function uploadImage(file: File, itemId: number): Promise<{ url: string }> {
@@ -41,14 +42,15 @@ export function insertImageWithUpload(editor: Editor, file: File, itemId: number
   editor
     .chain()
     .focus()
-    .insertContent({ type: "paragraph", attrs: { uploadId: id }, content: [{ type: "text", text: "Uploading image" }] })
+    .insertContent({ type: "uploading", attrs: { uploadId: id, name: file.name } })
     .run();
   const replace = (content: object) => {
+    if (editor.isDestroyed) return;
     const { doc } = editor.state;
     let from = -1;
     let to = -1;
     doc.descendants((node, pos) => {
-      if (node.type.name === "paragraph" && node.attrs.uploadId === id) {
+      if (node.type.name === "uploading" && node.attrs.uploadId === id) {
         from = pos;
         to = pos + node.nodeSize;
         return false;
@@ -69,20 +71,22 @@ export function handleFiles(editor: Editor, files: File[], itemId: number | unde
       insertImageWithUpload(editor, file, itemId);
     } else {
       void uploadFileAsItem(file)
-        .then(({ id, title }) =>
+        .then(({ id, title }) => {
+          if (editor.isDestroyed) return;
           editor
             .chain()
             .focus()
             .insertContent({ type: "paragraph", content: [{ type: "text", text: title, marks: [{ type: "link", attrs: { href: `/items/${id}` } }] }] })
-            .run(),
-        )
-        .catch((err: unknown) =>
+            .run();
+        })
+        .catch((err: unknown) => {
+          if (editor.isDestroyed) return;
           editor
             .chain()
             .focus()
             .insertContent({ type: "uploadFailed", attrs: { name: file.name, reason: err instanceof Error ? err.message : "Upload failed" } })
-            .run(),
-        );
+            .run();
+        });
     }
   }
   return true;

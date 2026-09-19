@@ -15,7 +15,13 @@ export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
     const file = attachmentPath(a);
     if (!fs.existsSync(file)) return NextResponse.json({ error: "File missing" }, { status: 404 });
     return new Response(new Uint8Array(fs.readFileSync(file)), {
-      headers: { "content-type": a.mime, "content-length": String(a.bytes), "cache-control": "private, max-age=31536000, immutable" },
+      headers: {
+        "content-type": a.mime,
+        "content-length": String(a.bytes),
+        "cache-control": "private, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        "content-disposition": "inline",
+      },
     });
   } catch (err) {
     return errorResponse(err);

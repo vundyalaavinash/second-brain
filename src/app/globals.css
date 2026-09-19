@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../components/editor/editor.css";
 
 @theme {
   --color-bg: #09090b;
@@ -76,6 +77,14 @@
     border: 1px solid var(--color-line-strong);
     box-shadow: var(--shadow-float);
   }
+}
+
+/* Solid floating chrome for menus that sit over content that must stay legible underneath
+ * them (editor popovers, drawers): same chrome as .frost but opaque instead of blurred. */
+.panel {
+  background: rgba(18, 18, 22, 0.96);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: var(--shadow-float);
 }
 
 /* Focus ring used by every interactive primitive; overrides the global outline fallback. */
@@ -187,5 +196,3 @@
   border-top: 1px solid var(--color-line);
   margin: 1.2em 0;
 }
-
-@import "../components/editor/editor.css";

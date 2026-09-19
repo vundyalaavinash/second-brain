@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Eye, Pencil, Trash2, Save } from "lucide-react";
 import type { PersonDTO } from "@/lib/dto";
 import { Button, Chip, IconButton } from "./ui";
-import { RichEditor } from "./editor/rich-editor";
 
-export function PersonEditor({ initial }: { initial: PersonDTO }) {
+const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
+  ssr: false,
+  loading: () => <div className="md rich-editor" aria-busy="true" />,
+});
+
+export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; onEditorReady?: (editor: Editor) => void }) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
   const [profile, setProfile] = useState(initial.profile);
@@ -18,12 +25,21 @@ export function PersonEditor({ initial }: { initial: PersonDTO }) {
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mirrors item-editor.tsx's `latest`: RichEditor's ⌘S flush (rich-editor.tsx) calls this
+  // host's onChange synchronously before this component's own ⌘S handler runs, but the
+  // resulting setProfile hasn't committed yet — so save() reads a ref instead of state.
+  const latest = useRef({ name, profile });
+
+  useEffect(() => {
+    latest.current = { name, profile };
+  }, [name, profile]);
 
   async function save() {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
+      const { name, profile } = latest.current;
       const res = await fetch(`/api/people/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, profile }) });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
       const p = (await res.json()) as PersonDTO;
@@ -91,17 +107,19 @@ export function PersonEditor({ initial }: { initial: PersonDTO }) {
       />
       {preview ? (
         <div className="md min-h-[200px]">
-          <Markdown>{profile || "*No profile yet.*"}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]}>{profile || "*No profile yet.*"}</Markdown>
         </div>
       ) : (
         <RichEditor
           value={profile}
           onChange={(md) => {
             setProfile(md);
+            latest.current = { ...latest.current, profile: md };
             setDirty(true);
           }}
           placeholder="Who they are, their role, how you work together, open threads."
           className="min-h-[200px]"
+          onReady={onEditorReady}
         />
       )}
     </div>

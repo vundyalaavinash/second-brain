@@ -196,7 +196,7 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Activity rules"
-        className="fixed inset-y-0 right-0 w-[600px] max-w-[100vw] frost p-5 overflow-y-auto z-50"
+        className="fixed inset-y-0 right-0 w-[600px] max-w-[100vw] panel p-5 overflow-y-auto z-50"
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-medium">Activity rules</h2>

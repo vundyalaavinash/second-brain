@@ -47,9 +47,12 @@ export function createBackupHandler(deps: { db: DB }): JobHandler {
     pruneOld(dir, KEEP, NAME_RE);
     const attSrc = attachmentsDir();
     if (fs.existsSync(attSrc)) {
-      fs.cpSync(attSrc, attachmentsBackupPath(), { recursive: true });
-      pruneOld(dir, KEEP, ATTACHMENTS_NAME_RE);
+      const dest = attachmentsBackupPath();
+      // Remove any existing same-day backup first so files deleted since are not left behind by cpSync's merge.
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.cpSync(attSrc, dest, { recursive: true });
     }
+    pruneOld(dir, KEEP, ATTACHMENTS_NAME_RE);
     const pruned = pruneActivity(deps.db, retentionDays(deps.db));
     if (pruned.sessions || pruned.events) console.log(`[backup] pruned ${pruned.sessions} activity session(s), ${pruned.events} event(s)`);
   };

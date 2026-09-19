@@ -98,8 +98,8 @@ export function SlashMenu({ items, selectedIndex, onHover, onSelect }: SlashMenu
           }`}
         >
           <item.icon className="w-4 h-4 shrink-0" aria-hidden />
-          <span className="flex-1 text-[13px]">{item.label}</span>
-          <span className="text-fg-faint text-[11.5px]">{item.hint}</span>
+          <span className="shrink-0 text-[13px]">{item.label}</span>
+          <span className="flex-1 min-w-0 truncate text-fg-faint text-[11.5px]">{item.hint}</span>
         </button>
       ))}
     </div>
@@ -160,7 +160,7 @@ export const SlashCommand = Extension.create({
               currentItems = props.items;
               selectedIndex = 0;
               el = document.createElement("div");
-              el.className = "frost rounded-md p-1 w-64 z-50";
+              el.className = "panel rounded-md p-1 w-72 z-50";
               el.style.position = "absolute";
               el.style.left = "0px";
               el.style.top = "0px";

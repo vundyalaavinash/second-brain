@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } from "lucide-react";
 import type { ContainerDTO, ItemDTO } from "@/lib/dto";
@@ -10,7 +11,11 @@ import { relativeTime, titleCase } from "@/lib/format";
 import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
-import { RichEditor } from "./editor/rich-editor";
+
+const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
+  ssr: false,
+  loading: () => <div className="md rich-editor" aria-busy="true" />,
+});
 
 export function ContainerEditor({ initial, items }: { initial: ContainerDTO; items: ItemDTO[] }) {
   const router = useRouter();

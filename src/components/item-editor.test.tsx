@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
-import { render, act } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, act, cleanup } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { ItemEditor } from "./item-editor";
 import type { ItemDTO } from "@/lib/dto";
@@ -8,6 +8,12 @@ import type { ItemDTO } from "@/lib/dto";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
+
+// This file's vitest config does not enable global test APIs, so @testing-library/react's
+// own auto-cleanup (which detects a global `afterEach`) never registers. Without an explicit
+// cleanup, a mounted RichEditor's window-level keydown listener outlives its test and fires
+// again during a later test in this file, so unmount every render before the next test runs.
+afterEach(cleanup);
 
 const item: ItemDTO = {
   id: 4, type: "note", title: "T", body: "Hello.\n", status: "ready", error: null, sourceUrl: null, filePath: null, mimeType: null,
@@ -43,6 +49,32 @@ describe("ItemEditor with RichEditor", () => {
     expect(patches).toHaveLength(1);
     expect(patches[0]).toMatchObject({ title: "T", tags: [] });
     expect((patches[0] as { body: string }).body).toContain("Hello. World");
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("flushes the pending edit and saves exactly once on ⌘S, before RichEditor's own debounce would fire", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const patches: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") { patches.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ ...item, body: "x" }), { status: 200 }); }
+      return new Response(JSON.stringify(item), { status: 200 });
+    }));
+    let editor: Editor | undefined;
+    render(<ItemEditor initial={item} onEditorReady={(e) => (editor = e)} />);
+    for (let i = 0; i < 20 && !editor; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await act(async () => { editor!.commands.focus("end"); editor!.commands.insertContent(" Saved by cmd s"); });
+    // Dispatch well inside RichEditor's own 300ms emit debounce, so the PATCH can only have
+    // come from the ⌘S flush, not from the debounce elapsing naturally.
+    await act(async () => { vi.advanceTimersByTime(80); });
+    // Dispatched on document (not window) so window's listeners see distinct capture/bubble
+    // phases, the same as a real keydown whose target is a DOM node inside the page.
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    expect(patches).toHaveLength(1);
+    expect((patches[0] as { body: string }).body).toContain("Hello. Saved by cmd s");
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
