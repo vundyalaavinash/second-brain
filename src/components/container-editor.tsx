@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } from "lucide-react";
 import type { ContainerDTO, ItemDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
@@ -17,7 +18,7 @@ const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.Ri
   loading: () => <div className="md rich-editor" aria-busy="true" />,
 });
 
-export function ContainerEditor({ initial, items }: { initial: ContainerDTO; items: ItemDTO[] }) {
+export function ContainerEditor({ initial, items, onEditorReady }: { initial: ContainerDTO; items: ItemDTO[]; onEditorReady?: (editor: Editor) => void }) {
   const router = useRouter();
   const [c, setC] = useState(initial);
   const [name, setName] = useState(initial.name);
@@ -32,12 +33,21 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Mirrors person-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
+  // onChange synchronously before this component's own ⌘S handler runs, but the resulting
+  // setDescription/setNextSteps hasn't committed yet — so save() reads a ref instead of state.
+  const latest = useRef({ name, description, goal, deadline, standard, category, nextSteps });
+
+  useEffect(() => {
+    latest.current = { name, description, goal, deadline, standard, category, nextSteps };
+  }, [name, description, goal, deadline, standard, category, nextSteps]);
 
   async function save() {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
+      const { name, description, goal, deadline, standard, category, nextSteps } = latest.current;
       const body: Record<string, unknown> = { name, description, nextSteps };
       if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
       if (c.kind === "area") body.standard = standard;
@@ -204,10 +214,12 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
         value={description}
         onChange={(md) => {
           setDescription(md);
+          latest.current = { ...latest.current, description: md };
           mark();
         }}
         placeholder="Description"
         className="min-h-[120px]"
+        onReady={onEditorReady}
       />
 
       {c.kind === "project" && (
@@ -217,6 +229,7 @@ export function ContainerEditor({ initial, items }: { initial: ContainerDTO; ite
             value={nextSteps}
             onChange={(md) => {
               setNextSteps(md);
+              latest.current = { ...latest.current, nextSteps: md };
               mark();
             }}
             placeholder="- [ ] First step"
