@@ -1,0 +1,80 @@
+/* Editor chrome. Content typography comes from .md in globals.css. */
+.rich-editor {
+  min-height: 260px;
+  outline: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  transition: border-color 150ms;
+}
+.rich-editor:focus-within,
+.rich-editor:focus {
+  border-color: var(--color-line-strong);
+}
+.rich-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-fg-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.rich-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.rich-editor ul[data-type="taskList"] li {
+  display: flex;
+  gap: 0.5em;
+  align-items: flex-start;
+}
+.rich-editor ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  margin-top: 0.35em;
+}
+.rich-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+}
+.rich-editor th,
+.rich-editor td {
+  border: 1px solid var(--color-line);
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+}
+.rich-editor th {
+  background: var(--color-surface-1);
+  font-weight: 500;
+}
+.rich-editor .selectedCell {
+  background: var(--color-accent-dim);
+}
+.rich-editor img {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--color-line);
+}
+.rich-editor img.ProseMirror-selectednode {
+  outline: 2px solid rgba(76, 201, 255, 0.55);
+}
+.rich-editor .callout {
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 0.6em 0.9em;
+  color: var(--color-fg);
+}
+.rich-editor .callout-note { background: var(--color-accent-dim); border-color: var(--color-accent); }
+.rich-editor .callout-tip { background: rgba(82, 211, 138, 0.14); border-color: var(--color-success); }
+.rich-editor .callout-warning { background: rgba(245, 196, 81, 0.14); border-color: var(--color-warn); }
+.rich-editor .callout-marker {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--color-fg-faint);
+}
+.rich-editor pre code.hljs { background: none; padding: 0; }
+.rich-editor .hljs-keyword, .rich-editor .hljs-tag { color: #c084fc; }
+.rich-editor .hljs-string, .rich-editor .hljs-attr { color: #52d38a; }
+.rich-editor .hljs-number, .rich-editor .hljs-literal { color: #f5c451; }
+.rich-editor .hljs-comment { color: var(--color-fg-faint); }
+.rich-editor .hljs-title, .rich-editor .hljs-function { color: #4cc9ff; }

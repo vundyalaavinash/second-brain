@@ -187,3 +187,5 @@
   border-top: 1px solid var(--color-line);
   margin: 1.2em 0;
 }
+
+@import "../components/editor/editor.css";
