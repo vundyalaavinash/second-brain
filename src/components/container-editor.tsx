@@ -15,6 +15,14 @@ import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
 import { ProgressRing } from "./tasks/progress-ring";
 import { TaskList } from "./tasks/task-list";
+import { LinksSection } from "./containers/links-section";
+import { NotesSection } from "./containers/notes-section";
+
+const ABOUT_LABEL: Record<ContainerDTO["kind"], string> = {
+  project: "About this project",
+  area: "About this area",
+  resource: "About this resource",
+};
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
@@ -51,6 +59,7 @@ export function ContainerEditor({
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(initial.description.trim().length > 0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inflight = useRef<Promise<void> | null>(null);
   // Mirrors item-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
@@ -191,6 +200,38 @@ export function ContainerEditor({
     />
   );
 
+  const aboutDisclosure = (
+    <div className="flex flex-col gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-expanded={aboutOpen}
+        onClick={() => setAboutOpen((v) => !v)}
+        className="self-start"
+      >
+        {ABOUT_LABEL[c.kind]}
+      </Button>
+      {aboutOpen && (
+        <RichEditor
+          value={description}
+          onChange={(md) => {
+            setDescription(md);
+            latest.current = { ...latest.current, description: md };
+            markDirty();
+          }}
+          onBlur={flushOnBlur}
+          placeholder="Description"
+          className="min-h-[120px]"
+          onReady={onEditorReady}
+        />
+      )}
+    </div>
+  );
+
+  const links = items.filter((i) => i.type === "link");
+  const notes = items.filter((i) => i.type === "note");
+  const others = items.filter((i) => i.type !== "link" && i.type !== "note");
+
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <header className="flex items-center gap-2 h-10 mb-3">
@@ -264,6 +305,7 @@ export function ContainerEditor({
               </Button>
             )}
           </div>
+          {aboutDisclosure}
         </section>
       ) : (
         nameInput
@@ -298,35 +340,29 @@ export function ContainerEditor({
         </Select>
       )}
 
-      {(c.kind === "project" || c.kind === "area") && (
-        <section className="flex flex-col gap-2">
-          <SectionHeading count={progress.open}>Tasks</SectionHeading>
-          <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
-        </section>
-      )}
+      {c.kind !== "project" && aboutDisclosure}
+
+      <div className="grid grid-cols-1 min-[1200px]:grid-cols-[3fr_2fr] gap-6">
+        <div className="flex flex-col gap-2">
+          {(c.kind === "project" || c.kind === "area") && (
+            <section className="flex flex-col gap-2">
+              <SectionHeading count={progress.open}>Tasks</SectionHeading>
+              <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
+            </section>
+          )}
+        </div>
+        <div className="flex flex-col gap-6">
+          <LinksSection containerId={c.id} initial={links} />
+          <NotesSection containerId={c.id} initial={notes} />
+        </div>
+      </div>
 
       <section className="flex flex-col gap-2">
-        <SectionHeading>Notes</SectionHeading>
-        <RichEditor
-          value={description}
-          onChange={(md) => {
-            setDescription(md);
-            latest.current = { ...latest.current, description: md };
-            markDirty();
-          }}
-          onBlur={flushOnBlur}
-          placeholder="Description"
-          className="min-h-[120px]"
-          onReady={onEditorReady}
-        />
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <SectionHeading count={items.length}>Items</SectionHeading>
-        {items.length === 0 ? (
+        <SectionHeading count={others.length}>Files and other items</SectionHeading>
+        {others.length === 0 ? (
           <EmptyState
             icon={FileText}
-            text="Nothing filed here yet."
+            text="Nothing else filed here."
             action={
               <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
                 Capture here
@@ -335,7 +371,7 @@ export function ContainerEditor({
           />
         ) : (
           <List>
-            {items.map((item) => (
+            {others.map((item) => (
               <Row key={item.id}>
                 <TypeIcon type={item.type} />
                 <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">

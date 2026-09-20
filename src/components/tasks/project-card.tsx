@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Square } from "lucide-react";
+import { Link2, Square } from "lucide-react";
 import type { ContainerDTO } from "@/lib/dto";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
+import { Chip } from "../ui";
 import { ProgressRing } from "./progress-ring";
 
 export function ProjectCard({ project, today }: { project: ContainerDTO; today: string }) {
@@ -37,6 +38,15 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
       <div className="font-mono text-[11px] text-fg-faint">
         {p.total} task{p.total === 1 ? "" : "s"}, {project.itemCount} item{project.itemCount === 1 ? "" : "s"}
       </div>
+      {project.pinnedLinks.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {project.pinnedLinks.slice(0, 3).map((link) => (
+            <Chip key={link.id} as="span" icon={Link2} className="text-[11px]">
+              {link.domain}
+            </Chip>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }

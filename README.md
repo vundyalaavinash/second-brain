@@ -54,6 +54,10 @@ PARA. Every capture lands in the Inbox. Processing the Inbox files each item int
 
 Tasks belong to a project or an area. Add one from the project or area page: Enter adds it, end with a day like `fri` or a date to set a due date, and start with `!` for high priority. Check tasks off, drag to reorder, and each project card shows its progress and the next open task. The old next-steps checklist was converted into tasks the first time the app started after this update.
 
+### Links and notes
+
+Projects, areas, and resources each have a Links section and a Notes section. Paste a URL to capture a link without leaving the page; pasting one already saved points you to the existing item instead of duplicating it. Star a link to pin it, up to three of which show as domain chips on that project's card. "New note" opens a fresh untitled note for the container. The container's own description lives behind an "About this project/area/resource" disclosure above these sections.
+
 ### Design
 
 The interface is dark, dense, and quiet: one accent colour for what is live or selected, Lucide icons, Geist type, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.
