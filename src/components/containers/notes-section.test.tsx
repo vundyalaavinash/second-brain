@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { NotesSection } from "./notes-section";
+import { NotesSection, previewOf } from "./notes-section";
 import type { ItemDTO } from "@/lib/dto";
 
 const push = vi.fn();
@@ -48,5 +48,24 @@ describe("NotesSection", () => {
     expect(screen.getByText("talked about roadmap")).toBeTruthy();
     rerender(<NotesSection containerId={5} initial={[]} />);
     expect(screen.getByText("No notes yet.")).toBeTruthy();
+  });
+
+  it("hides the new note button when read-only", () => {
+    render(<NotesSection containerId={5} initial={[note]} readOnly />);
+    expect(screen.queryByRole("button", { name: "New note" })).toBeNull();
+  });
+});
+
+describe("previewOf", () => {
+  it("skips a heading that repeats the title and returns the next non-empty line", () => {
+    expect(previewOf("# Title\n\nFirst para", "Title")).toBe("First para");
+  });
+
+  it("strips a task checkbox marker", () => {
+    expect(previewOf("- [ ] Buy milk")).toBe("Buy milk");
+  });
+
+  it("strips a backslash-escaped callout marker", () => {
+    expect(previewOf("> \\[!tip\\]\n> Try it")).toBe("Try it");
   });
 });

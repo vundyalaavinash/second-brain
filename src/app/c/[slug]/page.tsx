@@ -14,7 +14,7 @@ export default async function ContainerPage({ params }: { params: Promise<{ slug
   const db = getDb();
   const c = getContainerBySlug(db, slug);
   if (!c) notFound();
-  const items = listItems(db, { containerId: c.id, limit: 500 }).map((i) => serializeItem(db, i));
+  const items = listItems(db, { containerId: c.id, includeArchived: c.status === "archived", limit: 500 }).map((i) => serializeItem(db, i));
   const tasks = listTasks(db, { containerId: c.id, status: "all" })
     .filter((t) => t.status !== "dropped")
     .map(serializeTask);

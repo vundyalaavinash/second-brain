@@ -10,19 +10,45 @@ import { Button, List, Row, SectionHeading } from "../ui";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-function preview(body: string): string {
-  const line = body
+// Leading list/heading/quote markers ("# ", "- ", "* ", "> ", any run of them).
+const LEADING_MARKERS = /^[#*>\-\s]+/;
+// A task checkbox ("[ ]", "[x]", "[X]") or a callout tag ("[!note]", "[!tip]", "[!warning]"),
+// optionally backslash-escaped on either bracket (the rich editor escapes brackets in markdown).
+const TASK_OR_CALLOUT_MARKER = /^\\?\[(?:[ xX]|!\w+)\\?\]\\?\s*/;
+
+function stripMarkers(line: string): string {
+  return line.replace(LEADING_MARKERS, "").replace(TASK_OR_CALLOUT_MARKER, "").trim();
+}
+
+/** The first non-empty line of `body`, markers stripped, that isn't just a repeat of `title`
+ * (case-insensitive, trimmed) — so a heading matching the item's own title doesn't show twice. */
+export function previewOf(body: string, title: string = ""): string {
+  const normalizedTitle = title.trim().toLowerCase();
+  const lines = body
     .split("\n")
     .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return line ? line.replace(/^[#*>\-\s]+/, "") : "";
+    .filter((l) => l.length > 0);
+  for (const line of lines) {
+    const stripped = stripMarkers(line);
+    if (!stripped || stripped.toLowerCase() === normalizedTitle) continue;
+    return stripped;
+  }
+  return "";
 }
 
 function byUpdated(a: ItemDTO, b: ItemDTO): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
-export function NotesSection({ containerId, initial }: { containerId: number; initial: ItemDTO[] }) {
+export function NotesSection({
+  containerId,
+  initial,
+  readOnly = false,
+}: {
+  containerId: number;
+  initial: ItemDTO[];
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const submittingRef = useRef(false);
 
@@ -49,9 +75,11 @@ export function NotesSection({ containerId, initial }: { containerId: number; in
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <SectionHeading count={initial.length}>Notes</SectionHeading>
-        <Button variant="secondary" size="sm" icon={Plus} onClick={() => void addNote()}>
-          New note
-        </Button>
+        {!readOnly && (
+          <Button variant="secondary" size="sm" icon={Plus} onClick={() => void addNote()}>
+            New note
+          </Button>
+        )}
       </div>
       {sorted.length === 0 ? (
         <p className="text-[13px] text-fg-faint">No notes yet.</p>
@@ -63,7 +91,7 @@ export function NotesSection({ containerId, initial }: { containerId: number; in
               <Link href={`/items/${item.id}`} className="focus-ring shrink-0 max-w-[45%] truncate text-[13.5px] hover:text-accent">
                 {item.title}
               </Link>
-              <span className="flex-1 truncate text-[12px] text-fg-faint">{preview(item.body)}</span>
+              <span className="flex-1 truncate text-[12px] text-fg-faint">{previewOf(item.body, item.title)}</span>
               <span className="font-mono text-[11px] text-fg-faint shrink-0">{relativeTime(item.updatedAt)}</span>
             </Row>
           ))}

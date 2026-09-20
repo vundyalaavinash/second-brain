@@ -35,9 +35,6 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
           <span className="text-fg-faint">No open tasks</span>
         )}
       </div>
-      <div className="font-mono text-[11px] text-fg-faint">
-        {p.total} task{p.total === 1 ? "" : "s"}, {project.itemCount} item{project.itemCount === 1 ? "" : "s"}
-      </div>
       {project.pinnedLinks.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
           {project.pinnedLinks.slice(0, 3).map((link) => (
@@ -47,6 +44,9 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
           ))}
         </div>
       )}
+      <div className="font-mono text-[11px] text-fg-faint">
+        {p.total} task{p.total === 1 ? "" : "s"}, {project.itemCount} item{project.itemCount === 1 ? "" : "s"}
+      </div>
     </Link>
   );
 }

@@ -352,8 +352,8 @@ export function ContainerEditor({
           )}
         </div>
         <div className="flex flex-col gap-6">
-          <LinksSection containerId={c.id} initial={links} />
-          <NotesSection containerId={c.id} initial={notes} />
+          <LinksSection containerId={c.id} initial={links} readOnly={initial.status === "archived"} />
+          <NotesSection containerId={c.id} initial={notes} readOnly={initial.status === "archived"} />
         </div>
       </div>
 

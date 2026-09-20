@@ -94,4 +94,12 @@ describe("LinksSection", () => {
     rows = screen.getAllByRole("listitem");
     expect(rows[0].textContent).toContain("example.com/post");
   });
+
+  it("hides the paste box and disables star buttons when read-only", () => {
+    render(<LinksSection containerId={5} initial={[link]} readOnly />);
+    expect(screen.queryByPlaceholderText("Paste a link")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add link" })).toBeNull();
+    const star = screen.getByRole("button", { name: "Star" }) as HTMLButtonElement;
+    expect(star.disabled).toBe(true);
+  });
 });

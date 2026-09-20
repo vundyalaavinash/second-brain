@@ -22,7 +22,15 @@ function bySort(a: ItemDTO, b: ItemDTO): number {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
-export function LinksSection({ containerId, initial }: { containerId: number; initial: ItemDTO[] }) {
+export function LinksSection({
+  containerId,
+  initial,
+  readOnly = false,
+}: {
+  containerId: number;
+  initial: ItemDTO[];
+  readOnly?: boolean;
+}) {
   const [links, setLinks] = useState<ItemDTO[]>(initial);
   const [url, setUrl] = useState("");
   const [duplicateId, setDuplicateId] = useState<number | null>(null);
@@ -78,24 +86,26 @@ export function LinksSection({ containerId, initial }: { containerId: number; in
   return (
     <section className="flex flex-col gap-2">
       <SectionHeading count={links.length}>Links</SectionHeading>
-      <div className="flex items-center gap-2">
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void addLink();
-            }
-          }}
-          placeholder="Paste a link"
-          aria-label="Paste a link"
-          size="sm"
-        />
-        <Button variant="primary" size="sm" icon={Plus} onClick={() => void addLink()}>
-          Add link
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void addLink();
+              }
+            }}
+            placeholder="Paste a link"
+            aria-label="Paste a link"
+            size="sm"
+          />
+          <Button variant="primary" size="sm" icon={Plus} onClick={() => void addLink()}>
+            Add link
+          </Button>
+        </div>
+      )}
       {duplicateId !== null && (
         <p className="text-[12.5px] text-fg-muted">
           Already captured.{" "}
@@ -121,6 +131,7 @@ export function LinksSection({ containerId, initial }: { containerId: number; in
                 icon={Star}
                 active={item.pinned}
                 aria-pressed={item.pinned}
+                disabled={readOnly}
                 onClick={() => toggleStar(item)}
               />
             </Row>
