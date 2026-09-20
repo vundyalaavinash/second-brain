@@ -56,7 +56,7 @@ export function CompleteProjectDialog({ container, onDone, onClose }: Props) {
         <h2 className="text-[16px] font-medium">Complete “{container.name}”</h2>
         <p className="text-[13px] text-fg-muted">Archiving this project. Its {container.itemCount} items can:</p>
         <Button variant="secondary" icon={Archive} disabled={busy} onClick={() => void archive()} className="w-full justify-start h-9">
-          Archive them with it
+          Archive them with it (open tasks are dropped)
         </Button>
         <Button variant="secondary" icon={Layers} disabled={busy} onClick={() => setPicker("area")} className="w-full justify-start h-9">
           Move them to an area

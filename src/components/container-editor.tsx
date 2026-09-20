@@ -5,20 +5,35 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/core";
-import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText } from "lucide-react";
-import type { ContainerDTO, ItemDTO } from "@/lib/dto";
+import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText, CalendarDays } from "lucide-react";
+import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
-import { relativeTime, titleCase } from "@/lib/format";
-import { Button, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
+import { relativeTime, titleCase, formatDate } from "@/lib/format";
+import { deadlineLabel } from "@/lib/deadline";
+import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
+import { ProgressRing } from "./tasks/progress-ring";
+import { TaskList } from "./tasks/task-list";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
   loading: () => <div className="md rich-editor" aria-busy="true" />,
 });
 
-export function ContainerEditor({ initial, items, onEditorReady }: { initial: ContainerDTO; items: ItemDTO[]; onEditorReady?: (editor: Editor) => void }) {
+export function ContainerEditor({
+  initial,
+  items,
+  tasks,
+  today,
+  onEditorReady,
+}: {
+  initial: ContainerDTO;
+  items: ItemDTO[];
+  tasks: TaskDTO[];
+  today: string;
+  onEditorReady?: (editor: Editor) => void;
+}) {
   const router = useRouter();
   const [c, setC] = useState(initial);
   const [name, setName] = useState(initial.name);
@@ -27,6 +42,7 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
   const [deadline, setDeadline] = useState(initial.deadline ?? "");
   const [standard, setStandard] = useState(initial.standard);
   const [category, setCategory] = useState<ResourceCategory>(initial.category ?? "other");
+  const [progress, setProgress] = useState<ProgressDTO>(initial.progress);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +121,18 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
   const mark = () => setDirty(true);
   const saveText = saving ? "Saving" : dirty ? "Unsaved, ⌘S to save" : "";
 
+  const nameInput = (
+    <input
+      value={name}
+      onChange={(e) => {
+        setName(e.target.value);
+        mark();
+      }}
+      className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
+      placeholder="Name"
+    />
+  );
+
   return (
     <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
       <header className="flex items-center gap-2 h-10 mb-3">
@@ -122,11 +150,6 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
         <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
           Capture here
         </Button>
-        {c.status === "active" && c.kind === "project" && (
-          <Button variant="primary" icon={Check} onClick={() => setComplete(true)}>
-            Complete
-          </Button>
-        )}
         {(c.status === "archived" || c.kind !== "project") && (
           <IconButton
             label={c.status === "archived" ? "Restore" : `Archive ${c.kind}`}
@@ -150,38 +173,45 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
 
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
 
-      <input
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-          mark();
-        }}
-        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
-        placeholder="Name"
-      />
-
-      {c.kind === "project" && (
-        <div className="grid grid-cols-[1fr_auto] gap-3">
-          <Input
+      {c.kind === "project" ? (
+        <section className="rounded-lg border border-line bg-surface-1 p-6 flex flex-col gap-4">
+          {nameInput}
+          <input
             value={goal}
             onChange={(e) => {
               setGoal(e.target.value);
               mark();
             }}
             placeholder="What does done look like?"
+            className="text-[15px] text-fg-muted bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
           />
-          <Input
-            type="date"
-            value={deadline}
-            onChange={(e) => {
-              setDeadline(e.target.value);
-              mark();
-            }}
-            size="sm"
-            className="font-mono"
-          />
-        </div>
+          <div className="flex items-center gap-5 flex-wrap">
+            <div className="flex items-center gap-3">
+              <ProgressRing percent={progress.percent} size={56} stroke={4} />
+              <div className="text-[13px] text-fg-muted">
+                <span className="font-mono text-fg">{progress.done}</span> of <span className="font-mono text-fg">{progress.total}</span> done
+              </div>
+            </div>
+            <DeadlineControl
+              value={deadline}
+              today={today}
+              onChange={(v) => {
+                setDeadline(v);
+                mark();
+              }}
+            />
+            <span className="flex-1" />
+            {c.status === "active" && (
+              <Button variant="primary" icon={Check} onClick={() => setComplete(true)}>
+                Complete
+              </Button>
+            )}
+          </div>
+        </section>
+      ) : (
+        nameInput
       )}
+
       {c.kind === "area" && (
         <Input
           value={standard}
@@ -209,17 +239,27 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
         </Select>
       )}
 
-      <RichEditor
-        value={description}
-        onChange={(md) => {
-          setDescription(md);
-          latest.current = { ...latest.current, description: md };
-          mark();
-        }}
-        placeholder="Description"
-        className="min-h-[120px]"
-        onReady={onEditorReady}
-      />
+      {(c.kind === "project" || c.kind === "area") && (
+        <section className="flex flex-col gap-2">
+          <SectionHeading count={progress.open}>Tasks</SectionHeading>
+          <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <SectionHeading>Notes</SectionHeading>
+        <RichEditor
+          value={description}
+          onChange={(md) => {
+            setDescription(md);
+            latest.current = { ...latest.current, description: md };
+            mark();
+          }}
+          placeholder="Description"
+          className="min-h-[120px]"
+          onReady={onEditorReady}
+        />
+      </section>
 
       <section className="flex flex-col gap-2">
         <SectionHeading count={items.length}>Items</SectionHeading>
@@ -260,5 +300,28 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
         />
       )}
     </div>
+  );
+}
+
+function DeadlineControl({ value, today, onChange }: { value: string; today: string; onChange: (value: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <Input
+        type="date"
+        size="sm"
+        autoFocus
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => setEditing(false)}
+        className="font-mono w-40"
+      />
+    );
+  }
+  const label = value ? `Due ${formatDate(`${value}T00:00:00`)}, ${deadlineLabel(value, today).text}` : "Set a deadline";
+  return (
+    <Chip icon={CalendarDays} onClick={() => setEditing(true)}>
+      {label}
+    </Chip>
   );
 }

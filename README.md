@@ -50,6 +50,10 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 
 PARA. Every capture lands in the Inbox. Processing the Inbox files each item into exactly one home: a **Project** (an outcome with a deadline), an **Area** (a responsibility with a standard), or a **Resource** (a topic, grouped by category). Anything inactive is **Archived**, and completing a project asks where its items should go. People are a light CRM: mention `@slug` in a note to link it to a person.
 
+### Tasks
+
+Tasks belong to a project or an area. Add one from the project or area page: Enter adds it, end with a day like `fri` or a date to set a due date, and start with `!` for high priority. Check tasks off, drag to reorder, and each project card shows its progress and the next open task. The old next-steps checklist was converted into tasks the first time the app started after this update.
+
 ### Design
 
 The interface is dark, dense, and quiet: one accent colour for what is live or selected, Lucide icons, Geist type, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.

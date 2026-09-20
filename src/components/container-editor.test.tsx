@@ -62,7 +62,7 @@ describe("ContainerEditor with RichEditor", () => {
       }),
     );
     let editor: Editor | undefined;
-    render(<ContainerEditor initial={container} items={[]} onEditorReady={(e) => (editor = e)} />);
+    render(<ContainerEditor initial={container} items={[]} tasks={[]} today="2026-09-16" onEditorReady={(e) => (editor = e)} />);
     await waitForEditor(() => !!editor);
     expect(patches).toHaveLength(0);
     await act(async () => {
