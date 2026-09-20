@@ -186,7 +186,7 @@ export function InboxProcessor() {
   const preview = current ? (current.body || current.extractedText).replace(/\s+/g, " ").trim().slice(0, 600) : "";
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <PageHeader
         title="Inbox"
         meta={loaded ? (items.length ? `${index + 1} of ${total} to process` : "Everything is filed.") : "Loading"}

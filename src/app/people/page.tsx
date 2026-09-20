@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default function PeoplePage() {
   const people = listPeople(getDb()).map((p) => serializePerson(p));
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-5">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader
         title="People"
         meta={

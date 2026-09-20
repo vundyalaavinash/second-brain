@@ -1,6 +1,7 @@
 /* Editor chrome. Content typography comes from .md in globals.css. */
 .rich-editor {
   min-height: 260px;
+  max-width: 80rem;
   outline: none;
   padding: 12px 16px;
   border-radius: 8px;

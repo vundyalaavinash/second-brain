@@ -199,7 +199,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <header className="flex items-center gap-2 h-10 mb-3">
         <Link href="/library" className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
           <ArrowLeft className="w-3.5 h-3.5" />

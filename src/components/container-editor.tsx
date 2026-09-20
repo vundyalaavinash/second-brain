@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/core";
-import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText, CalendarDays } from "lucide-react";
+import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarDays } from "lucide-react";
 import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
@@ -20,6 +20,10 @@ const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.Ri
   ssr: false,
   loading: () => <div className="md rich-editor" aria-busy="true" />,
 });
+
+const SAVE_DEBOUNCE_MS = 2000;
+
+type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 export function ContainerEditor({
   initial,
@@ -43,54 +47,102 @@ export function ContainerEditor({
   const [standard, setStandard] = useState(initial.standard);
   const [category, setCategory] = useState<ResourceCategory>(initial.category ?? "other");
   const [progress, setProgress] = useState<ProgressDTO>(initial.progress);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [save, setSave] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Mirrors person-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const inflight = useRef<Promise<void> | null>(null);
+  // Mirrors item-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
   // onChange synchronously before this component's own ⌘S handler runs, but the resulting
-  // setDescription hasn't committed yet — so save() reads a ref instead of state.
+  // setDescription hasn't committed yet — so persist() reads a ref instead of state.
   const latest = useRef({ name, description, goal, deadline, standard, category });
+  // `useRouter()` isn't guaranteed reference-stable across renders; keeping it out of persist's
+  // dependency array keeps persist's identity stable too, so the unmount-flush effect below
+  // doesn't tear down and fire a false flush on every render.
+  const routerRef = useRef(router);
 
   useEffect(() => {
     latest.current = { name, description, goal, deadline, standard, category };
   }, [name, description, goal, deadline, standard, category]);
 
-  async function save() {
-    if (saving) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const { name, description, goal, deadline, standard, category } = latest.current;
-      const body: Record<string, unknown> = { name, description };
-      if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
-      if (c.kind === "area") body.standard = standard;
-      if (c.kind === "resource") body.category = category;
-      const res = await fetch(`/api/containers/${c.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
-      const updated = (await res.json()) as ContainerDTO;
-      setC(updated);
-      setDirty(false);
-      if (updated.slug !== c.slug) router.replace(`/c/${updated.slug}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
+
+  const persist = useCallback(
+    (fromUnmount = false): Promise<void> => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = undefined;
+      }
+      if (inflight.current) return inflight.current;
+      const run = (async () => {
+        setSave("saving");
+        try {
+          const { name, description, goal, deadline, standard, category } = latest.current;
+          const body: Record<string, unknown> = { name, description };
+          if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
+          if (c.kind === "area") body.standard = standard;
+          if (c.kind === "resource") body.category = category;
+          const res = await fetch(`/api/containers/${c.id}`, {
+            method: "PATCH",
+            keepalive: fromUnmount,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
+          const updated = (await res.json()) as ContainerDTO;
+          setC(updated);
+          setSave("saved");
+          if (updated.slug !== c.slug) routerRef.current.replace(`/c/${updated.slug}`);
+        } catch {
+          setSave("error");
+        } finally {
+          inflight.current = null;
+        }
+      })();
+      inflight.current = run;
+      return run;
+    },
+    [c.id, c.kind, c.slug],
+  );
+
+  function markDirty() {
+    setSave("dirty");
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void persist(), SAVE_DEBOUNCE_MS);
   }
+
+  function flushOnBlur() {
+    if (save === "dirty") void persist();
+  }
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        void persist(true);
+      }
+    };
+  }, [persist]);
+
+  useEffect(() => {
+    if (save !== "saved") return;
+    const id = setTimeout(() => setSave("idle"), 2000);
+    return () => clearTimeout(id);
+  }, [save]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void save();
+        void persist();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, description, goal, deadline, standard, category, c.id, c.kind, saving]);
+  }, [persist]);
 
   async function archiveOrRestore() {
     setError(null);
@@ -118,23 +170,29 @@ export function ContainerEditor({
     router.push(`/${c.kind}s`);
   }
 
-  const mark = () => setDirty(true);
-  const saveText = saving ? "Saving" : dirty ? "Unsaved, ⌘S to save" : "";
+  const saveLabel: Record<SaveState, string> = {
+    idle: "",
+    dirty: "Unsaved, autosaves in 2 s",
+    saving: "Saving",
+    saved: "Saved",
+    error: "Could not save",
+  };
 
   const nameInput = (
     <input
       value={name}
       onChange={(e) => {
         setName(e.target.value);
-        mark();
+        markDirty();
       }}
+      onBlur={flushOnBlur}
       className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
       placeholder="Name"
     />
   );
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <header className="flex items-center gap-2 h-10 mb-3">
         <Link href={`/${c.kind}s`} className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -145,7 +203,7 @@ export function ContainerEditor({
           {KIND_LABEL[c.kind]}
         </span>
         {c.status === "archived" && <span className="text-[11.5px] text-warn">Archived</span>}
-        <span className={`text-[12px] ${error ? "text-danger" : "text-fg-faint"}`}>{saveText}</span>
+        <span className={`text-[12px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
         <span className="flex-1" />
         <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
           Capture here
@@ -166,9 +224,6 @@ export function ContainerEditor({
             onBlur={() => setConfirmDelete(false)}
           />
         )}
-        <Button variant="primary" icon={Save} disabled={!dirty || saving} onClick={() => void save()}>
-          Save changes
-        </Button>
       </header>
 
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
@@ -180,8 +235,9 @@ export function ContainerEditor({
             value={goal}
             onChange={(e) => {
               setGoal(e.target.value);
-              mark();
+              markDirty();
             }}
+            onBlur={flushOnBlur}
             placeholder="What does done look like?"
             className="text-[15px] text-fg-muted bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
           />
@@ -197,8 +253,9 @@ export function ContainerEditor({
               today={today}
               onChange={(v) => {
                 setDeadline(v);
-                mark();
+                markDirty();
               }}
+              onBlur={flushOnBlur}
             />
             <span className="flex-1" />
             {c.status === "active" && (
@@ -217,8 +274,9 @@ export function ContainerEditor({
           value={standard}
           onChange={(e) => {
             setStandard(e.target.value);
-            mark();
+            markDirty();
           }}
+          onBlur={flushOnBlur}
           placeholder="What does good look like here?"
         />
       )}
@@ -227,8 +285,9 @@ export function ContainerEditor({
           value={category}
           onChange={(e) => {
             setCategory(e.target.value as ResourceCategory);
-            mark();
+            markDirty();
           }}
+          onBlur={flushOnBlur}
           className="max-w-xs"
         >
           {RESOURCE_CATEGORIES.map((cat) => (
@@ -253,8 +312,9 @@ export function ContainerEditor({
           onChange={(md) => {
             setDescription(md);
             latest.current = { ...latest.current, description: md };
-            mark();
+            markDirty();
           }}
+          onBlur={flushOnBlur}
           placeholder="Description"
           className="min-h-[120px]"
           onReady={onEditorReady}
@@ -303,7 +363,17 @@ export function ContainerEditor({
   );
 }
 
-function DeadlineControl({ value, today, onChange }: { value: string; today: string; onChange: (value: string) => void }) {
+function DeadlineControl({
+  value,
+  today,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  today: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   if (editing) {
     return (
@@ -313,7 +383,10 @@ function DeadlineControl({ value, today, onChange }: { value: string; today: str
         autoFocus
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={() => setEditing(false)}
+        onBlur={() => {
+          setEditing(false);
+          onBlur?.();
+        }}
         className="font-mono w-40"
       />
     );

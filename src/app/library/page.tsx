@@ -53,7 +53,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     return `/library${s ? `?${s}` : ""}`;
   };
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-5">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader title="Library" meta={<span className="font-mono">{items.length} shown</span>} />
 
       <div className="flex flex-wrap gap-2 items-center">

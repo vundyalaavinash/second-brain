@@ -14,7 +14,7 @@ export default function ResourcesPage() {
   const resources = serializeContainers(db, listContainers(db, { kind: "resource", status: "active" }));
   const groups = RESOURCE_CATEGORIES.map((cat) => ({ cat, list: resources.filter((r) => (r.category ?? "other") === cat) })).filter((g) => g.list.length > 0);
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-5">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader
         title="Resources"
         meta={

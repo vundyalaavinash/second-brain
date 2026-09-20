@@ -16,7 +16,7 @@ export default function ArchivePage() {
   const containers = serializeContainers(db, listContainers(db, { status: "archived" }));
   const items = listItems(db, { onlyArchived: true, limit: 500 }).map((i) => serializeItem(db, i));
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-6">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-6">
       <PageHeader
         title="Archive"
         meta={

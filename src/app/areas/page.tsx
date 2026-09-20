@@ -11,7 +11,7 @@ export default function AreasPage() {
   const db = getDb();
   const areas = serializeContainers(db, listContainers(db, { kind: "area", status: "active" }));
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-5">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader
         title="Areas"
         meta={

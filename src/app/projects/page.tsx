@@ -20,7 +20,7 @@ export default function ProjectsPage() {
     return days >= 0 && days <= 7;
   }).length;
   return (
-    <div className="w-full max-w-5xl mx-auto px-6 pt-8 flex flex-col gap-5">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader
         title="Projects"
         meta={
@@ -33,7 +33,7 @@ export default function ProjectsPage() {
       {projects.length === 0 ? (
         <EmptyState icon={KIND_ICON.project} text="No projects yet. A project is an outcome with a deadline." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5 gap-4">
           {projects.map((p) => (
             <ProjectCard key={p.id} project={p} today={today} />
           ))}

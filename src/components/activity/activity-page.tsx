@@ -140,7 +140,7 @@ export function ActivityPage() {
   const nextDisabled = view === "week" ? weekStart >= mondayOf(todayLocal()) : day >= todayLocal();
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-6 flex flex-col gap-6">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-6">
       <PageHeader
         title={view === "week" ? `Week of ${formatDayHeading(weekStart)}` : formatDayHeading(day)}
         meta={

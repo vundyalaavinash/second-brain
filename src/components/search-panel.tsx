@@ -111,7 +111,7 @@ export function SearchPanel() {
   }, [loading, q, visible.length]);
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 flex flex-col gap-4">
+    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <PageHeader title="Search" meta={status} />
 
       <div className="flex items-center gap-3 h-12 px-4 rounded-lg border border-line bg-surface-1 focus-within:border-line-strong transition-colors duration-150">

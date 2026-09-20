@@ -18,7 +18,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
   if (!person) notFound();
   const timeline = getPersonTimeline(db, person.id).map((i) => serializeItem(db, i));
   return (
-    <div className="w-full max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-8">
+    <div className="w-full px-6 lg:px-8 pt-8 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-8">
       <PersonEditor key={person.id} initial={serializePerson(person, timeline.length)} />
       <section className="flex flex-col gap-2">
         <SectionHeading count={timeline.length}>Timeline</SectionHeading>
