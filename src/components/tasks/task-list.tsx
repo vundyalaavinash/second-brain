@@ -45,6 +45,7 @@ export function TaskList({ containerId, initialTasks, initialProgress, onProgres
   const [draft, setDraft] = useState("");
   const [dragId, setDragId] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
   const open = tasks.filter((t) => t.status === "open").sort(bySortOrder);
   const done = tasks.filter((t) => t.status === "done");
@@ -83,21 +84,27 @@ export function TaskList({ containerId, initialTasks, initialProgress, onProgres
     if (!value) return;
     const parsed = quickParse(value);
     if (!parsed.title) return;
-    const body: Record<string, unknown> = { title: parsed.title, containerId };
-    if (parsed.priority === "high") body.priority = "high";
-    if (parsed.dueDate) body.dueDate = parsed.dueDate;
-    const res = await fetch("/api/tasks", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
-    if (!res.ok) {
-      setError(SAVE_ERROR);
-      return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      const body: Record<string, unknown> = { title: parsed.title, containerId };
+      if (parsed.priority === "high") body.priority = "high";
+      if (parsed.dueDate) body.dueDate = parsed.dueDate;
+      const res = await fetch("/api/tasks", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
+      if (!res.ok) {
+        setError(SAVE_ERROR);
+        return;
+      }
+      const task = (await res.json()) as TaskDTO;
+      const next = [...tasks, task];
+      setTasks(next);
+      setError(null);
+      setDraft("");
+      inputRef.current?.focus();
+      publishProgress(progressFrom(next));
+    } finally {
+      submittingRef.current = false;
     }
-    const task = (await res.json()) as TaskDTO;
-    const next = [...tasks, task];
-    setTasks(next);
-    setError(null);
-    setDraft("");
-    inputRef.current?.focus();
-    publishProgress(progressFrom(next));
   }
 
   function toggle(task: TaskDTO) {

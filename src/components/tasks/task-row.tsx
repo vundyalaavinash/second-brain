@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
+import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
 import type { TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
@@ -43,8 +45,9 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
   const [dueOpen, setDueOpen] = useState(false);
   const [dueDraft, setDueDraft] = useState(task.dueDate ?? "");
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
   const done = task.status === "done";
   const due = task.dueDate ? deadlineLabel(task.dueDate, today) : null;
 
@@ -53,13 +56,30 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
     menuButtonRef.current?.focus();
   }
 
+  // Positions the portalled menu against its trigger button with floating-ui, same as
+  // editor/slash-menu.tsx, and keeps it aligned on scroll/resize while open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const buttonEl = menuButtonRef.current;
+    const menuEl = menuPanelRef.current;
+    if (!buttonEl || !menuEl) return;
+    return autoUpdate(buttonEl, menuEl, () => {
+      void computePosition(buttonEl, menuEl, { placement: "bottom-end", middleware: [offset(4), flip(), shift({ padding: 8 })] }).then(({ x, y }) => {
+        setMenuPos({ top: y, left: x });
+      });
+    });
+  }, [menuOpen]);
+
   useEffect(() => {
     if (!menuOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") closeMenu();
     }
     function onPointerDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      if (menuButtonRef.current?.contains(target)) return;
+      if (menuPanelRef.current?.contains(target)) return;
+      setMenuOpen(false);
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointerDown);
@@ -177,97 +197,105 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
           Reopen
         </Button>
       ) : (
-        <div className="relative shrink-0" ref={menuRef}>
+        <>
           <IconButton
             label="Task actions"
             icon={MoreHorizontal}
+            className="shrink-0"
             onClick={(e) => {
               menuButtonRef.current = e.currentTarget;
               setMenuOpen((v) => !v);
             }}
           />
-          {menuOpen && (
-            <div className="panel absolute right-0 top-full mt-1 rounded-md p-1 flex flex-col gap-0.5 w-48 z-50">
-              <button
-                type="button"
-                className={MENU_ITEM}
-                onClick={() => {
-                  closeMenu();
-                  startEditTitle();
-                }}
+          {menuOpen &&
+            createPortal(
+              <div
+                ref={menuPanelRef}
+                role="menu"
+                className="panel rounded-md p-1 flex flex-col gap-0.5 w-48 z-50"
+                style={{ position: "absolute", top: menuPos.top, left: menuPos.left }}
               >
-                Rename
-              </button>
-              <button
-                type="button"
-                className={MENU_ITEM}
-                onClick={() => {
-                  closeMenu();
-                  setDueDraft(task.dueDate ?? "");
-                  setDueOpen(true);
-                }}
-              >
-                Set due date
-              </button>
-              <div className="flex items-center gap-1 px-2 py-1">
-                <span className="text-[11px] text-fg-faint mr-0.5">Priority</span>
-                {(["low", "normal", "high"] as const).map((p) => (
-                  <Chip
-                    key={p}
-                    active={task.priority === p}
-                    aria-pressed={task.priority === p}
-                    onClick={() => {
-                      closeMenu();
-                      onPriority(p);
-                    }}
-                  >
-                    {titleCase(p)}
-                  </Chip>
-                ))}
-              </div>
-              <button
-                type="button"
-                className={MENU_ITEM}
-                onClick={() => {
-                  closeMenu();
-                  onMove("up");
-                }}
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                className={MENU_ITEM}
-                onClick={() => {
-                  closeMenu();
-                  onMove("down");
-                }}
-              >
-                Move down
-              </button>
-              <button
-                type="button"
-                className={MENU_ITEM}
-                onClick={() => {
-                  closeMenu();
-                  onDrop();
-                }}
-              >
-                Drop
-              </button>
-              <button
-                type="button"
-                className={MENU_ITEM_DANGER}
-                onClick={() => {
-                  closeMenu();
-                  onDelete();
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    closeMenu();
+                    startEditTitle();
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    closeMenu();
+                    setDueDraft(task.dueDate ?? "");
+                    setDueOpen(true);
+                  }}
+                >
+                  Set due date
+                </button>
+                <div className="flex items-center gap-1 px-2 py-1">
+                  <span className="text-[11px] text-fg-faint mr-0.5">Priority</span>
+                  {(["low", "normal", "high"] as const).map((p) => (
+                    <Chip
+                      key={p}
+                      active={task.priority === p}
+                      aria-pressed={task.priority === p}
+                      onClick={() => {
+                        closeMenu();
+                        onPriority(p);
+                      }}
+                    >
+                      {titleCase(p)}
+                    </Chip>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    closeMenu();
+                    onMove("up");
+                  }}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    closeMenu();
+                    onMove("down");
+                  }}
+                >
+                  Move down
+                </button>
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    closeMenu();
+                    onDrop();
+                  }}
+                >
+                  Drop
+                </button>
+                <button
+                  type="button"
+                  className={MENU_ITEM_DANGER}
+                  onClick={() => {
+                    closeMenu();
+                    onDelete();
+                  }}
+                >
+                  Delete
+                </button>
+              </div>,
+              document.body,
+            )}
+        </>
       )}
     </li>
   );
