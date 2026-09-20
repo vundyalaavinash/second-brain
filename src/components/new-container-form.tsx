@@ -47,7 +47,7 @@ export function NewContainerForm({ kind }: { kind: ContainerKind }) {
         className="flex-1 max-w-sm"
       />
       <Button variant="primary" icon={Plus} type="submit" disabled={!name.trim() || busy}>
-        Add
+        Add {kind}
       </Button>
       {error && <span className="text-[12.5px] text-danger">{error}</span>}
     </form>
