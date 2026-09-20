@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import type { Item, Container, Person, Task } from "@/db/schema";
+import { items, type Item, type Container, type Person, type Task } from "@/db/schema";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
 import { getContainer, countContainerItems, ContainerError } from "@/domain/containers";
@@ -8,7 +9,7 @@ import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
-import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO } from "./dto";
+import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PinnedLinkDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -30,10 +31,44 @@ export function serializeItem(db: DB, item: Item): ItemDTO {
     containerId: item.containerId,
     container: container ? { id: container.id, name: container.name, slug: container.slug, kind: container.kind } : null,
     archivedAt: item.archivedAt,
+    pinned: item.pinned === 1,
     people: getItemPeople(db, item.id).map((p) => ({ id: p.id, name: p.name, slug: p.slug })),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
+}
+
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function toPinnedLink(item: Item): PinnedLinkDTO {
+  const url = item.sourceUrl ?? "";
+  return { id: item.id, title: item.title, url, domain: domainOf(url) };
+}
+
+/**
+ * The newest three pinned, non-archived link items per container, in one query for all ids
+ * instead of one per container.
+ */
+function pinnedLinksByContainer(db: DB, ids: number[]): Map<number, PinnedLinkDTO[]> {
+  const out = new Map<number, PinnedLinkDTO[]>(ids.map((id) => [id, []]));
+  if (ids.length === 0) return out;
+  const rows = db
+    .select()
+    .from(items)
+    .where(and(inArray(items.containerId, ids), eq(items.type, "link"), eq(items.pinned, 1), isNull(items.archivedAt)))
+    .orderBy(desc(items.updatedAt))
+    .all();
+  for (const row of rows) {
+    const list = out.get(row.containerId!);
+    if (list && list.length < 3) list.push(toPinnedLink(row));
+  }
+  return out;
 }
 
 export function serializeContainer(db: DB, c: Container): ContainerDTO {
@@ -53,17 +88,17 @@ export function serializeContainer(db: DB, c: Container): ContainerDTO {
     itemCount: countContainerItems(db, c.id),
     totalItemCount: countContainerItems(db, c.id, true),
     progress: projectProgress(db, c.id),
+    pinnedLinks: pinnedLinksByContainer(db, [c.id]).get(c.id)!,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   };
 }
 
-/** Serializes many containers with progress computed in one grouped query instead of one per row. */
+/** Serializes many containers with progress and pinned links computed in grouped queries instead of one per row. */
 export function serializeContainers(db: DB, list: Container[]): ContainerDTO[] {
-  const progress = containerProgress(
-    db,
-    list.map((c) => c.id),
-  );
+  const ids = list.map((c) => c.id);
+  const progress = containerProgress(db, ids);
+  const pinnedLinks = pinnedLinksByContainer(db, ids);
   return list.map((c) => ({
     id: c.id,
     kind: c.kind,
@@ -80,6 +115,7 @@ export function serializeContainers(db: DB, list: Container[]): ContainerDTO[] {
     itemCount: countContainerItems(db, c.id),
     totalItemCount: countContainerItems(db, c.id, true),
     progress: progress.get(c.id)!,
+    pinnedLinks: pinnedLinks.get(c.id)!,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   }));

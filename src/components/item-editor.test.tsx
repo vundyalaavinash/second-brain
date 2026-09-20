@@ -18,7 +18,7 @@ afterEach(cleanup);
 const item: ItemDTO = {
   id: 4, type: "note", title: "T", body: "Hello.\n", status: "ready", error: null, sourceUrl: null, filePath: null, mimeType: null,
   extractedText: "", meta: {}, tags: [], journalDate: null, reviewWeek: null, containerId: null, container: null, archivedAt: null,
-  people: [], createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  pinned: false, people: [], createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
 // RichEditor debounces markdown emission 300ms after the last keystroke (EMIT_DEBOUNCE_MS in

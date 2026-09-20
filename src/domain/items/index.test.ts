@@ -17,6 +17,7 @@ import {
   fileItem,
   archiveItem,
   restoreItem,
+  setItemPinned,
 } from "./index";
 
 describe("items domain", () => {
@@ -155,5 +156,43 @@ describe("items domain", () => {
     createItem(t.db, { type: "note", title: "c" });
     archiveItem(t.db, b.id);
     expect(listItems(t.db, { onlyArchived: true }).map((i) => i.id)).toEqual([b.id]);
+  });
+
+  it("toggles pinned and 404s on an unknown id", () => {
+    const item = createItem(t.db, { type: "link", title: "a", sourceUrl: "https://a.test" });
+    expect(item.pinned).toBe(0);
+    const pinned = setItemPinned(t.db, item.id, true);
+    expect(pinned.pinned).toBe(1);
+    const unpinned = setItemPinned(t.db, item.id, false);
+    expect(unpinned.pinned).toBe(0);
+    expect(() => setItemPinned(t.db, 9999, true)).toThrow(/not found/);
+  });
+
+  it("lists items filtered by pinned and by types", () => {
+    const note = createItem(t.db, { type: "note", title: "n" });
+    const link = createItem(t.db, { type: "link", title: "l", sourceUrl: "https://l.test" });
+    const file = createItem(t.db, { type: "file", title: "f" });
+    setItemPinned(t.db, link.id, true);
+
+    expect(listItems(t.db, { pinned: true }).map((i) => i.id)).toEqual([link.id]);
+    expect(listItems(t.db, { types: ["note", "link"] }).map((i) => i.id).sort()).toEqual([link.id, note.id].sort());
+    expect(listItems(t.db, { types: ["file"] }).map((i) => i.id)).toEqual([file.id]);
+  });
+
+  it("orders pinned items first within a container, then falls back to newest first", () => {
+    const now = new Date().toISOString();
+    t.db.$client
+      .prepare("INSERT INTO containers (kind, name, slug, created_at, updated_at) VALUES ('project', 'P', 'p', ?, ?)")
+      .run(now, now);
+    const containerId = (t.db.$client.prepare("SELECT id FROM containers WHERE slug = 'p'").get() as { id: number }).id;
+
+    const a = createItem(t.db, { type: "note", title: "a", containerId });
+    const b = createItem(t.db, { type: "note", title: "b", containerId });
+    const c = createItem(t.db, { type: "note", title: "c", containerId });
+    setItemPinned(t.db, b.id, true);
+
+    expect(listItems(t.db, { containerId }).map((i) => i.id)).toEqual([b.id, c.id, a.id]);
+    // Without a containerId filter, pinned status does not affect ordering.
+    expect(listItems(t.db).map((i) => i.id)).toEqual([c.id, b.id, a.id]);
   });
 });

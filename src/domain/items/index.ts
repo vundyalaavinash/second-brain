@@ -4,6 +4,7 @@ import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, ty
 import { nowIso } from "@/lib/time";
 import { deleteItemAttachments } from "@/domain/attachments";
 import { chunkText } from "./chunk";
+import { CaptureError } from "./capture";
 
 export interface CreateItemInput {
   type: ItemType;
@@ -31,10 +32,13 @@ export interface UpdateItemInput {
   mimeType?: string | null;
   containerId?: number | null;
   archivedAt?: string | null;
+  pinned?: boolean;
 }
 
 export interface ListItemsFilter {
   type?: ItemType;
+  /** Restrict to any of these types. Combines with `type` if both are given. */
+  types?: ItemType[];
   status?: ItemStatus;
   tag?: string;
   /** Inclusive lower bound, YYYY-MM-DD (local start of day). */
@@ -49,6 +53,8 @@ export interface ListItemsFilter {
   includeArchived?: boolean;
   /** Only archived items; implies includeArchived. */
   onlyArchived?: boolean;
+  /** Filter to pinned (true) or unpinned (false) items. Omit for either. */
+  pinned?: boolean;
 }
 
 export function createItem(db: DB, input: CreateItemInput): Item {
@@ -101,6 +107,7 @@ export function updateItem(db: DB, id: number, patch: UpdateItemInput): Item {
   if (patch.mimeType !== undefined) set.mimeType = patch.mimeType;
   if (patch.containerId !== undefined) set.containerId = patch.containerId;
   if (patch.archivedAt !== undefined) set.archivedAt = patch.archivedAt;
+  if (patch.pinned !== undefined) set.pinned = patch.pinned ? 1 : 0;
   const row = db.update(items).set(set).where(eq(items.id, id)).returning().get();
   if (!row) throw new Error(`Item ${id} not found`);
   return row;
@@ -115,6 +122,7 @@ export function mergeItemMeta(db: DB, id: number, patch: Record<string, unknown>
 export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   const conds = [];
   if (filter.type) conds.push(eq(items.type, filter.type));
+  if (filter.types && filter.types.length) conds.push(inArray(items.type, filter.types));
   if (filter.status) conds.push(eq(items.status, filter.status));
   if (filter.tag) {
     const ids = itemIdsWithTag(db, filter.tag);
@@ -127,11 +135,13 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   else if (typeof filter.containerId === "number") conds.push(eq(items.containerId, filter.containerId));
   if (filter.onlyArchived) conds.push(isNotNull(items.archivedAt));
   else if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
+  if (filter.pinned !== undefined) conds.push(eq(items.pinned, filter.pinned ? 1 : 0));
+  const order = filter.containerId !== undefined ? [desc(items.pinned), desc(items.createdAt), desc(items.id)] : [desc(items.createdAt), desc(items.id)];
   return db
     .select()
     .from(items)
     .where(conds.length ? and(...conds) : undefined)
-    .orderBy(desc(items.createdAt), desc(items.id))
+    .orderBy(...order)
     .limit(filter.limit ?? 100)
     .offset(filter.offset ?? 0)
     .all();
@@ -228,6 +238,11 @@ export function archiveItem(db: DB, id: number): Item {
 
 export function restoreItem(db: DB, id: number): Item {
   return updateItem(db, id, { archivedAt: null });
+}
+
+export function setItemPinned(db: DB, id: number, pinned: boolean): Item {
+  if (!getItem(db, id)) throw new CaptureError(`Item ${id} not found`, 404);
+  return updateItem(db, id, { pinned });
 }
 
 export function countInbox(db: DB): number {

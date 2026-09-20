@@ -30,6 +30,7 @@ const container: ContainerDTO = {
   itemCount: 0,
   totalItemCount: 0,
   progress: { open: 0, done: 0, total: 0, percent: 0, nextTask: null },
+  pinnedLinks: [],
   createdAt: "2026-09-16T00:00:00.000Z",
   updatedAt: "2026-09-16T00:00:00.000Z",
 };

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { archiveItem, deleteItem, fileItem, getItem, restoreItem } from "@/domain/items";
+import { archiveItem, deleteItem, fileItem, getItem, restoreItem, setItemPinned } from "@/domain/items";
 import { updateItemContent } from "@/domain/items/capture";
 import { setItemPeople } from "@/domain/people";
 import { errorResponse, parseId, serializeItem } from "@/lib/api";
@@ -29,6 +29,7 @@ const PatchBody = z.object({
   containerId: z.number().int().positive().nullable().optional(),
   archived: z.boolean().optional(),
   people: z.array(z.number().int().positive()).optional(),
+  pinned: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
@@ -36,7 +37,7 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     const id = parseId((await ctx.params).id);
     const parsed = PatchBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-    const { containerId, archived, people: personIds, ...content } = parsed.data;
+    const { containerId, archived, people: personIds, pinned, ...content } = parsed.data;
     const db = getDb();
     if (!getItem(db, id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (content.title !== undefined || content.body !== undefined || content.tags !== undefined) updateItemContent(db, id, content);
@@ -44,6 +45,7 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     if (archived === true) archiveItem(db, id);
     if (archived === false) restoreItem(db, id);
     if (personIds !== undefined) setItemPeople(db, id, personIds);
+    if (pinned !== undefined) setItemPinned(db, id, pinned);
     return NextResponse.json(serializeItem(db, getItem(db, id)!));
   } catch (err) {
     if (err instanceof Error && /not found/.test(err.message)) return NextResponse.json({ error: err.message }, { status: 400 });

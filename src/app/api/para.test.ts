@@ -94,6 +94,42 @@ describe("containers api", () => {
     expect((await r.container.DELETE(json("DELETE", `/api/containers/${project.id}`), params(project.id))).status).toBe(204);
     expect((await r.container.GET(json("GET", `/api/containers/${project.id}`), params(project.id))).status).toBe(404);
   });
+
+  it("carries the newest three pinned links, with domains, on a container", async () => {
+    const created = await r.containers.POST(json("POST", "/api/containers", { kind: "resource", name: "Reading Later", category: "articles" }));
+    const container = (await created.json()) as ContainerDTO;
+
+    const links: ItemDTO[] = [];
+    for (const url of ["https://www.first.test/a", "https://second.test/b", "https://third.test/c", "https://fourth.test/d"]) {
+      const res = await r.items.POST(json("POST", "/api/items", { type: "link", url, containerId: container.id }));
+      links.push((await res.json()) as ItemDTO);
+    }
+    for (const link of links) {
+      await r.item.PATCH(json("PATCH", `/api/items/${link.id}`, { pinned: true }), params(link.id));
+    }
+
+    // Stamp updatedAt directly so the newest-three ordering is deterministic regardless of test timing.
+    const { getDb } = await import("@/db/client");
+    const db = getDb();
+    links.forEach((link, i) => {
+      db.$client.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run(`2026-01-0${i + 1}T00:00:00.000Z`, link.id);
+    });
+
+    const read = (await (await r.container.GET(json("GET", `/api/containers/${container.id}`), params(container.id))).json()) as ContainerDTO;
+    expect(read.pinnedLinks).toHaveLength(3);
+    expect(read.pinnedLinks.map((p) => p.id)).toEqual([links[3].id, links[2].id, links[1].id]);
+    expect(read.pinnedLinks[0]).toMatchObject({ title: links[3].title, url: links[3].sourceUrl, domain: "fourth.test" });
+    // The leading www. is stripped from the domain (this link is not among the newest three).
+    expect(read.pinnedLinks.some((p) => p.id === links[0].id)).toBe(false);
+
+    const list = (await (await r.containers.GET(json("GET", "/api/containers?kind=resource"))).json()) as ContainerDTO[];
+    const listed = list.find((c) => c.id === container.id)!;
+    expect(listed.pinnedLinks.map((p) => p.id)).toEqual([links[3].id, links[2].id, links[1].id]);
+
+    db.$client.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run("2026-02-01T00:00:00.000Z", links[0].id);
+    const reread = (await (await r.container.GET(json("GET", `/api/containers/${container.id}`), params(container.id))).json()) as ContainerDTO;
+    expect(reread.pinnedLinks[0]).toMatchObject({ id: links[0].id, domain: "first.test" });
+  });
 });
 
 describe("inbox, homes, archive, duplicates", () => {

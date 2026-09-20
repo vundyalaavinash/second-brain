@@ -54,6 +54,7 @@ export const items = sqliteTable(
     reviewWeek: text("review_week").unique(),
     containerId: integer("container_id").references(() => containers.id, { onDelete: "set null" }),
     archivedAt: text("archived_at"),
+    pinned: integer("pinned").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

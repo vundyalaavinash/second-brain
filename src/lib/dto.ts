@@ -31,9 +31,17 @@ export interface ItemDTO {
   containerId: number | null;
   container: ContainerRefDTO | null;
   archivedAt: string | null;
+  pinned: boolean;
   people: PersonRefDTO[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PinnedLinkDTO {
+  id: number;
+  title: string;
+  url: string;
+  domain: string;
 }
 
 export interface SearchResultDTO {
@@ -82,6 +90,7 @@ export interface ContainerDTO {
   itemCount: number;
   totalItemCount: number;
   progress: ProgressDTO;
+  pinnedLinks: PinnedLinkDTO[];
   createdAt: string;
   updatedAt: string;
 }

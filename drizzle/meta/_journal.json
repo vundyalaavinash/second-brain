@@ -43,6 +43,13 @@
       "when": 1789912157534,
       "tag": "0005_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789921344631,
+      "tag": "0006_items_pinned",
+      "breakpoints": true
     }
   ]
 }

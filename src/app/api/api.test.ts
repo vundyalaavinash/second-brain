@@ -72,6 +72,12 @@ describe("items api", () => {
     const patched = await routes.item.PATCH(json("PATCH", `/api/items/${dto.id}`, { title: "Renamed", tags: [] }), params(dto.id));
     expect(((await patched.json()) as ItemDTO).title).toBe("Renamed");
 
+    expect((await routes.item.PATCH(json("PATCH", `/api/items/${dto.id}`, { pinned: true }), params(dto.id))).status).toBe(200);
+    const pinnedRead = (await (await routes.item.GET(json("GET", `/api/items/${dto.id}`), params(dto.id))).json()) as ItemDTO;
+    expect(pinnedRead.pinned).toBe(true);
+    const unpinned = await routes.item.PATCH(json("PATCH", `/api/items/${dto.id}`, { pinned: false }), params(dto.id));
+    expect(((await unpinned.json()) as ItemDTO).pinned).toBe(false);
+
     expect((await routes.item.DELETE(json("DELETE", `/api/items/${dto.id}`), params(dto.id))).status).toBe(204);
     expect((await routes.item.GET(json("GET", `/api/items/${dto.id}`), params(dto.id))).status).toBe(404);
   });
@@ -79,6 +85,16 @@ describe("items api", () => {
   it("rejects invalid bodies", async () => {
     expect((await routes.items.POST(json("POST", "/api/items", { type: "note" }))).status).toBe(400);
     expect((await routes.items.POST(json("POST", "/api/items", { type: "link", url: "nope" }))).status).toBe(400);
+  });
+
+  it("creates a note with an empty body when the title is non-empty, and rejects both empty", async () => {
+    const created = await routes.items.POST(json("POST", "/api/items", { type: "note", title: "Untitled note", body: "" }));
+    expect(created.status).toBe(201);
+    const dto = (await created.json()) as ItemDTO;
+    expect(dto.title).toBe("Untitled note");
+    expect(dto.body).toBe("");
+
+    expect((await routes.items.POST(json("POST", "/api/items", { type: "note", title: "", body: "" }))).status).toBe(400);
   });
 
   it("rejects invalid list filters", async () => {
