@@ -27,3 +27,9 @@ export type ContainerStatus = (typeof CONTAINER_STATUSES)[number];
 
 export const RESOURCE_CATEGORIES = ["articles", "tools", "reference", "research", "inspiration", "videos", "other"] as const;
 export type ResourceCategory = (typeof RESOURCE_CATEGORIES)[number];
+
+export const TASK_STATUSES = ["open", "done", "dropped"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const TASK_PRIORITIES = ["low", "normal", "high"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];

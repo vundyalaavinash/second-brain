@@ -1,8 +1,18 @@
 import { sqliteTable, integer, text, primaryKey, index, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES } from "./enums";
+import {
+  ITEM_TYPES,
+  ITEM_STATUSES,
+  JOB_TYPES,
+  JOB_STATUSES,
+  CONTAINER_KINDS,
+  CONTAINER_STATUSES,
+  RESOURCE_CATEGORIES,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+} from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -223,6 +233,27 @@ export const attachments = sqliteTable(
   (t) => [index("attachments_item_idx").on(t.itemId)],
 );
 export type Attachment = typeof attachments.$inferSelect;
+
+export const tasks = sqliteTable(
+  "tasks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    title: text("title").notNull(),
+    notes: text("notes").notNull().default(""),
+    status: text("status", { enum: TASK_STATUSES }).notNull().default("open"),
+    priority: text("priority", { enum: TASK_PRIORITIES }).notNull().default("normal"),
+    dueDate: text("due_date"),
+    containerId: integer("container_id").references(() => containers.id, { onDelete: "set null" }),
+    sourceItemId: integer("source_item_id").references(() => items.id, { onDelete: "set null" }),
+    recurrence: text("recurrence"),
+    completedAt: text("completed_at"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("tasks_container_status_order_idx").on(t.containerId, t.status, t.sortOrder), index("tasks_status_due_idx").on(t.status, t.dueDate)],
+);
+export type Task = typeof tasks.$inferSelect;
 
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;
