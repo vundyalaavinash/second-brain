@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { CONTAINER_KINDS, CONTAINER_STATUSES } from "@/db/enums";
 import { createContainer, listContainers } from "@/domain/containers";
-import { errorResponse, serializeContainer } from "@/lib/api";
+import { errorResponse, serializeContainer, serializeContainers } from "@/lib/api";
 import { CreateContainerBody as CreateBody } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function GET(req: Request): Promise<Response> {
     });
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     const db = getDb();
-    return NextResponse.json(listContainers(db, parsed.data).map((c) => serializeContainer(db, c)));
+    return NextResponse.json(serializeContainers(db, listContainers(db, parsed.data)));
   } catch (err) {
     return errorResponse(err);
   }

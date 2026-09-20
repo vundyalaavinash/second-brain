@@ -77,17 +77,24 @@ describe("tasks domain", () => {
     expect(getTask(t.db, a.id)).toBeUndefined();
   });
 
-  it("computes progress for many containers in one call and survives container deletion", () => {
+  it("computes progress for many containers in one call, blocks container deletion while its tasks are active, and clears containerId once they're dropped", () => {
     const other = createContainer(t.db, { kind: "project", name: "Other" }).id;
     createTask(t.db, { title: "A", containerId: projectId });
-    completeTask(t.db, createTask(t.db, { title: "B", containerId: other }).id);
+    const bId = createTask(t.db, { title: "B", containerId: other }).id;
+    completeTask(t.db, bId);
     const m = containerProgress(t.db, [projectId, other, 999]);
     expect(m.get(projectId)).toMatchObject({ open: 1, done: 0, percent: 0 });
     expect(m.get(other)).toMatchObject({ open: 0, done: 1, percent: 100, nextTask: null });
     expect(m.get(999)).toMatchObject({ total: 0 });
     const item = createItem(t.db, { type: "note", title: "n" });
     const fromItem = createTask(t.db, { title: "From note", containerId: other, sourceItemId: item.id });
+
+    expect(() => deleteContainer(t.db, other)).toThrow(/tasks/);
+
+    dropTask(t.db, bId);
+    dropTask(t.db, fromItem.id);
     deleteContainer(t.db, other);
     expect(getTask(t.db, fromItem.id)?.containerId).toBeNull();
+    expect(getTask(t.db, bId)?.containerId).toBeNull();
   });
 });

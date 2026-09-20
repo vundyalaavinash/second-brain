@@ -10,6 +10,8 @@ export function daysBetween(a: string, b: string): number {
 
 export type DeadlineTone = "muted" | "warn" | "danger" | "faint";
 
+export const TONE_CLASS: Record<DeadlineTone, string> = { muted: "text-fg-muted", warn: "text-warn", danger: "text-danger", faint: "text-fg-faint" };
+
 export function deadlineLabel(deadline: string | null, today: string): { text: string; tone: DeadlineTone } {
   if (!deadline) return { text: "No deadline", tone: "faint" };
   const days = daysBetween(today, deadline);

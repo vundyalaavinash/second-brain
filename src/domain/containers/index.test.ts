@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { createItem, getItem, updateItem } from "@/domain/items";
-import { createTask, listTasks } from "@/domain/tasks";
+import { createTask, dropTask, getTask, listTasks } from "@/domain/tasks";
+import { eq } from "drizzle-orm";
+import { tasks } from "@/db/schema";
 import {
   slugify,
   createContainer,
@@ -143,5 +145,22 @@ describe("containers domain", () => {
     const t3 = createTask(t.db, { title: "To inbox", containerId: p4.id });
     archiveContainer(t.db, p4.id, { moveItemsTo: null });
     expect(listTasks(t.db, { containerId: null }).map((x) => x.id)).toContain(t3.id);
+  });
+
+  it("restoring reopens tasks dropped alongside the container, not ones dropped by hand", () => {
+    const p = createContainer(t.db, { kind: "project", name: "Solo tasks" });
+    const manual = createTask(t.db, { title: "manual drop", containerId: p.id });
+    dropTask(t.db, manual.id);
+    // Give the manual drop a timestamp far from the archive below, the same way the items test
+    // above pins one via updateItem, so this doesn't depend on the two operations landing in
+    // different milliseconds.
+    t.db.update(tasks).set({ updatedAt: "2026-01-01T00:00:00.000Z" }).where(eq(tasks.id, manual.id)).run();
+    const auto = createTask(t.db, { title: "auto drop", containerId: p.id });
+
+    archiveContainer(t.db, p.id);
+    restoreContainer(t.db, p.id);
+
+    expect(getTask(t.db, auto.id)?.status).toBe("open");
+    expect(getTask(t.db, manual.id)?.status).toBe("dropped");
   });
 });

@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { Square } from "lucide-react";
 import type { ContainerDTO } from "@/lib/dto";
-import { deadlineLabel } from "@/lib/deadline";
+import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { ProgressRing } from "./progress-ring";
-
-const TONE: Record<string, string> = { muted: "text-fg-muted", warn: "text-warn", danger: "text-danger", faint: "text-fg-faint" };
 
 export function ProjectCard({ project, today }: { project: ContainerDTO; today: string }) {
   const p = project.progress;
@@ -18,7 +16,7 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
         <ProgressRing percent={p.percent} />
         <span className="font-mono text-[12px] text-fg-muted">{p.percent}%</span>
         <span className="flex-1" />
-        <span className={`text-[12px] ${TONE[due.tone]}`}>{due.text}</span>
+        <span className={`text-[12px] ${TONE_CLASS[due.tone]}`}>{due.text}</span>
       </div>
       <div className="min-w-0">
         <div className="text-[15px] font-medium leading-5 line-clamp-2">{project.name}</div>

@@ -9,7 +9,7 @@ import { ArrowLeft, Plus, Check, Save, Archive, RotateCcw, Trash2, FileText, Cal
 import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
-import { deadlineLabel } from "@/lib/deadline";
+import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { CompleteProjectDialog } from "./complete-project-dialog";
@@ -157,7 +157,7 @@ export function ContainerEditor({
             onClick={() => void archiveOrRestore()}
           />
         )}
-        {c.totalItemCount === 0 && (
+        {c.totalItemCount === 0 && progress.total === 0 && (
           <IconButton
             label={confirmDelete ? "Confirm delete" : "Delete"}
             icon={Trash2}
@@ -318,10 +318,11 @@ function DeadlineControl({ value, today, onChange }: { value: string; today: str
       />
     );
   }
-  const label = value ? `Due ${formatDate(`${value}T00:00:00`)}, ${deadlineLabel(value, today).text}` : "Set a deadline";
+  const due = value ? deadlineLabel(value, today) : null;
+  const label = value ? `Due ${formatDate(`${value}T00:00:00`)}, ${due!.text}` : "Set a deadline";
   return (
     <Chip icon={CalendarDays} onClick={() => setEditing(true)}>
-      {label}
+      {due ? <span className={TONE_CLASS[due.tone]}>{label}</span> : label}
     </Chip>
   );
 }

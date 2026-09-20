@@ -25,5 +25,5 @@ export const TaskBody = z.object({
   containerId: z.number().int().positive().nullable().optional(),
   sourceItemId: z.number().int().positive().nullable().optional(),
 });
-export const PatchTaskBody = TaskBody.partial().extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
+export const PatchTaskBody = TaskBody.partial().omit({ sourceItemId: true }).extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
 export const ReorderTasksBody = z.object({ containerId: z.number().int().positive().nullable(), ids: z.array(z.number().int().positive()) });

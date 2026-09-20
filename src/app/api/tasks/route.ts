@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { createTask, listTasks, projectProgress } from "@/domain/tasks";
-import { errorResponse, parseId, serializeTask } from "@/lib/api";
+import { errorResponse, parseContainerParam, serializeTask } from "@/lib/api";
 import { TaskBody } from "@/lib/validation";
 import { CaptureError } from "@/domain/items/capture";
 
@@ -10,8 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request): Promise<Response> {
   try {
     const sp = new URL(req.url).searchParams;
-    const raw = sp.get("container");
-    const containerId = raw === null ? undefined : raw === "inbox" ? null : parseId(raw);
+    const containerId = parseContainerParam(sp.get("container"));
     const status = sp.get("status") ?? "open";
     if (!["open", "done", "dropped", "all"].includes(status)) throw new CaptureError("status must be open, done, dropped, or all", 400);
     const db = getDb();

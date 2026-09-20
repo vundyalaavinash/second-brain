@@ -50,6 +50,7 @@ describe("tasks api", () => {
     expect(after.progress).toMatchObject({ done: 1, percent: 50 });
     expect((await r.task.PATCH(json("PATCH", "/x", { status: "weird" }), params(aId))).status).toBe(400);
     expect((await r.task.PATCH(json("PATCH", "/x", { title: "y" }), params(999))).status).toBe(404);
+    expect((await r.task.PATCH(json("PATCH", "/x", { sourceItemId: 1 }), params(aId))).status).toBe(400);
   });
 
   it("reorders, exposes progress on the container DTO, and rejects nextSteps", async () => {

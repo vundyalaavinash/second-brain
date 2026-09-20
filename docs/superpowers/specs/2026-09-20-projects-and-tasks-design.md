@@ -98,7 +98,7 @@ Idempotent: a second run finds the flag and does nothing.
 
 ### Area detail
 
-The Tasks section is inserted between the standard field and Items; no ring. Header meta gains "N open tasks".
+The Tasks section is inserted between the standard field and Items; no ring. Instead of header meta, the Tasks heading shows the open count.
 
 ### `TaskList` component (`src/components/tasks/task-list.tsx`)
 

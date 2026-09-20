@@ -7,7 +7,10 @@ import type { TaskDTO } from "@/lib/dto";
 // See container-editor.test.tsx: this vitest config has no global `afterEach`, so
 // @testing-library/react's auto-cleanup never registers and DOM from one `it` would
 // otherwise still be attached (and matched by role/name queries) in the next.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
@@ -39,7 +42,6 @@ describe("TaskList", () => {
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);
     expect(await screen.findByText("Ship it")).toBeTruthy();
-    vi.unstubAllGlobals();
   });
 
   it("marks done with one PATCH and reverts on failure", async () => {
@@ -64,6 +66,5 @@ describe("TaskList", () => {
     await act(async () => { fireEvent.click(reopen); });
     expect(await screen.findByText("Could not save that change")).toBeTruthy();
     expect(screen.getByRole("button", { name: /1 done/ })).toBeTruthy();
-    vi.unstubAllGlobals();
   });
 });

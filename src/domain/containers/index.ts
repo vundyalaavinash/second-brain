@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql, count } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, sql, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { containers, items, tasks, type Container, type ContainerKind, type ContainerStatus, type ResourceCategory } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -188,9 +188,10 @@ export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: numbe
 }
 
 /**
- * Restore a container and the items that were archived along with it — not items a user
- * archived individually while the container was still active. `archiveContainer` stamps the
- * container and its items with the same timestamp, so only items sharing that timestamp qualify.
+ * Restore a container and the items/tasks that were archived or dropped along with it — not ones
+ * a user archived or dropped by hand while the container was still active. `archiveContainer`
+ * stamps the container, its items, and its dropped tasks with the same timestamp, so only rows
+ * sharing that timestamp qualify.
  */
 export function restoreContainer(db: DB, id: number): Container {
   const container = requireContainer(db, id);
@@ -200,6 +201,10 @@ export function restoreContainer(db: DB, id: number): Container {
       tx.update(items)
         .set({ archivedAt: null, updatedAt: now })
         .where(and(eq(items.containerId, id), eq(items.archivedAt, container.archivedAt)))
+        .run();
+      tx.update(tasks)
+        .set({ status: "open", updatedAt: now })
+        .where(and(eq(tasks.containerId, id), eq(tasks.status, "dropped"), eq(tasks.updatedAt, container.archivedAt)))
         .run();
     }
     const row = tx
@@ -217,6 +222,14 @@ export function deleteContainer(db: DB, id: number): void {
   requireContainer(db, id);
   if (countContainerItems(db, id, true) > 0) {
     throw new ContainerError("Container still has items; move or archive them first", 409);
+  }
+  const activeTask = db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.containerId, id), ne(tasks.status, "dropped")))
+    .get();
+  if (activeTask) {
+    throw new ContainerError("Move or finish its tasks first", 409);
   }
   db.delete(containers).where(eq(containers.id, id)).run();
 }

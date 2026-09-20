@@ -25,7 +25,6 @@ const container: ContainerDTO = {
   deadline: null,
   standard: "",
   category: null,
-  nextSteps: "",
   sortOrder: 0,
   archivedAt: null,
   itemCount: 0,

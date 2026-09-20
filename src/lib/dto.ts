@@ -77,7 +77,6 @@ export interface ContainerDTO {
   deadline: string | null;
   standard: string;
   category: ResourceCategory | null;
-  nextSteps: string;
   sortOrder: number;
   archivedAt: string | null;
   itemCount: number;

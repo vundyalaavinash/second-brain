@@ -34,12 +34,8 @@ interface Props {
   today: string;
 }
 
-export function TaskList({ containerId, initialTasks, initialProgress, onProgress, today }: Props) {
+export function TaskList({ containerId, initialTasks, onProgress, today }: Props) {
   const [tasks, setTasks] = useState<TaskDTO[]>(initialTasks);
-  // The value itself isn't read here — TaskList derives `open`/`done` straight from `tasks` and
-  // forwards each new progress snapshot to the parent's own state via `onProgress` — but keeping
-  // it as state (seeded from `initialProgress`) keeps this component ready to render it directly.
-  const [, setProgress] = useState<ProgressDTO>(initialProgress);
   const [error, setError] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [draft, setDraft] = useState("");
@@ -51,7 +47,6 @@ export function TaskList({ containerId, initialTasks, initialProgress, onProgres
   const done = tasks.filter((t) => t.status === "done");
 
   function publishProgress(p: ProgressDTO) {
-    setProgress(p);
     onProgress?.(p);
   }
 
@@ -209,7 +204,7 @@ export function TaskList({ containerId, initialTasks, initialProgress, onProgres
         <p className="text-[11.5px] text-fg-faint">Enter to add. End with a day like fri or a date; start with ! for high priority.</p>
       </div>
 
-      {open.length === 0 && done.length === 0 && <p className="text-fg-faint text-[13px]">No tasks yet. Add the first step below.</p>}
+      {open.length === 0 && done.length === 0 && <p className="text-fg-faint text-[13px]">No tasks yet. Add the first step above.</p>}
 
       {open.length > 0 && (
         <ul role="list" className="rounded-md border border-line bg-surface-1 divide-y divide-line overflow-hidden">
@@ -252,7 +247,6 @@ export function TaskList({ containerId, initialTasks, initialProgress, onProgres
                   onPriority={(priority) => setPriority(task.id, priority)}
                   onDrop={() => drop(task.id)}
                   onDelete={() => remove(task.id)}
-                  onMove={(dir) => move(task.id, dir)}
                 />
               ))}
             </ul>

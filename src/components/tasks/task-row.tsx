@@ -6,7 +6,7 @@ import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/d
 import { GripVertical, MoreHorizontal } from "lucide-react";
 import type { TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { deadlineLabel } from "@/lib/deadline";
+import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { titleCase } from "@/lib/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 
@@ -18,7 +18,7 @@ function formatShortDate(day: string): string {
   return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()}`;
 }
 
-const DUE_TONE: Record<string, string> = { muted: "text-fg-muted", warn: "text-warn", danger: "text-danger", faint: "text-fg-faint" };
+const MENU_ITEM_FOCUSABLE = '[role="menuitem"], [role="menuitemradio"]';
 
 const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-surface-2 transition-colors duration-100";
 const MENU_ITEM_DANGER = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-danger hover:bg-danger/10 transition-colors duration-100";
@@ -32,7 +32,7 @@ interface Props {
   onPriority: (priority: TaskPriority) => void;
   onDrop: () => void;
   onDelete: () => void;
-  onMove: (dir: "up" | "down") => void;
+  onMove?: (dir: "up" | "down") => void;
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
@@ -70,16 +70,42 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
     });
   }, [menuOpen]);
 
+  // Focuses the first menu item once the portalled panel has mounted.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const panel = menuPanelRef.current;
+    const first = panel?.querySelector<HTMLElement>(MENU_ITEM_FOCUSABLE);
+    first?.focus();
+  }, [menuOpen]);
+
   useEffect(() => {
     if (!menuOpen) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") closeMenu();
+      if (e.key === "Escape") {
+        closeMenu();
+        return;
+      }
+      if (e.key === "Tab") {
+        const panel = menuPanelRef.current;
+        if (!panel) return;
+        const focusables = Array.from(panel.querySelectorAll<HTMLElement>(MENU_ITEM_FOCUSABLE));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
     function onPointerDown(e: MouseEvent) {
       const target = e.target as Node;
       if (menuButtonRef.current?.contains(target)) return;
       if (menuPanelRef.current?.contains(target)) return;
-      setMenuOpen(false);
+      closeMenu();
     }
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onPointerDown);
@@ -182,7 +208,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
         due && (
           <button
             type="button"
-            className={`focus-ring font-mono text-[11px] shrink-0 ${DUE_TONE[due.tone]}`}
+            className={`focus-ring font-mono text-[11px] shrink-0 ${TONE_CLASS[due.tone]}`}
             onClick={() => {
               setDueDraft(task.dueDate ?? "");
               setDueOpen(true);
@@ -202,6 +228,8 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
             label="Task actions"
             icon={MoreHorizontal}
             className="shrink-0"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             onClick={(e) => {
               menuButtonRef.current = e.currentTarget;
               setMenuOpen((v) => !v);
@@ -212,11 +240,12 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
               <div
                 ref={menuPanelRef}
                 role="menu"
-                className="panel rounded-md p-1 flex flex-col gap-0.5 w-48 z-50"
+                className="panel rounded-md p-1 flex flex-col gap-0.5 w-max min-w-48 z-50"
                 style={{ position: "absolute", top: menuPos.top, left: menuPos.left }}
               >
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   onClick={() => {
                     closeMenu();
@@ -227,6 +256,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   onClick={() => {
                     closeMenu();
@@ -236,13 +266,14 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
                 >
                   Set due date
                 </button>
-                <div className="flex items-center gap-1 px-2 py-1">
+                <div role="group" aria-label="Priority" className="flex items-center gap-1 px-2 py-1">
                   <span className="text-[11px] text-fg-faint mr-0.5">Priority</span>
                   {(["low", "normal", "high"] as const).map((p) => (
                     <Chip
                       key={p}
+                      role="menuitemradio"
                       active={task.priority === p}
-                      aria-pressed={task.priority === p}
+                      aria-checked={task.priority === p}
                       onClick={() => {
                         closeMenu();
                         onPriority(p);
@@ -254,26 +285,29 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
                 </div>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   onClick={() => {
                     closeMenu();
-                    onMove("up");
+                    onMove?.("up");
                   }}
                 >
                   Move up
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   onClick={() => {
                     closeMenu();
-                    onMove("down");
+                    onMove?.("down");
                   }}
                 >
                   Move down
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM}
                   onClick={() => {
                     closeMenu();
@@ -284,6 +318,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className={MENU_ITEM_DANGER}
                   onClick={() => {
                     closeMenu();
