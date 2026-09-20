@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql, count } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { containers, items, type Container, type ContainerKind, type ContainerStatus, type ResourceCategory } from "@/db/schema";
+import { containers, items, tasks, type Container, type ContainerKind, type ContainerStatus, type ResourceCategory } from "@/db/schema";
 import { nowIso } from "@/lib/time";
 
 export class ContainerError extends Error {
@@ -21,7 +21,6 @@ export interface CreateContainerInput {
   deadline?: string | null;
   standard?: string;
   category?: ResourceCategory | null;
-  nextSteps?: string;
 }
 
 export interface UpdateContainerInput {
@@ -31,7 +30,6 @@ export interface UpdateContainerInput {
   deadline?: string | null;
   standard?: string;
   category?: ResourceCategory | null;
-  nextSteps?: string;
   sortOrder?: number;
 }
 
@@ -76,7 +74,6 @@ export function createContainer(db: DB, input: CreateContainerInput): Container 
       deadline: input.deadline ?? null,
       standard: input.standard ?? "",
       category: input.kind === "resource" ? (input.category ?? "other") : null,
-      nextSteps: input.nextSteps ?? "",
       createdAt: now,
       updatedAt: now,
     })
@@ -124,7 +121,6 @@ export function updateContainer(db: DB, id: number, patch: UpdateContainerInput)
   if (patch.deadline !== undefined) set.deadline = patch.deadline;
   if (patch.standard !== undefined) set.standard = patch.standard;
   if (patch.category !== undefined) set.category = current.kind === "resource" ? patch.category : null;
-  if (patch.nextSteps !== undefined) set.nextSteps = patch.nextSteps;
   if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
   const row = db.update(containers).set(set).where(eq(containers.id, id)).returning().get();
   if (!row) throw new ContainerError(`Container ${id} not found`, 404);
@@ -158,6 +154,27 @@ export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: numbe
         .set({ archivedAt: now, updatedAt: now })
         .where(and(eq(items.containerId, id), isNull(items.archivedAt)))
         .run();
+    }
+    const openTasks = tx
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.containerId, id), eq(tasks.status, "open")))
+      .orderBy(asc(tasks.sortOrder))
+      .all();
+    if (opts.moveItemsTo === undefined) {
+      tx.update(tasks)
+        .set({ status: "dropped", updatedAt: now })
+        .where(and(eq(tasks.containerId, id), eq(tasks.status, "open")))
+        .run();
+    } else {
+      const target = opts.moveItemsTo;
+      const base = tx
+        .select({ max: sql<number | null>`max(${tasks.sortOrder})` })
+        .from(tasks)
+        .where(target === null ? isNull(tasks.containerId) : eq(tasks.containerId, target))
+        .get();
+      let order = base?.max == null ? 0 : Number(base.max) + 1;
+      for (const t of openTasks) tx.update(tasks).set({ containerId: target, sortOrder: order++, updatedAt: now }).where(eq(tasks.id, t.id)).run();
     }
     const row = tx
       .update(containers)

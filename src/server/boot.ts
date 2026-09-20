@@ -5,6 +5,7 @@ import { JobWorker } from "@/jobs/worker";
 import { createJobHandlers } from "@/jobs/handlers";
 import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
 import { backupFilePath } from "@/jobs/handlers/backup";
+import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
 import { getEmbedProvider } from "./providers";
 
 const g = globalThis as unknown as { __sbWorker?: JobWorker; __sbBackupInterval?: NodeJS.Timeout };
@@ -21,6 +22,12 @@ export function boot(): JobWorker {
   const db = getDb();
   const reset = resetRunningJobs(db);
   if (reset > 0) console.log(`[boot] requeued ${reset} interrupted job(s)`);
+  try {
+    const m = migrateNextSteps(db);
+    if (m.containers) console.log(`[boot] migrated ${m.containers} next-steps checklist(s) into ${m.tasks} task(s)`);
+  } catch (err) {
+    console.error(`[boot] next-steps migration failed:`, err);
+  }
   const embed = getEmbedProvider();
   if (!embed) console.warn("[boot] SB_EMBED=off: semantic search disabled");
   const worker = new JobWorker(db, createJobHandlers({ db, embed }), { log: (m) => console.log(`[worker] ${m}`) });

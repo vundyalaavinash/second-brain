@@ -3,7 +3,7 @@ import { Archive } from "lucide-react";
 import { getDb } from "@/db/client";
 import { listContainers } from "@/domain/containers";
 import { listItems } from "@/domain/items";
-import { serializeContainer, serializeItem } from "@/lib/api";
+import { serializeContainers, serializeItem } from "@/lib/api";
 import { KindIcon, TypeIcon } from "@/components/type-icon";
 import { RestoreButton } from "@/components/restore-button";
 import { formatDate } from "@/lib/format";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default function ArchivePage() {
   const db = getDb();
-  const containers = listContainers(db, { status: "archived" }).map((c) => serializeContainer(db, c));
+  const containers = serializeContainers(db, listContainers(db, { status: "archived" }));
   const items = listItems(db, { onlyArchived: true, limit: 500 }).map((i) => serializeItem(db, i));
   return (
     <div className="w-full max-w-4xl mx-auto px-6 pt-8 flex flex-col gap-6">

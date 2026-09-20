@@ -43,6 +43,29 @@ export interface SearchResultDTO {
   chunkId: number;
 }
 
+export interface ProgressDTO {
+  open: number;
+  done: number;
+  total: number;
+  percent: number;
+  nextTask: { id: number; title: string; dueDate: string | null } | null;
+}
+
+export interface TaskDTO {
+  id: number;
+  title: string;
+  notes: string;
+  status: "open" | "done" | "dropped";
+  priority: "low" | "normal" | "high";
+  dueDate: string | null;
+  containerId: number | null;
+  sourceItemId: number | null;
+  completedAt: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ContainerDTO {
   id: number;
   kind: ContainerKind;
@@ -59,6 +82,7 @@ export interface ContainerDTO {
   archivedAt: string | null;
   itemCount: number;
   totalItemCount: number;
+  progress: ProgressDTO;
   createdAt: string;
   updatedAt: string;
 }

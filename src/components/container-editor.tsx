@@ -27,7 +27,6 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
   const [deadline, setDeadline] = useState(initial.deadline ?? "");
   const [standard, setStandard] = useState(initial.standard);
   const [category, setCategory] = useState<ResourceCategory>(initial.category ?? "other");
-  const [nextSteps, setNextSteps] = useState(initial.nextSteps);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,20 +34,20 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Mirrors person-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
   // onChange synchronously before this component's own ⌘S handler runs, but the resulting
-  // setDescription/setNextSteps hasn't committed yet — so save() reads a ref instead of state.
-  const latest = useRef({ name, description, goal, deadline, standard, category, nextSteps });
+  // setDescription hasn't committed yet — so save() reads a ref instead of state.
+  const latest = useRef({ name, description, goal, deadline, standard, category });
 
   useEffect(() => {
-    latest.current = { name, description, goal, deadline, standard, category, nextSteps };
-  }, [name, description, goal, deadline, standard, category, nextSteps]);
+    latest.current = { name, description, goal, deadline, standard, category };
+  }, [name, description, goal, deadline, standard, category]);
 
   async function save() {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const { name, description, goal, deadline, standard, category, nextSteps } = latest.current;
-      const body: Record<string, unknown> = { name, description, nextSteps };
+      const { name, description, goal, deadline, standard, category } = latest.current;
+      const body: Record<string, unknown> = { name, description };
       if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
       if (c.kind === "area") body.standard = standard;
       if (c.kind === "resource") body.category = category;
@@ -75,7 +74,7 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, description, goal, deadline, standard, category, nextSteps, c.id, c.kind, saving]);
+  }, [name, description, goal, deadline, standard, category, c.id, c.kind, saving]);
 
   async function archiveOrRestore() {
     setError(null);
@@ -221,22 +220,6 @@ export function ContainerEditor({ initial, items, onEditorReady }: { initial: Co
         className="min-h-[120px]"
         onReady={onEditorReady}
       />
-
-      {c.kind === "project" && (
-        <section className="flex flex-col gap-1">
-          <SectionHeading>Next steps</SectionHeading>
-          <RichEditor
-            value={nextSteps}
-            onChange={(md) => {
-              setNextSteps(md);
-              latest.current = { ...latest.current, nextSteps: md };
-              mark();
-            }}
-            placeholder="- [ ] First step"
-            className="min-h-[120px]"
-          />
-        </section>
-      )}
 
       <section className="flex flex-col gap-2">
         <SectionHeading count={items.length}>Items</SectionHeading>

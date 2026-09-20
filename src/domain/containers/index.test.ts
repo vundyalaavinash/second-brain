@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { createItem, getItem, updateItem } from "@/domain/items";
+import { createTask, listTasks } from "@/domain/tasks";
 import {
   slugify,
   createContainer,
@@ -123,5 +124,24 @@ describe("containers domain", () => {
     const empty = createContainer(t.db, { kind: "project", name: "E" });
     deleteContainer(t.db, empty.id);
     expect(getContainer(t.db, empty.id)).toBeUndefined();
+  });
+
+  it("archiving drops open tasks, or moves them (including to the inbox) after the target's existing ones", () => {
+    const home = createContainer(t.db, { kind: "area", name: "Home" });
+    const p2 = createContainer(t.db, { kind: "project", name: "Second" });
+    const t1 = createTask(t.db, { title: "Move me", containerId: p2.id });
+    archiveContainer(t.db, p2.id, { moveItemsTo: home.id });
+    expect(listTasks(t.db, { containerId: home.id }).map((x) => x.id)).toContain(t1.id);
+
+    const p3 = createContainer(t.db, { kind: "project", name: "Third" });
+    const t2 = createTask(t.db, { title: "Drop me", containerId: p3.id });
+    archiveContainer(t.db, p3.id);
+    expect(listTasks(t.db, { containerId: p3.id, status: "dropped" }).map((x) => x.id)).toEqual([t2.id]);
+    expect(listTasks(t.db, { containerId: p3.id }).map((x) => x.id)).toEqual([]);
+
+    const p4 = createContainer(t.db, { kind: "project", name: "Fourth" });
+    const t3 = createTask(t.db, { title: "To inbox", containerId: p4.id });
+    archiveContainer(t.db, p4.id, { moveItemsTo: null });
+    expect(listTasks(t.db, { containerId: null }).map((x) => x.id)).toContain(t3.id);
   });
 });

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import type { DB } from "@/db/client";
-import type { Item, Container, Person } from "@/db/schema";
+import type { Item, Container, Person, Task } from "@/db/schema";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
 import { getContainer, countContainerItems, ContainerError } from "@/domain/containers";
 import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { AttachmentError } from "@/domain/attachments";
-import type { ItemDTO, ContainerDTO, PersonDTO } from "./dto";
+import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
+import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -52,8 +53,54 @@ export function serializeContainer(db: DB, c: Container): ContainerDTO {
     archivedAt: c.archivedAt,
     itemCount: countContainerItems(db, c.id),
     totalItemCount: countContainerItems(db, c.id, true),
+    progress: projectProgress(db, c.id),
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
+  };
+}
+
+/** Serializes many containers with progress computed in one grouped query instead of one per row. */
+export function serializeContainers(db: DB, list: Container[]): ContainerDTO[] {
+  const progress = containerProgress(
+    db,
+    list.map((c) => c.id),
+  );
+  return list.map((c) => ({
+    id: c.id,
+    kind: c.kind,
+    name: c.name,
+    slug: c.slug,
+    description: c.description,
+    status: c.status,
+    goal: c.goal,
+    deadline: c.deadline,
+    standard: c.standard,
+    category: c.category,
+    nextSteps: c.nextSteps,
+    sortOrder: c.sortOrder,
+    archivedAt: c.archivedAt,
+    itemCount: countContainerItems(db, c.id),
+    totalItemCount: countContainerItems(db, c.id, true),
+    progress: progress.get(c.id)!,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  }));
+}
+
+export function serializeTask(t: Task): TaskDTO {
+  return {
+    id: t.id,
+    title: t.title,
+    notes: t.notes,
+    status: t.status,
+    priority: t.priority,
+    dueDate: t.dueDate,
+    containerId: t.containerId,
+    sourceItemId: t.sourceItemId,
+    completedAt: t.completedAt,
+    sortOrder: t.sortOrder,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
   };
 }
 
@@ -73,7 +120,14 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof DuplicateError) {
     return NextResponse.json({ error: err.message, existingId: err.existingId }, { status: err.status });
   }
-  if (err instanceof CaptureError || err instanceof ContainerError || err instanceof PersonError || err instanceof ActivityError || err instanceof AttachmentError) {
+  if (
+    err instanceof CaptureError ||
+    err instanceof ContainerError ||
+    err instanceof PersonError ||
+    err instanceof ActivityError ||
+    err instanceof AttachmentError ||
+    err instanceof TaskError
+  ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   const message = err instanceof Error ? err.message : String(err);
