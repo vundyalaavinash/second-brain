@@ -47,7 +47,10 @@ export interface ListItemsFilter {
   to?: string;
   limit?: number;
   offset?: number;
-  /** A container id, or null for the Inbox. Omit for any home. */
+  /**
+   * A container id, or null for the Inbox. Omit for any home. Whenever this is given
+   * (including null, meaning the Inbox), pinned items sort first, then newest first.
+   */
   containerId?: number | null;
   /** Archived items are hidden unless this is true. */
   includeArchived?: boolean;

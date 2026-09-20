@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/core";
-import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarDays } from "lucide-react";
+import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarDays, ChevronRight } from "lucide-react";
 import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
@@ -56,12 +56,19 @@ export function ContainerEditor({
   const [category, setCategory] = useState<ResourceCategory>(initial.category ?? "other");
   const [progress, setProgress] = useState<ProgressDTO>(initial.progress);
   const [save, setSave] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(initial.description.trim().length > 0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inflight = useRef<Promise<void> | null>(null);
+  // Mirrors item-editor.tsx's in-flight handling: a save already in flight when another edit
+  // lands (blur, ⌘S, or the debounce firing again) must not be dropped. `pendingAgain` marks
+  // that a follow-up save is owed once the in-flight one settles; `dirtyCounter` (bumped by
+  // every markDirty) lets persist() tell whether the edit it just sent is still the latest one.
+  const pendingAgain = useRef(false);
+  const dirtyCounter = useRef(0);
   // Mirrors item-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
   // onChange synchronously before this component's own ⌘S handler runs, but the resulting
   // setDescription hasn't committed yet — so persist() reads a ref instead of state.
@@ -85,9 +92,17 @@ export function ContainerEditor({
         clearTimeout(timer.current);
         timer.current = undefined;
       }
-      if (inflight.current) return inflight.current;
+      if (inflight.current) {
+        // A save is already in flight: don't return its promise as if it will carry this edit
+        // too (it already read `latest` before this edit landed). Mark that another save is
+        // owed once it settles, so blur/⌘S/the debounce never silently drop the newer edit.
+        pendingAgain.current = true;
+        return inflight.current;
+      }
       const run = (async () => {
+        const dirtyAtStart = dirtyCounter.current;
         setSave("saving");
+        setSaveError(null);
         try {
           const { name, description, goal, deadline, standard, category } = latest.current;
           const body: Record<string, unknown> = { name, description };
@@ -103,12 +118,20 @@ export function ContainerEditor({
           if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
           const updated = (await res.json()) as ContainerDTO;
           setC(updated);
-          setSave("saved");
-          if (updated.slug !== c.slug) routerRef.current.replace(`/c/${updated.slug}`);
-        } catch {
+          // Only a live save redirects: an unmount flush has no page left to navigate, and
+          // redirecting anyway would yank the user to the renamed container's new URL.
+          if (!fromUnmount && updated.slug !== c.slug) routerRef.current.replace(`/c/${updated.slug}`);
+          const stillDirty = dirtyCounter.current !== dirtyAtStart || pendingAgain.current;
+          setSave(stillDirty ? "dirty" : "saved");
+        } catch (err) {
+          setSaveError(err instanceof Error ? err.message : String(err));
           setSave("error");
         } finally {
           inflight.current = null;
+          if (pendingAgain.current) {
+            pendingAgain.current = false;
+            void persist();
+          }
         }
       })();
       inflight.current = run;
@@ -118,6 +141,7 @@ export function ContainerEditor({
   );
 
   function markDirty() {
+    dirtyCounter.current += 1;
     setSave("dirty");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void persist(), SAVE_DEBOUNCE_MS);
@@ -184,7 +208,7 @@ export function ContainerEditor({
     dirty: "Unsaved, autosaves in 2 s",
     saving: "Saving",
     saved: "Saved",
-    error: "Could not save",
+    error: saveError ? `Could not save: ${saveError}` : "Could not save",
   };
 
   const nameInput = (
@@ -200,30 +224,36 @@ export function ContainerEditor({
     />
   );
 
+  const aboutPanelId = `about-panel-${c.id}`;
+
   const aboutDisclosure = (
     <div className="flex flex-col gap-2">
       <Button
         variant="ghost"
         size="sm"
         aria-expanded={aboutOpen}
+        aria-controls={aboutPanelId}
         onClick={() => setAboutOpen((v) => !v)}
         className="self-start"
       >
         {ABOUT_LABEL[c.kind]}
+        <ChevronRight className={`w-3.5 h-3.5 motion-safe:transition-transform ${aboutOpen ? "rotate-90" : ""}`} aria-hidden />
       </Button>
       {aboutOpen && (
-        <RichEditor
-          value={description}
-          onChange={(md) => {
-            setDescription(md);
-            latest.current = { ...latest.current, description: md };
-            markDirty();
-          }}
-          onBlur={flushOnBlur}
-          placeholder="Description"
-          className="min-h-[120px]"
-          onReady={onEditorReady}
-        />
+        <div id={aboutPanelId}>
+          <RichEditor
+            value={description}
+            onChange={(md) => {
+              setDescription(md);
+              latest.current = { ...latest.current, description: md };
+              markDirty();
+            }}
+            onBlur={flushOnBlur}
+            placeholder="Description"
+            className="min-h-[120px]"
+            onReady={onEditorReady}
+          />
+        </div>
       )}
     </div>
   );
@@ -342,20 +372,25 @@ export function ContainerEditor({
 
       {c.kind !== "project" && aboutDisclosure}
 
-      <div className="grid grid-cols-1 min-[1200px]:grid-cols-[3fr_2fr] gap-6">
-        <div className="flex flex-col gap-2">
-          {(c.kind === "project" || c.kind === "area") && (
+      {c.kind === "project" || c.kind === "area" ? (
+        <div className="grid grid-cols-1 min-[1200px]:grid-cols-[3fr_2fr] gap-6">
+          <div className="flex flex-col gap-2">
             <section className="flex flex-col gap-2">
               <SectionHeading count={progress.open}>Tasks</SectionHeading>
               <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
             </section>
-          )}
+          </div>
+          <div className="flex flex-col gap-6">
+            <LinksSection containerId={c.id} initial={links} readOnly={c.status === "archived"} />
+            <NotesSection containerId={c.id} initial={notes} readOnly={c.status === "archived"} />
+          </div>
         </div>
-        <div className="flex flex-col gap-6">
-          <LinksSection containerId={c.id} initial={links} readOnly={initial.status === "archived"} />
-          <NotesSection containerId={c.id} initial={notes} readOnly={initial.status === "archived"} />
+      ) : (
+        <div className="grid grid-cols-1 min-[1200px]:grid-cols-2 gap-6">
+          <LinksSection containerId={c.id} initial={links} readOnly={c.status === "archived"} />
+          <NotesSection containerId={c.id} initial={notes} readOnly={c.status === "archived"} />
         </div>
-      </div>
+      )}
 
       <section className="flex flex-col gap-2">
         <SectionHeading count={others.length}>Files and other items</SectionHeading>

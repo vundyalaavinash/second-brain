@@ -42,6 +42,41 @@ describe("NotesSection", () => {
     expect(push).toHaveBeenCalledWith("/items/99");
   });
 
+  it("shows the server's error message under the header when creating a note fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/items" && init?.method === "POST") {
+          return new Response(JSON.stringify({ error: "Container is archived" }), { status: 400 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    render(<NotesSection containerId={5} initial={[note]} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "New note" }));
+    });
+    expect(await screen.findByText("Container is archived")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a generic message when creating a note fails without one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/items" && init?.method === "POST") {
+          return new Response("not json", { status: 500 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    render(<NotesSection containerId={5} initial={[note]} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "New note" }));
+    });
+    expect(await screen.findByText("Could not create the note")).toBeTruthy();
+  });
+
   it("shows the note title, a stripped preview, and the empty state when there are none", () => {
     const { rerender } = render(<NotesSection containerId={5} initial={[note]} />);
     expect(screen.getByText("Meeting recap")).toBeTruthy();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Plus } from "lucide-react";
@@ -51,17 +51,23 @@ export function NotesSection({
 }) {
   const router = useRouter();
   const submittingRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function addNote() {
     if (submittingRef.current) return;
     submittingRef.current = true;
+    setError(null);
     try {
       const res = await fetch("/api/items", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({ type: "note", title: "Untitled note", body: "", containerId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "Could not create the note");
+        return;
+      }
       const item = (await res.json()) as ItemDTO;
       router.push(`/items/${item.id}`);
     } finally {
@@ -81,6 +87,7 @@ export function NotesSection({
           </Button>
         )}
       </div>
+      {error && <p className="text-[12.5px] text-danger">{error}</p>}
       {sorted.length === 0 ? (
         <p className="text-[13px] text-fg-faint">No notes yet.</p>
       ) : (

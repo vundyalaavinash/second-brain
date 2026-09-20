@@ -2,12 +2,16 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, act, cleanup, fireEvent } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
+import { useRouter } from "next/navigation";
 import { ContainerEditor } from "./container-editor";
 import type { ContainerDTO } from "@/lib/dto";
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
+// A single stable router object (not a fresh one per call) so tests can grab `replace` etc. up
+// front via `useRouter()` and assert on the same spy instances the component used.
+vi.mock("next/navigation", () => {
+  const router = { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() };
+  return { useRouter: () => router };
+});
 
 // See item-editor.test.tsx / person-editor.test.tsx: this vitest config has no global
 // `afterEach`, so @testing-library/react's auto-cleanup never registers and a mounted
@@ -153,6 +157,94 @@ describe("ContainerEditor with RichEditor", () => {
     });
     expect(patches).toHaveLength(1);
     expect((patches[0] as { goal: string }).goal).toBe("Ship it");
+    vi.unstubAllGlobals();
+  });
+
+  it("does not drop an edit made while a PATCH is already in flight, and ends 'Saved'", async () => {
+    const patches: unknown[] = [];
+    let resolveFirst!: (res: Response) => void;
+    const firstPatch = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let patchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          patchCount += 1;
+          const body = JSON.parse(String(init.body)) as { name: string };
+          patches.push(body);
+          // The first PATCH stays pending (deferred) until resolveFirst is called below, so a
+          // second edit lands while it is still in flight; any later PATCH resolves right away.
+          if (patchCount === 1) return firstPatch;
+          return new Response(JSON.stringify({ ...container, name: body.name }), { status: 200 });
+        }
+        return new Response(JSON.stringify(container), { status: 200 });
+      }),
+    );
+    let editor: Editor | undefined;
+    const { getByPlaceholderText, getByText } = render(
+      <ContainerEditor initial={container} items={[]} tasks={[]} today="2026-09-16" onEditorReady={(e) => (editor = e)} />,
+    );
+    await waitForEditor(() => !!editor);
+    const nameInput = getByPlaceholderText("Name");
+
+    fireEvent.change(nameInput, { target: { value: "First edit" } });
+    await act(async () => {
+      fireEvent.blur(nameInput);
+    });
+    expect(patches).toHaveLength(1);
+
+    // A second edit, then another blur, while the first PATCH is still unresolved: it must not
+    // be dropped, but it also must not fire yet — it's queued (pendingAgain) until the first
+    // settles, exactly like item-editor.tsx's in-flight handling.
+    fireEvent.change(nameInput, { target: { value: "Second edit" } });
+    await act(async () => {
+      fireEvent.blur(nameInput);
+    });
+    expect(patches).toHaveLength(1);
+
+    await act(async () => {
+      resolveFirst(new Response(JSON.stringify({ ...container, name: "First edit" }), { status: 200 }));
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(patches).toHaveLength(2);
+    expect((patches[1] as { name: string }).name).toBe("Second edit");
+    expect(getByText("Saved")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("renaming, then unmounting within the debounce, saves without redirecting", async () => {
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          const body = JSON.parse(String(init.body)) as { name: string };
+          patches.push(body);
+          return new Response(JSON.stringify({ ...container, name: body.name, slug: "wellness" }), { status: 200 });
+        }
+        return new Response(JSON.stringify(container), { status: 200 });
+      }),
+    );
+    const { replace } = useRouter();
+    vi.mocked(replace).mockClear();
+    let editor: Editor | undefined;
+    const { getByPlaceholderText, unmount } = render(
+      <ContainerEditor initial={container} items={[]} tasks={[]} today="2026-09-16" onEditorReady={(e) => (editor = e)} />,
+    );
+    await waitForEditor(() => !!editor);
+    const nameInput = getByPlaceholderText("Name");
+    fireEvent.change(nameInput, { target: { value: "Wellness" } });
+    // Unmount while the 2s save debounce is still pending, well before it would fire on its own.
+    unmount();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(patches).toHaveLength(1);
+    expect((patches[0] as { name: string }).name).toBe("Wellness");
+    expect(replace).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

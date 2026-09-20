@@ -4,18 +4,14 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Link2, Plus, Star } from "lucide-react";
 import type { ItemDTO } from "@/lib/dto";
-import { isProbablyUrl } from "@/lib/text";
+import { domainOf, isProbablyUrl } from "@/lib/text";
 import { Button, IconButton, Input, List, Row, SectionHeading } from "../ui";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-function domainOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
+// A bare domain (optionally with a path) that isn't already http(s)://, e.g. "example.com" or
+// "example.com/path" — prefixed with https:// before submitting instead of rejected outright.
+const BARE_DOMAIN_RE = /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
 
 function bySort(a: ItemDTO, b: ItemDTO): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -35,11 +31,21 @@ export function LinksSection({
   const [url, setUrl] = useState("");
   const [duplicateId, setDuplicateId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const submittingRef = useRef(false);
 
   async function addLink() {
-    const value = url.trim();
-    if (!value || !isProbablyUrl(value)) return;
+    const raw = url.trim();
+    if (!raw) return;
+    let value = raw;
+    if (!isProbablyUrl(raw)) {
+      if (BARE_DOMAIN_RE.test(raw)) {
+        value = `https://${raw}`;
+      } else {
+        setValidationError("Enter a web address starting with http or https");
+        return;
+      }
+    }
     if (submittingRef.current) return;
     submittingRef.current = true;
     setError(null);
@@ -90,7 +96,10 @@ export function LinksSection({
         <div className="flex items-center gap-2">
           <Input
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setValidationError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -106,6 +115,7 @@ export function LinksSection({
           </Button>
         </div>
       )}
+      {validationError && <p className="text-[12px] text-fg-faint">{validationError}</p>}
       {duplicateId !== null && (
         <p className="text-[12.5px] text-fg-muted">
           Already captured.{" "}

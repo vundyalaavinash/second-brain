@@ -43,6 +43,39 @@ describe("LinksSection", () => {
     expect(input.value).toBe("");
   });
 
+  it("prefixes a bare domain with https:// before submitting", async () => {
+    const calls: unknown[] = [];
+    stub(async (url, init) => {
+      if (url === "/api/items" && init?.method === "POST") {
+        calls.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ...link, id: 12, sourceUrl: "https://bare.example.com/path", title: "https://bare.example.com/path" }), { status: 201 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    render(<LinksSection containerId={5} initial={[]} />);
+    const input = screen.getByPlaceholderText("Paste a link") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "bare.example.com/path" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(calls[0]).toEqual({ type: "link", url: "https://bare.example.com/path", containerId: 5 });
+  });
+
+  it("shows an inline hint for text that isn't a web address, and clears it on the next keystroke", async () => {
+    stub(async () => {
+      throw new Error("should not fetch for an invalid address");
+    });
+    render(<LinksSection containerId={5} initial={[]} />);
+    const input = screen.getByPlaceholderText("Paste a link") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "not a web address" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(await screen.findByText("Enter a web address starting with http or https")).toBeTruthy();
+    fireEvent.change(input, { target: { value: "not a web address ok" } });
+    expect(screen.queryByText("Enter a web address starting with http or https")).toBeNull();
+  });
+
   it("shows already captured on a 409 duplicate", async () => {
     stub(async (url, init) => {
       if (url === "/api/items" && init?.method === "POST") {

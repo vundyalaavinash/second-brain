@@ -108,11 +108,12 @@ describe("containers api", () => {
       await r.item.PATCH(json("PATCH", `/api/items/${link.id}`, { pinned: true }), params(link.id));
     }
 
-    // Stamp updatedAt directly so the newest-three ordering is deterministic regardless of test timing.
+    // Stamp createdAt directly so the newest-three ordering is deterministic regardless of test
+    // timing (pinnedLinksByContainer in lib/api.ts orders by createdAt desc).
     const { getDb } = await import("@/db/client");
     const db = getDb();
     links.forEach((link, i) => {
-      db.$client.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run(`2026-01-0${i + 1}T00:00:00.000Z`, link.id);
+      db.$client.prepare("UPDATE items SET created_at = ? WHERE id = ?").run(`2026-01-0${i + 1}T00:00:00.000Z`, link.id);
     });
 
     const read = (await (await r.container.GET(json("GET", `/api/containers/${container.id}`), params(container.id))).json()) as ContainerDTO;
@@ -126,9 +127,34 @@ describe("containers api", () => {
     const listed = list.find((c) => c.id === container.id)!;
     expect(listed.pinnedLinks.map((p) => p.id)).toEqual([links[3].id, links[2].id, links[1].id]);
 
-    db.$client.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run("2026-02-01T00:00:00.000Z", links[0].id);
+    db.$client.prepare("UPDATE items SET created_at = ? WHERE id = ?").run("2026-02-01T00:00:00.000Z", links[0].id);
     const reread = (await (await r.container.GET(json("GET", `/api/containers/${container.id}`), params(container.id))).json()) as ContainerDTO;
     expect(reread.pinnedLinks[0]).toMatchObject({ id: links[0].id, domain: "first.test" });
+  });
+
+  it("GET /api/items filters by container, types, and pinned together", async () => {
+    const created = await r.containers.POST(json("POST", "/api/containers", { kind: "resource", name: "Filter Test", category: "articles" }));
+    const container = (await created.json()) as ContainerDTO;
+
+    const pinnedLink = (await (
+      await r.items.POST(json("POST", "/api/items", { type: "link", url: "https://pinned.test/a", containerId: container.id }))
+    ).json()) as ItemDTO;
+    await r.item.PATCH(json("PATCH", `/api/items/${pinnedLink.id}`, { pinned: true }), params(pinnedLink.id));
+    const unpinnedLink = (await (
+      await r.items.POST(json("POST", "/api/items", { type: "link", url: "https://unpinned.test/b", containerId: container.id }))
+    ).json()) as ItemDTO;
+    await r.items.POST(json("POST", "/api/items", { type: "note", body: "Not a link", containerId: container.id }));
+
+    const list = (await (
+      await r.items.GET(json("GET", `/api/items?container=${container.id}&types=link&pinned=1`))
+    ).json()) as ItemDTO[];
+    expect(list.map((i) => i.id)).toEqual([pinnedLink.id]);
+    expect(list.map((i) => i.id)).not.toContain(unpinnedLink.id);
+
+    const unpinnedOnly = (await (
+      await r.items.GET(json("GET", `/api/items?container=${container.id}&types=link&pinned=0`))
+    ).json()) as ItemDTO[];
+    expect(unpinnedOnly.map((i) => i.id)).toEqual([unpinnedLink.id]);
   });
 });
 

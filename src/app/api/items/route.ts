@@ -70,7 +70,8 @@ export async function GET(req: Request): Promise<Response> {
     const offset = Number(url.searchParams.get("offset") ?? 0) || 0;
     const containerId = parseContainerParam(url.searchParams.get("container"));
     const includeArchived = url.searchParams.get("archived") === "1";
-    const pinned = url.searchParams.get("pinned") === "1" ? true : undefined;
+    const pinnedRaw = url.searchParams.get("pinned");
+    const pinned = pinnedRaw === "1" ? true : pinnedRaw === "0" ? false : undefined;
     const db = getDb();
     return NextResponse.json(
       listItems(db, { type, types: parsedTypes, status, tag, limit, offset, containerId, includeArchived, pinned }).map((i) =>

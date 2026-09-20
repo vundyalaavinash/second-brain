@@ -10,3 +10,12 @@ export function deriveTitle(body: string): string {
 export function isProbablyUrl(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim());
 }
+
+/** The hostname of `url`, `www.` stripped, or `""` if `url` doesn't parse. */
+export function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}

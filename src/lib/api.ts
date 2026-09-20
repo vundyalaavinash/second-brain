@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, type Item, type Container, type Person, type Task } from "@/db/schema";
+import { domainOf } from "@/lib/text";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
 import { getContainer, countContainerItems, ContainerError } from "@/domain/containers";
@@ -38,14 +39,6 @@ export function serializeItem(db: DB, item: Item): ItemDTO {
   };
 }
 
-function domainOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 function toPinnedLink(item: Item): PinnedLinkDTO {
   const url = item.sourceUrl ?? "";
   return { id: item.id, title: item.title, url, domain: domainOf(url) };
@@ -53,7 +46,9 @@ function toPinnedLink(item: Item): PinnedLinkDTO {
 
 /**
  * The newest three pinned, non-archived link items per container, in one query for all ids
- * instead of one per container.
+ * instead of one per container. Ordered by createdAt desc, matching the Links section's own
+ * pinned-then-newest order (LinksSection's `bySort` in links-section.tsx), so a project's card
+ * and its own page agree on which links show.
  */
 function pinnedLinksByContainer(db: DB, ids: number[]): Map<number, PinnedLinkDTO[]> {
   const out = new Map<number, PinnedLinkDTO[]>(ids.map((id) => [id, []]));
@@ -62,7 +57,7 @@ function pinnedLinksByContainer(db: DB, ids: number[]): Map<number, PinnedLinkDT
     .select()
     .from(items)
     .where(and(inArray(items.containerId, ids), eq(items.type, "link"), eq(items.pinned, 1), isNull(items.archivedAt)))
-    .orderBy(desc(items.updatedAt))
+    .orderBy(desc(items.createdAt), desc(items.id))
     .all();
   for (const row of rows) {
     const list = out.get(row.containerId!);

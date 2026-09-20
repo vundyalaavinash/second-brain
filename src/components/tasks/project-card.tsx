@@ -37,7 +37,7 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
       </div>
       {project.pinnedLinks.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          {project.pinnedLinks.slice(0, 3).map((link) => (
+          {project.pinnedLinks.map((link) => (
             <Chip key={link.id} as="span" icon={Link2} className="text-[11px]">
               {link.domain}
             </Chip>
