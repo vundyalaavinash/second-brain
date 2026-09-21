@@ -250,7 +250,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           onBlur={() => {
             if (save === "dirty") void persist();
           }}
-          className="font-doc text-[40px] leading-[1.1] font-medium tracking-[-0.01em] bg-transparent outline-none w-full text-paper-fg placeholder:text-paper-muted/60"
+          className="focus-ring font-doc text-[40px] leading-[1.1] font-medium tracking-[-0.01em] bg-transparent outline-none w-full text-paper-fg placeholder:text-paper-muted/60"
           placeholder="Untitled"
         />
 
@@ -279,7 +279,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
               {p.slug}
             </Chip>
           ))}
-          <Button variant="ghost" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
+          <Button variant="ghost" tone="paper" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
             Add person
           </Button>
           <span className="w-px h-3 bg-paper-rule" aria-hidden />

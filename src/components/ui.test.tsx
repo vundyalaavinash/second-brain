@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import { List, Row } from "./ui";
+import { Button, List, Row } from "./ui";
 
 // This vitest config has no global `afterEach`, so @testing-library/react's own auto-cleanup
 // never registers and DOM from one `it` would otherwise still be attached in the next.
@@ -32,5 +32,21 @@ describe("List and Row", () => {
     const list = screen.getByRole("list");
     expect(list.className).toContain("list-none");
     expect(list.className).toContain("divide-y divide-hairline");
+  });
+});
+
+describe("Button", () => {
+  it("uses paper-legible classes for the ghost variant when tone is paper", () => {
+    render(
+      <Button variant="ghost" tone="paper">
+        Add person
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "Add person" });
+    expect(button.className).toContain("text-paper-muted");
+    expect(button.className).toContain("hover:text-paper-fg");
+    expect(button.className).toContain("hover:bg-paper-2");
+    expect(button.className).not.toContain("text-fg-muted");
+    expect(button.className).not.toContain("hover:bg-slate-2");
   });
 });

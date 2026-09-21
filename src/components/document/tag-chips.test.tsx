@@ -40,4 +40,16 @@ describe("TagChips", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove tag draft" }));
     expect(onChange).toHaveBeenLastCalledWith(["ideas"]);
   });
+
+  it("folds a multi-comma paste into a single onChange call, deduped and trimmed", () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = screen.getByPlaceholderText("Tag") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "a,b,c," } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(["draft", "a", "b", "c"]);
+  });
 });

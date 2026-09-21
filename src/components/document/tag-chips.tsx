@@ -36,7 +36,16 @@ export function TagChips({ value, onChange, readOnly = false }: TagChipsProps) {
     if (next.includes(",")) {
       const parts = next.split(",");
       const rest = parts.pop() ?? "";
-      for (const part of parts) commit(part);
+      // Fold every comma-separated part into one new array and commit once: calling
+      // `commit` per part would have each iteration close over this render's stale
+      // `value`, so a multi-comma paste (e.g. "a,b,c,") would drop all but the last tag.
+      const toAdd: string[] = [];
+      for (const part of parts) {
+        const tag = part.trim().toLowerCase();
+        if (!tag || value.includes(tag) || toAdd.includes(tag)) continue;
+        toAdd.push(tag);
+      }
+      if (toAdd.length > 0) onChange([...value, ...toAdd]);
       setDraft(rest);
       return;
     }

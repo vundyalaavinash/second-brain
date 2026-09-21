@@ -11,18 +11,27 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonTone = "ink" | "paper";
 
 const BUTTON_BASE =
   "focus-ring inline-flex items-center gap-1.5 rounded-sm font-medium whitespace-nowrap transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none";
-const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-brass text-brass-ink hover:brightness-105",
-  secondary: "bg-slate border border-hairline hover:border-hairline-strong",
-  danger: "border border-danger/50 text-danger hover:bg-danger/10",
-  ghost: "text-fg-muted hover:text-fg hover:bg-slate-2",
+const BUTTON_VARIANT: Record<ButtonTone, Record<ButtonVariant, string>> = {
+  ink: {
+    primary: "bg-brass text-brass-ink hover:brightness-105",
+    secondary: "bg-slate border border-hairline hover:border-hairline-strong",
+    danger: "border border-danger/50 text-danger hover:bg-danger/10",
+    ghost: "text-fg-muted hover:text-fg hover:bg-slate-2",
+  },
+  paper: {
+    primary: "bg-brass text-brass-ink hover:brightness-105",
+    secondary: "bg-paper-2 border border-paper-rule text-paper-fg",
+    danger: "border border-danger/50 text-danger hover:bg-danger/10",
+    ghost: "text-paper-muted hover:text-paper-fg hover:bg-paper-2",
+  },
 };
 const BUTTON_SIZE = { sm: "h-7 px-2.5 text-[12px]", md: "h-8 px-3 text-[13px]" } as const;
 
-type ButtonVisualProps = { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon; children?: ReactNode };
+type ButtonVisualProps = { variant?: ButtonVariant; tone?: ButtonTone; size?: "sm" | "md"; icon?: LucideIcon; children?: ReactNode };
 type ButtonAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ButtonProps =
@@ -31,6 +40,7 @@ type ButtonProps =
 
 export function Button({
   variant = "secondary",
+  tone = "ink",
   size = "md",
   icon: Icon,
   href,
@@ -40,7 +50,7 @@ export function Button({
   title,
   ...props
 }: ButtonProps) {
-  const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`;
+  const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[tone][variant]} ${BUTTON_SIZE[size]} ${className}`;
   if (href) {
     const { target, rel } = props as ButtonAnchorProps;
     return (
