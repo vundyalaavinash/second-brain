@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, act, cleanup } from "@testing-library/react";
+import { render, act, cleanup, screen, fireEvent } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { ItemEditor } from "./item-editor";
 import type { ItemDTO } from "@/lib/dto";
@@ -88,6 +88,29 @@ describe("ItemEditor with RichEditor", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     expect(patches).toHaveLength(1);
     expect((patches[0] as { body: string }).body).toContain("Hello. Saved by cmd s");
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("flushes a tag added through TagChips and saves exactly once on ⌘S", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const patches: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") { patches.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ ...item, body: "x" }), { status: 200 }); }
+      return new Response(JSON.stringify(item), { status: 200 });
+    }));
+    render(<ItemEditor initial={item} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = screen.getByPlaceholderText("Tag");
+    fireEvent.change(input, { target: { value: "ideas" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => { vi.advanceTimersByTime(80); });
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true, cancelable: true }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    expect(patches).toHaveLength(1);
+    expect((patches[0] as { tags: string[] }).tags).toContain("ideas");
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });

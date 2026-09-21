@@ -18,6 +18,7 @@ export interface RichEditorProps {
   className?: string;
   itemId?: number;
   onReady?: (editor: Editor) => void;
+  variant?: "ink" | "paper";
 }
 
 const EMIT_DEBOUNCE_MS = 300;
@@ -71,7 +72,8 @@ export function prepareMarkdown(md: string): string {
   return out.join("\n");
 }
 
-export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady }: RichEditorProps) {
+export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady, variant = "ink" }: RichEditorProps) {
+  const variantClass = variant === "paper" ? "doc on-paper-editor" : "md";
   const lastMarkdown = useRef(value);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onChangeRef = useRef(onChange);
@@ -104,7 +106,7 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     autofocus: autofocus ? "end" : false,
     immediatelyRender: false,
     editorProps: {
-      attributes: { class: `md rich-editor ${className}`, spellcheck: "true" },
+      attributes: { class: `${variantClass} rich-editor ${className}`, spellcheck: "true" },
       handlePaste: (_view, event) => {
         const files = [...(event.clipboardData?.files ?? [])];
         if (files.length === 0) return false;
@@ -187,7 +189,7 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     if (editor && files.length) handleFiles(editor, files, itemId);
   }
 
-  if (!editor) return <div className={`md rich-editor ${className}`} aria-busy="true" />;
+  if (!editor) return <div className={`${variantClass} rich-editor ${className}`} aria-busy="true" />;
   return (
     <ItemIdProvider itemId={itemId}>
       <EditorContent editor={editor} />
@@ -212,11 +214,12 @@ export class RichEditorFallback extends Component<RichEditorProps & { children: 
   }
   render() {
     if (!this.state.failed) return this.props.children;
-    const { value, onChange, onBlur, placeholder, className = "" } = this.props;
+    const { value, onChange, onBlur, placeholder, className = "", variant = "ink" } = this.props;
+    const variantClassName = variant === "paper" ? `${className} !bg-transparent !text-paper-fg` : className;
     return (
       <div className="flex flex-col gap-2">
         <p className="text-[12.5px] text-warn">Rich editor unavailable, using plain text.</p>
-        <Textarea value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className={className} />
+        <Textarea value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className={variantClassName} />
       </div>
     );
   }

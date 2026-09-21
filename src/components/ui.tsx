@@ -119,17 +119,24 @@ export function Select({
   );
 }
 
-type ChipVisualProps = { icon?: LucideIcon; active?: boolean; children?: ReactNode };
+type ChipTone = "ink" | "paper";
+type ChipVisualProps = { icon?: LucideIcon; active?: boolean; tone?: ChipTone; children?: ReactNode };
 type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ChipProps =
   | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span"; ref?: Ref<HTMLButtonElement> })
   | (ChipAnchorProps & ChipVisualProps & { href: string; as?: undefined });
 
+const CHIP_TONE: Record<ChipTone, { base: string; active: string }> = {
+  ink: { base: "border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong", active: "border-brass/60 bg-brass-dim text-fg" },
+  paper: { base: "border-paper-rule text-paper-fg hover:bg-paper-2", active: "border-brass bg-brass-dim" },
+};
+
 /** A small selectable pill: filters, homes, tags. */
 export function Chip({
   icon: Icon,
   active = false,
+  tone = "ink",
   href,
   as,
   className = "",
@@ -139,7 +146,7 @@ export function Chip({
   ...props
 }: ChipProps) {
   const cls = `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
-    active ? "border-brass/60 bg-brass-dim text-fg" : "border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong"
+    active ? CHIP_TONE[tone].active : CHIP_TONE[tone].base
   } ${className}`;
   if (href) {
     const { target, rel } = props as ChipAnchorProps;
