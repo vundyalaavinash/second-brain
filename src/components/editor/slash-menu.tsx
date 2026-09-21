@@ -6,6 +6,7 @@ import { Extension, type Editor } from "@tiptap/core";
 import { Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import { computePosition, offset, flip, shift, type VirtualElement } from "@floating-ui/dom";
 import {
+  Pilcrow,
   Heading1,
   Heading2,
   Heading3,
@@ -21,39 +22,32 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+export type SlashGroup = "Text" | "Lists" | "Blocks" | "Media";
+
 export interface SlashItem {
   id: string;
+  group: SlashGroup;
   label: string;
   hint: string;
   icon: LucideIcon;
   run: (editor: Editor) => void;
 }
 
+/** Section order in the menu; items keep their group's order. */
+export const SLASH_GROUPS: SlashGroup[] = ["Text", "Lists", "Blocks", "Media"];
+
 export const SLASH_ITEMS: SlashItem[] = [
-  { id: "heading1", label: "Heading 1", hint: "Large section heading", icon: Heading1, run: (editor) => editor.chain().focus().setHeading({ level: 1 }).run() },
-  { id: "heading2", label: "Heading 2", hint: "Medium section heading", icon: Heading2, run: (editor) => editor.chain().focus().setHeading({ level: 2 }).run() },
-  { id: "heading3", label: "Heading 3", hint: "Small section heading", icon: Heading3, run: (editor) => editor.chain().focus().setHeading({ level: 3 }).run() },
-  { id: "bulletList", label: "Bulleted list", hint: "Simple bulleted list", icon: List, run: (editor) => editor.chain().focus().toggleBulletList().run() },
-  { id: "orderedList", label: "Numbered list", hint: "List with numbering", icon: ListOrdered, run: (editor) => editor.chain().focus().toggleOrderedList().run() },
-  { id: "taskList", label: "Checklist", hint: "Track tasks with checkboxes", icon: ListChecks, run: (editor) => editor.chain().focus().toggleTaskList().run() },
-  { id: "blockquote", label: "Quote", hint: "Capture a quote", icon: Quote, run: (editor) => editor.chain().focus().toggleBlockquote().run() },
-  { id: "codeBlock", label: "Code", hint: "Code block with syntax highlighting", icon: Code2, run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
-  {
-    id: "table",
-    label: "Table",
-    hint: "3 by 3 table",
-    icon: Table,
-    run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
-  },
-  {
-    id: "image",
-    label: "Image",
-    hint: "Upload an image",
-    icon: ImageIcon,
-    run: (editor) => editor.view.dom.dispatchEvent(new CustomEvent("sb:pick-image")),
-  },
+  { id: "paragraph", group: "Text", label: "Paragraph", hint: "Plain text", icon: Pilcrow, run: (editor) => editor.chain().focus().setParagraph().run() },
+  { id: "heading1", group: "Text", label: "Heading 1", hint: "Large section heading", icon: Heading1, run: (editor) => editor.chain().focus().setHeading({ level: 1 }).run() },
+  { id: "heading2", group: "Text", label: "Heading 2", hint: "Medium section heading", icon: Heading2, run: (editor) => editor.chain().focus().setHeading({ level: 2 }).run() },
+  { id: "heading3", group: "Text", label: "Heading 3", hint: "Small section heading", icon: Heading3, run: (editor) => editor.chain().focus().setHeading({ level: 3 }).run() },
+  { id: "bulletList", group: "Lists", label: "Bulleted list", hint: "Simple bulleted list", icon: List, run: (editor) => editor.chain().focus().toggleBulletList().run() },
+  { id: "orderedList", group: "Lists", label: "Numbered list", hint: "List with numbering", icon: ListOrdered, run: (editor) => editor.chain().focus().toggleOrderedList().run() },
+  { id: "taskList", group: "Lists", label: "Checklist", hint: "Track tasks with checkboxes", icon: ListChecks, run: (editor) => editor.chain().focus().toggleTaskList().run() },
+  { id: "blockquote", group: "Blocks", label: "Quote", hint: "Capture a quote", icon: Quote, run: (editor) => editor.chain().focus().toggleBlockquote().run() },
   {
     id: "callout",
+    group: "Blocks",
     label: "Callout",
     hint: "Highlight important context",
     icon: Info,
@@ -64,7 +58,24 @@ export const SLASH_ITEMS: SlashItem[] = [
         .insertContent({ type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "[!note] " }] }] })
         .run(),
   },
-  { id: "divider", label: "Divider", hint: "Visual divider between sections", icon: Minus, run: (editor) => editor.chain().focus().setHorizontalRule().run() },
+  { id: "codeBlock", group: "Blocks", label: "Code", hint: "Code block with syntax highlighting", icon: Code2, run: (editor) => editor.chain().focus().toggleCodeBlock().run() },
+  {
+    id: "table",
+    group: "Blocks",
+    label: "Table",
+    hint: "3 by 3 table",
+    icon: Table,
+    run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+  { id: "divider", group: "Blocks", label: "Divider", hint: "Visual divider between sections", icon: Minus, run: (editor) => editor.chain().focus().setHorizontalRule().run() },
+  {
+    id: "image",
+    group: "Media",
+    label: "Image",
+    hint: "Upload an image",
+    icon: ImageIcon,
+    run: (editor) => editor.view.dom.dispatchEvent(new CustomEvent("sb:pick-image")),
+  },
 ];
 
 export function filterSlashItems(query: string): typeof SLASH_ITEMS {
@@ -85,23 +96,35 @@ export function SlashMenu({ items, selectedIndex, onHover, onSelect }: SlashMenu
   }
   return (
     <div role="listbox" aria-label="Blocks">
-      {items.map((item, i) => (
-        <button
-          key={item.id}
-          type="button"
-          role="option"
-          aria-selected={i === selectedIndex}
-          onMouseEnter={() => onHover(i)}
-          onClick={() => onSelect(item)}
-          className={`w-full flex items-center gap-2.5 px-2 h-9 rounded-sm text-left transition-colors duration-100 ${
-            i === selectedIndex ? "bg-slate-2 text-fg" : "text-fg-muted"
-          }`}
-        >
-          <item.icon className="w-4 h-4 shrink-0" aria-hidden />
-          <span className="shrink-0 text-[13px]">{item.label}</span>
-          <span className="flex-1 min-w-0 truncate text-fg-faint text-[11.5px]">{item.hint}</span>
-        </button>
-      ))}
+      {SLASH_GROUPS.map((group) => {
+        const inGroup = items.filter((item) => item.group === group);
+        if (inGroup.length === 0) return null;
+        return (
+          <div key={group} role="group" aria-label={group}>
+            <p className="px-2 pt-1.5 pb-1 text-[11px] text-fg-faint">{group}</p>
+            {inGroup.map((item) => {
+              const index = items.indexOf(item);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === selectedIndex}
+                  onMouseEnter={() => onHover(index)}
+                  onClick={() => onSelect(item)}
+                  className={`w-full flex items-center gap-2.5 px-2 h-9 rounded-sm text-left transition-colors duration-100 ${
+                    index === selectedIndex ? "bg-slate-2 text-fg" : "text-fg-muted"
+                  }`}
+                >
+                  <item.icon className="w-4 h-4 shrink-0" aria-hidden />
+                  <span className="shrink-0 text-[13px]">{item.label}</span>
+                  <span className="flex-1 min-w-0 truncate text-right text-fg-faint text-[11.5px]">{item.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -160,7 +183,7 @@ export const SlashCommand = Extension.create({
               currentItems = props.items;
               selectedIndex = 0;
               el = document.createElement("div");
-              el.className = "panel rounded-md p-1 w-72 z-50";
+              el.className = "panel rounded-md p-1 w-80 z-50";
               el.style.position = "absolute";
               el.style.left = "0px";
               el.style.top = "0px";

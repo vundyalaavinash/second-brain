@@ -3,7 +3,8 @@
   min-height: 260px;
   max-width: 80rem;
   outline: none;
-  padding: 12px 16px;
+  /* Left padding is the block handles' gutter (two 24px controls). */
+  padding: 12px 16px 12px 48px;
   border-radius: 8px;
   border: 1px solid var(--color-hairline);
   background: var(--color-slate);
@@ -60,29 +61,38 @@
   outline: 2px solid var(--color-brass);
 }
 .rich-editor .callout {
+  position: relative;
   border-left-width: 3px;
   border-radius: 6px;
-  padding: 0.6em 0.9em;
+  padding: 0.6em 0.9em 0.6em 2.4em;
   color: var(--color-fg);
 }
-.rich-editor .callout-note { background: var(--color-brass-dim); border-color: var(--color-brass); }
-.rich-editor .callout-tip { background: rgba(127, 184, 138, 0.14); border-color: var(--color-success); }
-.rich-editor .callout-warning { background: rgba(217, 164, 65, 0.14); border-color: var(--color-warn); }
+/* The `[!note]` marker stays in the markdown but reads as an icon. */
+.rich-editor .callout::before {
+  content: "";
+  position: absolute;
+  left: 0.8em;
+  top: 0.85em;
+  width: 1em;
+  height: 1em;
+  background: currentColor;
+  -webkit-mask: var(--callout-icon) center / contain no-repeat;
+  mask: var(--callout-icon) center / contain no-repeat;
+}
+.rich-editor .callout-note { background: var(--color-brass-dim); border-color: var(--color-brass); --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4M12 8h.01'/></svg>"); }
+.rich-editor .callout-tip { background: rgba(127, 184, 138, 0.14); border-color: var(--color-success); --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z'/></svg>"); }
+.rich-editor .callout-warning { background: rgba(217, 164, 65, 0.14); border-color: var(--color-warn); --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'/><path d='M12 9v4M12 17h.01'/></svg>"); }
 .rich-editor .callout-marker {
-  font-family: var(--font-mono);
-  font-size: 0.8em;
-  color: var(--color-fg-faint);
+  font-size: 0;
 }
-.drag-handle {
-  width: 14px;
-  height: 18px;
-  border-radius: 4px;
-  background: radial-gradient(circle, var(--color-fg-faint) 1.2px, transparent 1.3px) 0 0 / 6px 6px;
-  opacity: 0.7;
-  cursor: grab;
+
+/* The handle gutter: `left: 0` sits inside the ink editor's 48px padding; on paper the
+ * reserved gutter is 40px, so the pair hangs 8px into the sheet's own padding. */
+.block-handles {
+  left: 0;
 }
-.drag-handle:hover {
-  opacity: 1;
+.on-paper .block-handles {
+  left: -8px;
 }
 .rich-editor pre code.hljs { background: none; padding: 0; }
 .rich-editor .hljs-keyword, .rich-editor .hljs-tag { color: #c084fc; }
@@ -101,4 +111,4 @@
 .on-paper .rich-editor .callout-warning { background: rgba(217,164,65,.18); border-color: var(--color-warn); }
 .on-paper .rich-editor pre { background: var(--color-paper-2); border-color: var(--color-paper-rule); }
 .on-paper .rich-editor th, .on-paper .rich-editor td { border-color: var(--color-paper-rule); }
-.on-paper .rich-editor img { border-color: var(--color-paper-rule); }
+.on-paper .rich-editor img { width: 100%; border-radius: var(--radius-md); border-color: var(--color-paper-rule); }

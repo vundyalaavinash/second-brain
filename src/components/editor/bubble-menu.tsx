@@ -4,7 +4,9 @@ import { useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { Bold, Italic, Code, Strikethrough, Link2 } from "lucide-react";
-import { IconButton, Input } from "../ui";
+import { IconButton, Input, Select } from "../ui";
+import { BLOCK_KINDS } from "./block-menu";
+import { blockKindAt, turnInto, type BlockKind } from "./block-utils";
 
 export function EditorBubbleMenu({ editor }: { editor: Editor }) {
   const [linkOpen, setLinkOpen] = useState(false);
@@ -16,6 +18,8 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
     else editor.chain().focus().unsetLink().run();
     setLinkOpen(false);
   }
+
+  const kind = blockKindAt(editor.state, editor.state.selection.from);
 
   return (
     <BubbleMenu editor={editor} shouldShow={({ editor, from, to }) => from !== to && !editor.isActive("codeBlock")} options={{ placement: "top", offset: 8 }}>
@@ -33,6 +37,19 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
             setLinkOpen((v) => !v);
           }}
         />
+        <Select
+          size="sm"
+          aria-label="Turn into"
+          className="w-32 ml-1"
+          value={kind ?? "paragraph"}
+          onChange={(e) => turnInto(editor, editor.state.selection.from, e.target.value as BlockKind)}
+        >
+          {BLOCK_KINDS.map(({ kind: value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
         {linkOpen && (
           <Input
             size="sm"

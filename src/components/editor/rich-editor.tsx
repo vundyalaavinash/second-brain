@@ -2,9 +2,9 @@
 
 import { Component, useCallback, useEffect, useRef, type ChangeEvent, type ReactNode } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { buildExtensions } from "./extensions";
 import { EditorBubbleMenu } from "./bubble-menu";
+import { BlockHandles } from "./block-handles";
 import { IMAGE_MIMES, handleFiles } from "./images";
 import { ItemIdProvider } from "./upload-failed";
 import { Textarea } from "../ui";
@@ -80,6 +80,7 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
   const editorRef = useRef<Editor | null>(null);
   const itemIdRef = useRef(itemId);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -192,11 +193,11 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
   if (!editor) return <div className={`${variantClass} rich-editor ${className}`} aria-busy="true" />;
   return (
     <ItemIdProvider itemId={itemId}>
-      <EditorContent editor={editor} />
+      <div ref={containerRef} className="relative group">
+        <EditorContent editor={editor} />
+        <BlockHandles editor={editor} containerRef={containerRef} />
+      </div>
       <EditorBubbleMenu editor={editor} />
-      <DragHandle editor={editor}>
-        <span className="drag-handle" aria-hidden />
-      </DragHandle>
       <input ref={fileInputRef} type="file" accept={IMAGE_MIMES.join(",")} className="hidden" aria-hidden tabIndex={-1} onChange={onFileInputChange} />
     </ItemIdProvider>
   );

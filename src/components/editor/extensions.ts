@@ -25,6 +25,7 @@ import { Callout } from "./callout";
 import { UploadFailed } from "./upload-failed";
 import { Uploading } from "./uploading";
 import { SlashCommand } from "./slash-menu";
+import { BlockKeymap } from "./block-keymap";
 
 // Trimmed to the languages notes actually use, instead of lowlight's `common` bundle
 // (~35 languages), to keep the editor chunk small.
@@ -64,5 +65,6 @@ export function buildExtensions(opts: { placeholder?: string }): Extensions {
     UploadFailed,
     Uploading,
     SlashCommand,
+    BlockKeymap,
   ];
 }

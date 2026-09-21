@@ -16,7 +16,7 @@ function decorate(doc: PMNode): DecorationSet {
     const kind = m[1].toLowerCase();
     decos.push(Decoration.node(pos, pos + node.nodeSize, { class: `callout callout-${kind}` }));
     const from = pos + 2; // blockquote open + paragraph open
-    decos.push(Decoration.inline(from, from + m[0].length, { class: "callout-marker" }));
+    decos.push(Decoration.inline(from, from + m[0].length, { class: "callout-marker", "data-kind": kind }));
     return false;
   });
   return DecorationSet.create(doc, decos);
