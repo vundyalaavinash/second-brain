@@ -110,7 +110,7 @@ export function Dock() {
         <Link
           href={CAPTURE_ITEM.href}
           aria-label="Capture"
-          className="focus-ring group relative flex items-center justify-center w-10 h-10 rounded-full bg-brass text-brass-ink shadow-[0_6px_16px_-6px_rgba(224,169,60,.7)] motion-safe:active:scale-95"
+          className="focus-ring group relative flex items-center justify-center w-10 h-10 rounded-full bg-brass text-brass-ink shadow-[0_6px_16px_-6px_rgba(224,169,60,.7)] motion-safe:active:scale-[0.96]"
         >
           <Plus className="w-5 h-5" strokeWidth={2} aria-hidden />
           <span

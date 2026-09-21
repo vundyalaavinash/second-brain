@@ -94,6 +94,8 @@
 .on-paper .block-handles {
   left: -8px;
 }
+/* Literal hex, not tokens: highlight.js ships no theme here, and these five hues are
+ * syntax-only — they are not part of the palette any utility class can reach. */
 .rich-editor pre code.hljs { background: none; padding: 0; }
 .rich-editor .hljs-keyword, .rich-editor .hljs-tag { color: #c084fc; }
 .rich-editor .hljs-string, .rich-editor .hljs-attr { color: #52d38a; }
@@ -111,4 +113,8 @@
 .on-paper .rich-editor .callout-warning { background: rgba(217,164,65,.18); border-color: var(--color-warn); }
 .on-paper .rich-editor pre { background: var(--color-paper-2); border-color: var(--color-paper-rule); }
 .on-paper .rich-editor th, .on-paper .rich-editor td { border-color: var(--color-paper-rule); }
+/* `.rich-editor th` paints the ink slate; on paper that is a dark header under dark text. */
+.on-paper .rich-editor th { background: var(--color-paper-2); color: var(--color-paper-fg); }
+/* `.rich-editor .callout` sets the ink foreground, and being unlayered it beats `.on-paper`. */
+.on-paper .rich-editor .callout { color: var(--color-paper-fg); }
 .on-paper .rich-editor img { width: 100%; border-radius: var(--radius-md); border-color: var(--color-paper-rule); }

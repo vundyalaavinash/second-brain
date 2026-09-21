@@ -20,7 +20,7 @@ import { TagChips } from "./document/tag-chips";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
-  loading: () => <div className="md rich-editor" aria-busy="true" />,
+  loading: () => <div className="doc on-paper-editor rich-editor" aria-busy="true" />,
 });
 
 const SAVE_DEBOUNCE_MS = 5000;
@@ -209,14 +209,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           Library
         </Link>
         <span className="font-mono text-[11px] text-fg-faint">#{item.id}</span>
-        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted">
-          <TypeIcon type={item.type} />
-          {TYPE_LABEL[item.type]}
-        </span>
         <StatusDot status={item.status} error={item.error} />
-        <Chip icon={item.container ? KIND_ICON[item.container.kind] : InboxIcon} onClick={() => setMovePicker(true)}>
-          {item.container ? item.container.name : "Inbox"}
-        </Chip>
         {item.archivedAt && <span className="text-[11.5px] text-warn">Archived</span>}
         <span className={`text-[12px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
         <span className="flex-1" />
@@ -297,7 +290,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
                 href={item.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brass-ink underline underline-offset-2 hover:opacity-80 truncate max-w-full"
+                className="inline-flex items-center gap-1 text-paper-link underline underline-offset-[3px] hover:opacity-80 truncate max-w-full"
               >
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden />
                 {item.sourceUrl}
@@ -311,7 +304,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
                 href={`/api/items/${item.id}/file`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brass-ink underline underline-offset-2 hover:opacity-80"
+                className="inline-flex items-center gap-1 text-paper-link underline underline-offset-[3px] hover:opacity-80"
               >
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden />
                 Open file
@@ -355,7 +348,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           <details className="rounded-md bg-paper-2 mt-6">
             <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-paper-muted select-none">
               <FileText className="w-4 h-4" aria-hidden />
-              Extracted text <span className="font-mono text-[11px] text-paper-muted">{item.extractedText.length.toLocaleString()} characters</span>
+              Extracted text <span className="font-mono text-[11px] text-paper-muted">{item.extractedText.length.toLocaleString("en-GB")} characters</span>
             </summary>
             <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-paper-fg font-ui max-h-[480px] overflow-y-auto border-t border-paper-rule">
               {item.extractedText}

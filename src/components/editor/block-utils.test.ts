@@ -23,6 +23,19 @@ describe("block utils", () => {
     expect(e.getMarkdown()).toBe("One\n\nThree\n\nTwo");
     expect(moveBlock(e, "down")).toBe(false);
   });
+  // The block menu re-aims its handles from the selection a move leaves behind, so that
+  // selection has to travel with the block rather than stay at the old position.
+  it("leaves the selection inside the moved block, so a second move acts on the same block", () => {
+    const e = make("One\n\nTwo\n\nThree\n");
+    e.commands.setTextSelection(6); // inside "Two"
+    expect(moveBlock(e, "down")).toBe(true);
+    expect(e.getMarkdown()).toBe("One\n\nThree\n\nTwo");
+    expect(topLevelBlockAt(e.state, e.state.selection.from)!.node.textContent).toBe("Two");
+    // Second move driven only by where the first one left the selection.
+    expect(moveBlock(e, "up")).toBe(true);
+    expect(e.getMarkdown()).toBe("One\n\nTwo\n\nThree");
+    expect(topLevelBlockAt(e.state, e.state.selection.from)!.node.textContent).toBe("Two");
+  });
   it("turns a paragraph into a heading, list, checklist, quote, callout, and back", () => {
     const e = make("Hello **there**\n");
     const b = topLevelBlockAt(e.state, 1)!;

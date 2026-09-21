@@ -25,11 +25,13 @@ interface BlockMenuProps {
   editor: Editor;
   pos: number;
   anchorEl: HTMLElement;
+  /** Re-points the handles at a position in the post-action document. */
+  reaim: (pos: number) => void;
   onClose: () => void;
 }
 
 /** The popover behind the block grip: turn the block into another kind, or act on it. */
-export function BlockMenu({ editor, pos, anchorEl, onClose }: BlockMenuProps) {
+export function BlockMenu({ editor, pos, anchorEl, reaim, onClose }: BlockMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const current = blockKindAt(editor.state, pos);
 
@@ -83,9 +85,17 @@ export function BlockMenu({ editor, pos, anchorEl, onClose }: BlockMenuProps) {
     else if (event.key === "Tab") step(event.shiftKey ? -1 : 1);
   }
 
-  /** Every action works on the block at `pos`, then closes and hands focus back. */
+  /**
+   * Every action works on the block at `pos`, then closes and hands focus back. Each of them
+   * moves, replaces or removes that block, so `pos` is stale the moment the action returns:
+   * re-aim the handles from the selection the action left behind before closing. Focus is on
+   * the grip, not the editor, so `BlockHandles`' own `selectionUpdate` listener bails out and
+   * cannot do this. After a delete that emptied the document the selection sits in the fresh
+   * empty paragraph, so the handles land there rather than on nothing.
+   */
   function run(action: () => void) {
     action();
+    reaim(editor.state.selection.from);
     close();
   }
 

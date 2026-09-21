@@ -25,7 +25,7 @@ export function DockItem({
         href={href}
         aria-label={[label, badge ? `${badge} waiting` : null, dot ? "not recording" : null].filter(Boolean).join(", ")}
         aria-current={active ? "page" : undefined}
-        className={`focus-ring group relative flex items-center justify-center w-11 h-11 rounded-full transition-colors duration-150 motion-safe:active:scale-95 ${
+        className={`focus-ring group relative flex items-center justify-center w-11 h-11 rounded-full transition-colors duration-150 motion-safe:active:scale-[0.96] ${
           active ? "text-brass" : "text-fg-muted hover:text-fg hover:bg-slate-2"
         }`}
       >

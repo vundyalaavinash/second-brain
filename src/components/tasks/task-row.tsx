@@ -135,7 +135,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
   return (
     <li
       role="listitem"
-      className="hairline-row group flex items-center gap-3 px-3 h-10 hover:bg-slate-2 transition-colors"
+      className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-slate-2 transition-colors"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}

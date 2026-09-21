@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { GripVertical, Plus } from "lucide-react";
@@ -28,27 +28,32 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
     menuOpenRef.current = menuAnchor !== null;
   }, [menuAnchor]);
 
+  /**
+   * Points the handles at the block containing `pos`. Declared here rather than inside the
+   * effect because the block menu calls it too: an action that moves blocks about leaves the
+   * handles aimed at where the block used to be, and the grip holds focus at the time, so
+   * `onSelection` cannot do it.
+   */
+  const aim = useCallback(
+    (pos: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const block = topLevelBlockAt(editor.state, pos);
+      if (!block) return;
+      let top: number;
+      try {
+        top = editor.view.coordsAtPos(block.pos + 1).top - container.getBoundingClientRect().top;
+      } catch {
+        return;
+      }
+      setTarget((prev) => (prev && prev.pos === block.pos && prev.top === top ? prev : { pos: block.pos, top }));
+    },
+    [editor, containerRef],
+  );
+
   useEffect(() => {
     const dom = editor.view.dom;
     const container = containerRef.current;
-
-    /** The top of the block at `pos`, relative to the editor wrapper. */
-    function topOf(pos: number): number | null {
-      if (!container) return null;
-      try {
-        return editor.view.coordsAtPos(pos + 1).top - container.getBoundingClientRect().top;
-      } catch {
-        return null;
-      }
-    }
-
-    function aim(pos: number) {
-      const block = topLevelBlockAt(editor.state, pos);
-      if (!block) return;
-      const top = topOf(block.pos);
-      if (top === null) return;
-      setTarget((prev) => (prev && prev.pos === block.pos && prev.top === top ? prev : { pos: block.pos, top }));
-    }
 
     function onMouseMove(event: MouseEvent) {
       if (menuOpenRef.current) return;
@@ -86,7 +91,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
       dom.removeEventListener(BLOCK_MENU_EVENT, onMenuRequest);
       editor.off("selectionUpdate", onSelection);
     };
-  }, [editor, containerRef]);
+  }, [editor, containerRef, aim]);
 
   // Before the first hover or caret move the handles still sit at the first block, so they
   // are always reachable by Tab.
@@ -140,7 +145,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
           <GripVertical className="w-4 h-4" aria-hidden />
         </button>
       </div>
-      {menuAnchor && <BlockMenu editor={editor} pos={pos} anchorEl={menuAnchor} onClose={() => setMenuAnchor(null)} />}
+      {menuAnchor && <BlockMenu editor={editor} pos={pos} anchorEl={menuAnchor} reaim={aim} onClose={() => setMenuAnchor(null)} />}
     </>
   );
 }

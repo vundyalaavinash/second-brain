@@ -24,7 +24,7 @@ const BUTTON_VARIANT: Record<ButtonTone, Record<ButtonVariant, string>> = {
   },
   paper: {
     primary: "bg-brass text-brass-ink hover:brightness-105",
-    secondary: "bg-paper-2 border border-paper-rule text-paper-fg",
+    secondary: "bg-paper-2 border border-paper-rule text-paper-fg hover:border-brass/60",
     danger: "border border-danger/50 text-danger hover:bg-danger/10",
     ghost: "text-paper-muted hover:text-paper-fg hover:bg-paper-2",
   },
@@ -121,8 +121,9 @@ export function Select({
     <select
       className={`${FIELD} ${FIELD_SIZE[fieldSize]} pr-8 appearance-none bg-no-repeat bg-[right_0.6rem_center] ${className}`}
       style={{
+        // Literal hex, kept in step with --color-fg-muted by hand: a data URI cannot read a CSS variable.
         backgroundImage:
-          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9ba4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
+          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a3a8b4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
       }}
       {...props}
     />
@@ -222,7 +223,7 @@ export function EmptyState({ icon: Icon, text, action }: { icon: LucideIcon; tex
 
 /** The list container and its row. Rows are edge-to-edge, separated by a hairline. */
 export function List({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <ul className={`list-none m-0 p-0 ${className}`}>{children}</ul>;
+  return <ul role="list" className={`list-none m-0 p-0 ${className}`}>{children}</ul>;
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {

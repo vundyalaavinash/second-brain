@@ -15,6 +15,7 @@
   --color-paper-rule: rgba(15, 18, 24, 0.1);
   --color-paper-fg: #1b1f27;
   --color-paper-muted: #5b6070;
+  --color-paper-link: #7a5a12;
   --color-brass: #e0a93c;
   --color-brass-dim: rgba(224, 169, 60, 0.16);
   --color-brass-ink: #2a1f07;
@@ -107,8 +108,10 @@
 .on-paper ::selection {
   background: var(--color-brass-dim);
 }
-.on-paper a {
-  color: #7a5a12;
+/* Scoped to document bodies: a blanket `.on-paper a` is unlayered, so it would beat the
+ * utility classes on paper chips and the source/file links regardless of specificity. */
+.on-paper :is(.doc, .md) a {
+  color: var(--color-paper-link);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -255,6 +258,19 @@
 .doc blockquote {
   margin: 0.7em 0;
 }
+/* Preflight removes list markers and indent; `.md` restores them for the ink variant, and
+ * the paper variant (`doc on-paper-editor`, no `.md`) needs its own copy.
+ * `.rich-editor ul[data-type="taskList"]` is more specific, so checklists stay unmarked. */
+.doc ul,
+.doc ol {
+  padding-left: 1.4em;
+}
+.doc ul {
+  list-style: disc;
+}
+.doc ol {
+  list-style: decimal;
+}
 .doc code,
 .doc pre {
   font-family: var(--font-mono);
@@ -284,4 +300,16 @@
   border-top: 1px solid var(--color-paper-rule);
   margin: 1.2em 0;
 }
-/* .doc a inherits .on-paper a: .doc is only ever rendered inside .on-paper (Task 2). */
+/* Paper overrides for `.md`. These sit after the `.md` block on purpose: `.md a` and
+ * `.md pre` are unlayered and equal in specificity to `.doc a` / `.doc pre`, so only source
+ * order decides which wins on the preview pane, which renders `doc md` together. */
+.doc a,
+.on-paper .md a {
+  color: var(--color-paper-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.doc pre,
+.on-paper .md pre {
+  border-color: var(--color-paper-rule);
+}

@@ -35,12 +35,14 @@ export function DockMore({ items, pathname }: { items: NavItem[]; pathname: stri
           {items.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
-              <li key={item.href}>
+              // `hairline-row` belongs on the `li`, as in `Row`: on the only child of a `li` its
+              // `:last-child` rule matches every row and no divider is ever drawn.
+              <li key={item.href} className="hairline-row">
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   onClick={() => setOpen(false)}
-                  className={`focus-ring hairline-row flex items-center gap-3 px-3 h-11 transition-colors ${active ? "text-brass" : "text-fg-muted hover:text-fg hover:bg-slate-2"}`}
+                  className={`focus-ring flex items-center gap-3 px-3 h-11 transition-colors ${active ? "text-brass" : "text-fg-muted hover:text-fg hover:bg-slate-2"}`}
                 >
                   <Icon name={item.icon} className="w-4 h-4" />
                   <span className="flex-1 text-[13px]">{item.label}</span>
@@ -49,14 +51,14 @@ export function DockMore({ items, pathname }: { items: NavItem[]; pathname: stri
               </li>
             );
           })}
-          <li>
+          <li className="hairline-row">
             <button
               type="button"
               onClick={() => {
                 window.dispatchEvent(new Event("sb:palette"));
                 setOpen(false);
               }}
-              className="focus-ring hairline-row w-full flex items-center gap-3 px-3 h-11 text-left transition-colors text-fg-muted hover:text-fg hover:bg-slate-2"
+              className="focus-ring w-full flex items-center gap-3 px-3 h-11 text-left transition-colors text-fg-muted hover:text-fg hover:bg-slate-2"
             >
               <Command className="w-4 h-4" strokeWidth={1.75} aria-hidden />
               <span className="flex-1 text-[13px]">Commands</span>
