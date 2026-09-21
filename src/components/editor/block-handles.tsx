@@ -6,7 +6,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { GripVertical, Plus } from "lucide-react";
 import { BLOCK_MENU_EVENT } from "./block-keymap";
 import { BlockMenu } from "./block-menu";
-import { startBlockDrag, topLevelBlockAt } from "./block-utils";
+import { endBlockDrag, startBlockDrag, topLevelBlockAt } from "./block-utils";
 
 interface Target {
   pos: number;
@@ -112,7 +112,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
   return (
     <>
       <div
-        className="block-handles absolute z-10 flex items-start opacity-0 group-hover:opacity-100 focus-within:opacity-100 motion-safe:transition-opacity motion-safe:duration-150"
+        className="block-handles absolute z-10 flex items-start opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 motion-safe:transition-opacity motion-safe:duration-150"
         style={{ top }}
       >
         <button
@@ -133,6 +133,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
           aria-expanded={menuAnchor !== null}
           draggable
           onDragStart={onDragStart}
+          onDragEnd={() => endBlockDrag(editor)}
           onClick={(event) => setMenuAnchor(menuAnchor ? null : event.currentTarget)}
           className="focus-ring inline-flex items-center justify-center w-6 h-6 rounded-sm text-fg-faint hover:text-fg hover:bg-slate-2 cursor-grab transition-colors duration-150"
         >

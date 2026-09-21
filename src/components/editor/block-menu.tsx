@@ -97,15 +97,20 @@ export function BlockMenu({ editor, pos, anchorEl, onClose }: BlockMenuProps) {
       onKeyDown={onKeyDown}
       className="panel rounded-md p-1 w-64 z-50 absolute top-0 left-0 motion-safe:animate-[fade-in_120ms_ease-out]"
     >
-      <p className="px-2 pt-1 pb-1.5 text-[11px] text-fg-faint">Turn into</p>
-      <div role="group" aria-label="Turn into" className="flex flex-wrap gap-1 px-1 pb-1.5">
-        {BLOCK_KINDS.map(({ kind, label }) => (
-          <Chip key={kind} role="menuitemradio" aria-checked={current === kind} active={current === kind} data-menu-item onClick={() => run(() => turnInto(editor, pos, kind))}>
-            {label}
-          </Chip>
-        ))}
-      </div>
-      <div className="border-t border-hairline pt-1">
+      {/* Tables, images and rules have no kind of their own: there is nothing to turn them into. */}
+      {current && (
+        <>
+          <p className="px-2 pt-1 pb-1.5 text-[11px] text-fg-faint">Turn into</p>
+          <div role="group" aria-label="Turn into" className="flex flex-wrap gap-1 px-1 pb-1.5">
+            {BLOCK_KINDS.map(({ kind, label }) => (
+              <Chip key={kind} role="menuitemradio" aria-checked={current === kind} active={current === kind} data-menu-item onClick={() => run(() => turnInto(editor, pos, kind))}>
+                {label}
+              </Chip>
+            ))}
+          </div>
+        </>
+      )}
+      <div className={current ? "border-t border-hairline pt-1" : ""}>
         <MenuItem icon={Copy} label="Duplicate" onSelect={() => run(() => void duplicateBlock(editor, pos))} />
         <MenuItem
           icon={ArrowUp}

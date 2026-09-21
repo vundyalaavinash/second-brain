@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor } from "@tiptap/core";
 import { buildExtensions } from "./extensions";
-import { moveBlock, turnInto, duplicateBlock, deleteBlock, topLevelBlockAt, blockKindAt, type BlockKind } from "./block-utils";
+import { moveBlock, turnInto, duplicateBlock, deleteBlock, topLevelBlockAt, blockKindAt, startBlockDrag, endBlockDrag, type BlockKind } from "./block-utils";
 
 function make(md: string): Editor {
   const el = document.createElement("div");
@@ -40,6 +40,23 @@ describe("block utils", () => {
     const kinds: (BlockKind | null)[] = [];
     e.state.doc.forEach((_node, offset) => kinds.push(blockKindAt(e.state, offset + 1)));
     expect(kinds).toEqual(["h1", "task", "callout", "quote", "paragraph"]);
+  });
+  it("refuses to turn a block that has no kind of its own into something else", () => {
+    const e = make("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+    const before = e.getMarkdown();
+    expect(topLevelBlockAt(e.state, 1)!.node.type.name).toBe("table");
+    expect(blockKindAt(e.state, 1)).toBe(null);
+    expect(turnInto(e, 1, "h2")).toBe(false);
+    expect(e.getMarkdown()).toBe(before);
+  });
+  it("clears the drag ProseMirror is holding once the drag ends", () => {
+    const e = make("A\n\nB\n");
+    const block = topLevelBlockAt(e.state, 1)!;
+    const dataTransfer = { effectAllowed: "", setData: () => {} } as unknown as DataTransfer;
+    startBlockDrag(e, block, dataTransfer);
+    expect(e.view.dragging).not.toBeNull();
+    endBlockDrag(e);
+    expect(e.view.dragging).toBeNull();
   });
   it("duplicates and deletes", () => {
     const e = make("A\n\nB\n");

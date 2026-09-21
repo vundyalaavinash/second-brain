@@ -37,19 +37,21 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
             setLinkOpen((v) => !v);
           }}
         />
-        <Select
-          size="sm"
-          aria-label="Turn into"
-          className="w-32 ml-1"
-          value={kind ?? "paragraph"}
-          onChange={(e) => turnInto(editor, editor.state.selection.from, e.target.value as BlockKind)}
-        >
-          {BLOCK_KINDS.map(({ kind: value, label }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
+        {kind && (
+          <Select
+            size="sm"
+            aria-label="Turn into"
+            className="w-32 ml-1"
+            value={kind}
+            onChange={(e) => turnInto(editor, editor.state.selection.from, e.target.value as BlockKind)}
+          >
+            {BLOCK_KINDS.map(({ kind: value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        )}
         {linkOpen && (
           <Input
             size="sm"

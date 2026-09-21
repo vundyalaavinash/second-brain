@@ -76,6 +76,16 @@ export function startBlockDrag(editor: Editor, block: { node: PMNode; pos: numbe
   editor.view.dragging = { slice: new Slice(Fragment.from(block.node), 0, 0), move: true };
 }
 
+/**
+ * Clears the drag ProseMirror is holding. The grip lives outside `view.dom`, so
+ * ProseMirror's own `dragend` never fires for it: without this a cancelled drag would
+ * leave a stale slice that the next drop into the editor would paste, deleting the
+ * selection on the way.
+ */
+export function endBlockDrag(editor: Editor): void {
+  editor.view.dragging = null;
+}
+
 const CALLOUT_MARKER = /^\[!(?:note|tip|warning)\]\s?/i;
 
 /** The inline content of a block: the textblock itself, or the textblocks it wraps. */
@@ -103,7 +113,9 @@ function stripCalloutMarker(frag: Fragment): Fragment {
 /** Replaces the block at `pos` with `kind`, preserving its inline content. */
 export function turnInto(editor: Editor, pos: number, kind: BlockKind): boolean {
   const block = topLevelBlockAt(editor.state, pos);
-  if (!block) return false;
+  // Blocks with no kind of their own (tables, images, rules) have no inline content to
+  // carry over; converting one would flatten it into a single line of text.
+  if (!block || !blockKindAt(editor.state, pos)) return false;
   const { schema } = editor;
   const content = stripCalloutMarker(inlineContent(block.node));
   const para = (frag: Fragment) => schema.nodes.paragraph.create(null, frag);
