@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { TaskDTO, ProgressDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { quickParse } from "@/domain/tasks/quick-parse";
-import { Button, Input } from "../ui";
+import { Button, Input, List } from "../ui";
 import { TaskRow } from "./task-row";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -207,7 +207,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
       {open.length === 0 && done.length === 0 && <p className="text-fg-faint text-[13px]">No tasks yet. Add the first step above.</p>}
 
       {open.length > 0 && (
-        <ul role="list" className="rounded-md border border-hairline bg-slate divide-y divide-hairline overflow-hidden">
+        <List>
           {open.map((task) => (
             <TaskRow
               key={task.id}
@@ -226,7 +226,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
               onRowDrop={() => handleRowDrop(task.id)}
             />
           ))}
-        </ul>
+        </List>
       )}
 
       {done.length > 0 && (
@@ -235,7 +235,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
             {done.length} done
           </Button>
           {showDone && (
-            <ul role="list" className="rounded-md border border-hairline bg-slate divide-y divide-hairline overflow-hidden">
+            <List>
               {done.map((task) => (
                 <TaskRow
                   key={task.id}
@@ -249,7 +249,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
                   onDelete={() => remove(task.id)}
                 />
               ))}
-            </ul>
+            </List>
           )}
         </>
       )}

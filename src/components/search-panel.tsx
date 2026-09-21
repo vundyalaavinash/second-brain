@@ -178,7 +178,7 @@ export function SearchPanel() {
           {visible.map((r) => (
             <li
               key={r.item.id}
-              className="rounded-md border border-hairline bg-slate px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
+              className="rounded-lg border border-hairline bg-slate px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
             >
               <div className="flex items-center gap-3">
                 <TypeIcon type={r.item.type} />

@@ -60,7 +60,7 @@ Projects, areas, and resources each have a Links section and a Notes section. Pa
 
 ### Design
 
-The interface is dark, dense, and quiet: one accent colour for what is live or selected, Lucide icons, Geist type, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.
+The interface is a dark desk with paper documents on it: chrome in ink with brass for what needs attention, notes and journal pages on paper set in a serif, a block editor with handles, and a floating dock. Motion is limited to state changes and respects reduced-motion settings.
 
 ### Writing
 

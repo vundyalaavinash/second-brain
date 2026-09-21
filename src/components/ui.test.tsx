@@ -25,13 +25,13 @@ describe("List and Row", () => {
 
   it("passes a caller className through alongside the base reset classes", () => {
     render(
-      <List className="divide-y divide-hairline">
+      <List className="gap-2 opacity-90">
         <Row>Alpha</Row>
       </List>,
     );
     const list = screen.getByRole("list");
     expect(list.className).toContain("list-none");
-    expect(list.className).toContain("divide-y divide-hairline");
+    expect(list.className).toContain("gap-2 opacity-90");
   });
 });
 
