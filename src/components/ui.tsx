@@ -204,8 +204,8 @@ export function EmptyState({ icon: Icon, text, action }: { icon: LucideIcon; tex
 }
 
 /** The list container and its row. Rows are edge-to-edge, separated by a hairline. */
-export function List({ children }: { children: ReactNode }) {
-  return <div>{children}</div>;
+export function List({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <ul className={`list-none m-0 p-0 ${className}`}>{children}</ul>;
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
+import { Command, MoreHorizontal } from "lucide-react";
 import type { NavItem } from "../nav";
 import { Icon } from "../icons";
 
@@ -49,6 +49,20 @@ export function DockMore({ items, pathname }: { items: NavItem[]; pathname: stri
               </li>
             );
           })}
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new Event("sb:palette"));
+                setOpen(false);
+              }}
+              className="focus-ring hairline-row w-full flex items-center gap-3 px-3 h-11 text-left transition-colors text-fg-muted hover:text-fg hover:bg-slate-2"
+            >
+              <Command className="w-4 h-4" strokeWidth={1.75} aria-hidden />
+              <span className="flex-1 text-[13px]">Commands</span>
+              <span className="kbd">⌘K</span>
+            </button>
+          </li>
         </ul>
       )}
     </li>

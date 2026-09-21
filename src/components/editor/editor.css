@@ -66,8 +66,8 @@
   color: var(--color-fg);
 }
 .rich-editor .callout-note { background: var(--color-brass-dim); border-color: var(--color-brass); }
-.rich-editor .callout-tip { background: rgba(82, 211, 138, 0.14); border-color: var(--color-success); }
-.rich-editor .callout-warning { background: rgba(245, 196, 81, 0.14); border-color: var(--color-warn); }
+.rich-editor .callout-tip { background: rgba(127, 184, 138, 0.14); border-color: var(--color-success); }
+.rich-editor .callout-warning { background: rgba(217, 164, 65, 0.14); border-color: var(--color-warn); }
 .rich-editor .callout-marker {
   font-family: var(--font-mono);
   font-size: 0.8em;
