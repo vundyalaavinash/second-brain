@@ -65,7 +65,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             {TYPE_LABEL[t]}
           </Chip>
         ))}
-        <span className="w-px h-4 bg-line mx-1" />
+        <span className="w-px h-4 bg-hairline mx-1" />
         {ITEM_STATUSES.map((s) => (
           <Chip key={s} href={href({ status: status === s ? undefined : s })} active={status === s}>
             {titleCase(s)}
@@ -105,8 +105,8 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <div className="w-36">
           <Input type="date" name="to" defaultValue={to ?? ""} size="sm" className="w-full" />
         </div>
-        <label className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-line text-[12px] text-fg-muted hover:text-fg cursor-pointer">
-          <input type="checkbox" name="archived" value="1" defaultChecked={archived} className="accent-accent" />
+        <label className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-hairline text-[12px] text-fg-muted hover:text-fg cursor-pointer">
+          <input type="checkbox" name="archived" value="1" defaultChecked={archived} className="accent-brass" />
           Include archived
         </label>
         <Button variant="secondary" size="sm" type="submit">
@@ -130,7 +130,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             <Row key={item.id}>
               <span className="font-mono text-[11px] text-fg-faint w-8">#{item.id}</span>
               <TypeIcon type={item.type} />
-              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
+              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
                 {item.title}
               </Link>
               <StatusDot status={item.status} error={item.error} />

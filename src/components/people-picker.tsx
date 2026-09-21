@@ -62,8 +62,8 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center pt-[18vh]" onClick={onClose}>
-      <div className="frost w-[480px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 h-10 flex items-center gap-2 text-[13px] text-fg-muted border-b border-line">
+      <div className="panel w-[480px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 h-10 flex items-center gap-2 text-[13px] text-fg-muted border-b border-hairline">
           <Users className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />
           People on this item
         </div>
@@ -79,7 +79,7 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
             }
           }}
           placeholder="Filter, or type a new name and press Enter"
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px] focus:border-line-strong"
+          className="w-full h-11 px-4 bg-transparent border-b border-hairline outline-none text-[14px] focus:border-hairline-strong"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
           {options.map((p) => {
@@ -88,26 +88,26 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
               <li
                 key={p.id}
                 onClick={() => toggle(p.id)}
-                className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer hover:bg-surface-3"
+                className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer hover:bg-slate-2"
               >
-                <span className="w-6 h-6 rounded-full bg-surface-2 border border-line flex items-center justify-center text-[11px] text-fg-muted shrink-0">
+                <span className="w-6 h-6 rounded-full bg-slate border border-hairline flex items-center justify-center text-[11px] text-fg-muted shrink-0">
                   {p.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className={`flex-1 truncate text-[13.5px] ${linked ? "text-fg" : "text-fg-muted"}`}>{p.name}</span>
                 <span className="font-mono text-[11px] text-fg-faint">{p.slug}</span>
-                {linked && <Check className="w-3.5 h-3.5 text-accent shrink-0" aria-hidden />}
+                {linked && <Check className="w-3.5 h-3.5 text-brass shrink-0" aria-hidden />}
               </li>
             );
           })}
           {q && !exact && (
-            <li onClick={() => void create()} className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-2 cursor-pointer text-accent hover:bg-surface-3">
+            <li onClick={() => void create()} className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-2 cursor-pointer text-brass hover:bg-slate-2">
               <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden />
               Create “{query.trim()}”
             </li>
           )}
           {options.length === 0 && !q && <li className="px-4 py-2 text-fg-faint text-[13px]">Nobody yet. Type a name.</li>}
         </ul>
-        <div className="px-4 h-10 flex items-center justify-end border-t border-line">
+        <div className="px-4 h-10 flex items-center justify-end border-t border-hairline">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Done
           </Button>

@@ -29,7 +29,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
             {timeline.map((i) => (
               <Row key={i.id}>
                 <TypeIcon type={i.type} />
-                <Link href={`/items/${i.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
+                <Link href={`/items/${i.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
                   {i.title}
                 </Link>
                 <span className="font-mono text-[11px] text-fg-faint">{formatDate(i.createdAt)}</span>

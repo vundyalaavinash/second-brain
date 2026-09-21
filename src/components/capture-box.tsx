@@ -104,9 +104,9 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
         setDuplicate(null);
       }}
-      className={`rounded-lg border bg-surface-1 transition-colors duration-150 focus-within:border-line-strong ${dragging ? "border-accent" : "border-line"}`}
+      className={`rounded-lg border bg-slate transition-colors duration-150 focus-within:border-hairline-strong ${dragging ? "border-brass" : "border-hairline"}`}
     >
-      <div className="flex items-center justify-between px-4 h-9 border-b border-line">
+      <div className="flex items-center justify-between px-4 h-9 border-b border-hairline">
         <span className="flex items-center gap-1.5">
           {mode === "file" ? (
             <FileIcon className="w-3.5 h-3.5 text-fg-muted" />
@@ -153,7 +153,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       {files.length > 0 && (
         <ul className="px-4 pb-2 flex flex-wrap gap-2">
           {files.map((f, i) => (
-            <li key={`${f.name}-${i}`} className="rounded-full border border-line bg-surface-2 px-2.5 h-7 text-[12px] flex items-center gap-2">
+            <li key={`${f.name}-${i}`} className="rounded-full border border-hairline bg-slate px-2.5 h-7 text-[12px] flex items-center gap-2">
               {f.name}
               <button
                 type="button"
@@ -170,7 +170,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           ))}
         </ul>
       )}
-      <div className="flex items-center gap-3 px-4 h-11 border-t border-line focus-within:border-line-strong">
+      <div className="flex items-center gap-3 px-4 h-11 border-t border-hairline focus-within:border-hairline-strong">
         <Chip icon={target ? undefined : InboxIcon} onClick={() => setPicker(true)}>
           {target ? (
             <>
@@ -204,11 +204,11 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
           {busy ? "Capturing" : "Capture"}
         </Button>
       </div>
-      {error && <div className="px-4 py-2.5 text-[12.5px] text-danger border-t border-line">{error}</div>}
+      {error && <div className="px-4 py-2.5 text-[12.5px] text-danger border-t border-hairline">{error}</div>}
       {duplicate && (
-        <div className="px-4 py-2.5 border-t border-line flex items-center gap-3 text-[12.5px]">
+        <div className="px-4 py-2.5 border-t border-hairline flex items-center gap-3 text-[12.5px]">
           <span className="text-warn">Already saved.</span>
-          <Link href={`/items/${duplicate.existingId}`} className="text-accent hover:underline">Open it</Link>
+          <Link href={`/items/${duplicate.existingId}`} className="text-brass hover:underline">Open it</Link>
           <button type="button" onClick={() => void submit(true)} className="text-fg-muted hover:text-fg">Save anyway</button>
         </div>
       )}

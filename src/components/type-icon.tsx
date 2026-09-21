@@ -34,7 +34,7 @@ export function KindIcon({ kind, className = "w-4 h-4 text-fg-muted shrink-0" }:
 
 const STATUS: Record<ItemStatus, { dot: string; label: string; text: string }> = {
   pending: { dot: "bg-fg-faint", label: "queued", text: "text-fg-faint" },
-  processing: { dot: "bg-accent live-dot", label: "processing", text: "text-accent" },
+  processing: { dot: "bg-brass live-dot", label: "processing", text: "text-brass" },
   ready: { dot: "bg-success", label: "ready", text: "text-fg-faint" },
   failed: { dot: "bg-danger", label: "failed", text: "text-danger" },
 };

@@ -103,7 +103,7 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
           setName(e.target.value);
           setDirty(true);
         }}
-        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
       />
       {preview ? (
         <div className="md min-h-[200px]">

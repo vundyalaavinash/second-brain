@@ -5,13 +5,13 @@
   outline: none;
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid var(--color-line);
-  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
+  background: var(--color-slate);
   transition: border-color 150ms;
 }
 .rich-editor:focus-within,
 .rich-editor:focus {
-  border-color: var(--color-line-strong);
+  border-color: var(--color-hairline-strong);
 }
 .rich-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -30,7 +30,7 @@
   align-items: flex-start;
 }
 .rich-editor ul[data-type="taskList"] input[type="checkbox"] {
-  accent-color: var(--color-accent);
+  accent-color: var(--color-brass);
   margin-top: 0.35em;
 }
 .rich-editor table {
@@ -40,24 +40,24 @@
 }
 .rich-editor th,
 .rich-editor td {
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-hairline);
   padding: 0.35em 0.6em;
   vertical-align: top;
 }
 .rich-editor th {
-  background: var(--color-surface-1);
+  background: var(--color-slate);
   font-weight: 500;
 }
 .rich-editor .selectedCell {
-  background: var(--color-accent-dim);
+  background: var(--color-brass-dim);
 }
 .rich-editor img {
   max-width: 100%;
   border-radius: 6px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-hairline);
 }
 .rich-editor img.ProseMirror-selectednode {
-  outline: 2px solid rgba(76, 201, 255, 0.55);
+  outline: 2px solid var(--color-brass);
 }
 .rich-editor .callout {
   border-left-width: 3px;
@@ -65,7 +65,7 @@
   padding: 0.6em 0.9em;
   color: var(--color-fg);
 }
-.rich-editor .callout-note { background: var(--color-accent-dim); border-color: var(--color-accent); }
+.rich-editor .callout-note { background: var(--color-brass-dim); border-color: var(--color-brass); }
 .rich-editor .callout-tip { background: rgba(82, 211, 138, 0.14); border-color: var(--color-success); }
 .rich-editor .callout-warning { background: rgba(245, 196, 81, 0.14); border-color: var(--color-warn); }
 .rich-editor .callout-marker {
@@ -89,4 +89,4 @@
 .rich-editor .hljs-string, .rich-editor .hljs-attr { color: #52d38a; }
 .rich-editor .hljs-number, .rich-editor .hljs-literal { color: #f5c451; }
 .rich-editor .hljs-comment { color: var(--color-fg-faint); }
-.rich-editor .hljs-title, .rich-editor .hljs-function { color: #4cc9ff; }
+.rich-editor .hljs-title, .rich-editor .hljs-function { color: #5ec8f2; }

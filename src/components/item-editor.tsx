@@ -246,7 +246,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
         onBlur={() => {
           if (save === "dirty") void persist();
         }}
-        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
+        className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
         placeholder="Untitled"
       />
 
@@ -255,7 +255,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           Created <span className="font-mono">{formatDateTime(item.createdAt)}</span>
         </span>
         {item.sourceUrl && (
-          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline truncate max-w-md">
+          <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brass hover:underline truncate max-w-md">
             <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
             {item.sourceUrl}
           </a>
@@ -264,7 +264,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
         {meta.byline && <span>By {meta.byline}</span>}
         {meta.page_count !== undefined && <span>{meta.page_count} pages</span>}
         {item.filePath && (
-          <a href={`/api/items/${item.id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+          <a href={`/api/items/${item.id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brass hover:underline">
             <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
             Open file
           </a>
@@ -297,10 +297,10 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
 
       {isImage && (
         // eslint-disable-next-line @next/next/no-img-element -- same-origin API route, next/image cannot proxy it
-        <img src={`/api/items/${item.id}/file`} alt={item.title} className="max-h-96 rounded-md border border-line object-contain self-start" />
+        <img src={`/api/items/${item.id}/file`} alt={item.title} className="max-h-96 rounded-md border border-hairline object-contain self-start" />
       )}
       {isPdf && (
-        <iframe src={`/api/items/${item.id}/file`} title={item.title} className="w-full h-[480px] rounded-md border border-line bg-surface-2" />
+        <iframe src={`/api/items/${item.id}/file`} title={item.title} className="w-full h-[480px] rounded-md border border-hairline bg-slate" />
       )}
 
       {preview ? (
@@ -326,12 +326,12 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
       )}
 
       {item.extractedText && (
-        <details className="rounded-md border border-line bg-surface-1">
+        <details className="rounded-md border border-hairline bg-slate">
           <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-fg-muted select-none">
             <FileText className="w-4 h-4" aria-hidden />
             Extracted text <span className="font-mono text-[11px] text-fg-faint">{item.extractedText.length.toLocaleString()} characters</span>
           </summary>
-          <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-fg-muted font-sans max-h-[480px] overflow-y-auto border-t border-line">
+          <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-fg-muted font-ui max-h-[480px] overflow-y-auto border-t border-hairline">
             {item.extractedText}
           </pre>
         </details>

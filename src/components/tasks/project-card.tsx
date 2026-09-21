@@ -11,7 +11,7 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
   return (
     <Link
       href={`/c/${project.slug}`}
-      className="focus-ring flex flex-col gap-3 rounded-lg border border-line bg-surface-1 p-5 transition-all duration-150 hover:border-line-strong motion-safe:hover:-translate-y-0.5"
+      className="focus-ring flex flex-col gap-3 rounded-lg border border-hairline bg-slate p-5 transition-all duration-150 hover:border-hairline-strong motion-safe:hover:-translate-y-0.5"
     >
       <div className="flex items-center gap-3">
         <ProgressRing percent={p.percent} />
@@ -23,7 +23,7 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
         <div className="text-[15px] font-medium leading-5 line-clamp-2">{project.name}</div>
         {project.goal && <div className="text-[13px] text-fg-muted leading-5 line-clamp-2 mt-0.5">{project.goal}</div>}
       </div>
-      <div className="border-t border-line pt-3 flex items-center gap-2 text-[13px] min-w-0">
+      <div className="border-t border-hairline pt-3 flex items-center gap-2 text-[13px] min-w-0">
         {p.nextTask ? (
           <>
             <Square className="w-3.5 h-3.5 text-fg-faint shrink-0" aria-hidden />

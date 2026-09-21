@@ -217,7 +217,7 @@ export function InboxProcessor() {
           {items.map((item, i) => (
             <Row
               key={item.id}
-              className={i === index ? "cursor-pointer bg-surface-3 hover:bg-surface-3" : "cursor-pointer"}
+              className={i === index ? "cursor-pointer bg-slate-2 hover:bg-slate-2" : "cursor-pointer"}
             >
               <button
                 type="button"
@@ -237,10 +237,10 @@ export function InboxProcessor() {
       )}
 
       {mode === "focus" && current && (
-        <section className="rounded-lg border border-line bg-surface-1 overflow-hidden">
-          <div className="flex items-center gap-3 px-4 h-11 border-b border-line">
+        <section className="rounded-lg border border-hairline bg-slate overflow-hidden">
+          <div className="flex items-center gap-3 px-4 h-11 border-b border-hairline">
             <TypeIcon type={current.type} />
-            <Link href={`/items/${current.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-accent">
+            <Link href={`/items/${current.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-brass">
               {current.title}
             </Link>
             <StatusDot status={current.status} error={current.error} />
@@ -252,7 +252,7 @@ export function InboxProcessor() {
                 href={current.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 font-mono text-[11.5px] text-accent truncate mb-2"
+                className="inline-flex items-center gap-1.5 font-mono text-[11.5px] text-brass truncate mb-2"
               >
                 <ExternalLink className="w-3 h-3 shrink-0" />
                 {current.sourceUrl}
@@ -270,7 +270,7 @@ export function InboxProcessor() {
               ))}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-2 px-3 h-14 border-t border-line bg-surface-1">
+          <div className="flex flex-wrap items-center gap-2 px-3 h-14 border-t border-hairline bg-slate">
             {(
               [
                 ["p", "Project", Flag],

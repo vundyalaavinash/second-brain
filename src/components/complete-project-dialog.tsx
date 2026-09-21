@@ -52,7 +52,7 @@ export function CompleteProjectDialog({ container, onDone, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
-      <div className="frost w-[480px] max-w-[92vw] rounded-lg p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+      <div className="panel w-[480px] max-w-[92vw] rounded-lg p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-[16px] font-medium">Complete “{container.name}”</h2>
         <p className="text-[13px] text-fg-muted">Archiving this project. Its {container.itemCount} items can:</p>
         <Button variant="secondary" icon={Archive} disabled={busy} onClick={() => void archive()} className="w-full justify-start h-9">

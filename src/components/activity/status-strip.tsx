@@ -18,7 +18,7 @@ function isHelperStale(lastSeen: string, now: number = Date.now()): boolean {
 function Strip({ tone, text, action }: { tone: "neutral" | "warn"; text: string; action?: ReactNode }) {
   const cls =
     tone === "neutral"
-      ? "rounded-md border border-line bg-surface-2 px-3 py-2 text-[13px] flex items-center gap-3"
+      ? "rounded-md border border-hairline bg-slate px-3 py-2 text-[13px] flex items-center gap-3"
       : "rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] flex items-center gap-3";
   return (
     <div className={cls}>

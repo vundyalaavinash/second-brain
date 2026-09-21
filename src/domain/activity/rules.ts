@@ -155,7 +155,7 @@ export function updateCategory(db: DB, id: number, patch: { name?: string; color
     set.name = n;
   }
   if (patch.color !== undefined) {
-    if (!/^#[0-9a-fA-F]{6}$/.test(patch.color)) throw new ActivityError("Colour must be a hex value like #4cc9ff");
+    if (!/^#[0-9a-fA-F]{6}$/.test(patch.color)) throw new ActivityError("Colour must be a hex value like #e0a93c");
     set.color = patch.color.toLowerCase();
   }
   const row = db.update(activityCategories).set(set).where(eq(activityCategories.id, id)).returning().get();

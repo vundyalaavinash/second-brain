@@ -219,7 +219,7 @@ export function ContainerEditor({
         markDirty();
       }}
       onBlur={flushOnBlur}
-      className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
+      className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
       placeholder="Name"
     />
   );
@@ -300,7 +300,7 @@ export function ContainerEditor({
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
 
       {c.kind === "project" ? (
-        <section className="rounded-lg border border-line bg-surface-1 p-6 flex flex-col gap-4">
+        <section className="rounded-lg border border-hairline bg-slate p-6 flex flex-col gap-4">
           {nameInput}
           <input
             value={goal}
@@ -310,7 +310,7 @@ export function ContainerEditor({
             }}
             onBlur={flushOnBlur}
             placeholder="What does done look like?"
-            className="text-[15px] text-fg-muted bg-transparent outline-none w-full border-b border-transparent focus:border-line-strong transition-colors duration-150"
+            className="text-[15px] text-fg-muted bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
           />
           <div className="flex items-center gap-5 flex-wrap">
             <div className="flex items-center gap-3">
@@ -409,7 +409,7 @@ export function ContainerEditor({
             {others.map((item) => (
               <Row key={item.id}>
                 <TypeIcon type={item.type} />
-                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-accent">
+                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
                   {item.title}
                 </Link>
                 <StatusDot status={item.status} error={item.error} />

@@ -36,14 +36,14 @@ export function Week({ days, categories, onSelectDay }: Props) {
               aria-label={label}
               className="focus-ring flex flex-col items-center gap-1.5 w-full"
             >
-              <div className="flex flex-col-reverse h-40 w-full rounded-md bg-surface-1 border border-line overflow-hidden">
+              <div className="flex flex-col-reverse h-40 w-full rounded-md bg-slate border border-hairline overflow-hidden">
                 {d.byCategory.map((e) => {
                   if (e.ms <= 0) return null;
                   const category = e.categoryId !== null ? categoryById.get(e.categoryId) : undefined;
                   return (
                     <span
                       key={e.categoryId ?? "none"}
-                      style={{ height: `${(e.ms / maxDayMs) * 100}%`, backgroundColor: category?.color ?? "var(--color-surface-3)" }}
+                      style={{ height: `${(e.ms / maxDayMs) * 100}%`, backgroundColor: category?.color ?? "var(--color-slate-2)" }}
                     />
                   );
                 })}

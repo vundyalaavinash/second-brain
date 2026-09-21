@@ -15,10 +15,10 @@ type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 const BUTTON_BASE =
   "focus-ring inline-flex items-center gap-1.5 rounded-sm font-medium whitespace-nowrap transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none";
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-bg hover:brightness-110",
-  secondary: "border border-line-strong bg-surface-1 text-fg hover:bg-surface-2",
+  primary: "bg-brass text-brass-ink hover:brightness-105",
+  secondary: "bg-slate border border-hairline hover:border-hairline-strong",
   danger: "border border-danger/50 text-danger hover:bg-danger/10",
-  ghost: "text-fg-muted hover:text-fg hover:bg-surface-2",
+  ghost: "text-fg-muted hover:text-fg hover:bg-slate-2",
 };
 const BUTTON_SIZE = { sm: "h-7 px-2.5 text-[12px]", md: "h-8 px-3 text-[13px]" } as const;
 
@@ -66,7 +66,7 @@ export function IconButton({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: LucideIcon; active?: boolean; danger?: boolean }) {
-  const tone = danger ? "text-danger hover:bg-danger/10" : active ? "text-accent bg-accent-dim" : "text-fg-muted hover:text-fg hover:bg-surface-2";
+  const tone = danger ? "text-danger hover:bg-danger/10" : active ? "text-brass bg-brass-dim" : "text-fg-muted hover:text-fg hover:bg-slate-2";
   return (
     <button
       type="button"
@@ -81,7 +81,7 @@ export function IconButton({
 }
 
 // Appended size utilities do not override these (Tailwind orders by value); use the `size` prop.
-const FIELD = "focus-ring w-full rounded-md border border-line bg-surface-2 px-3 text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-line-strong focus:border-line-strong";
+const FIELD = "focus-ring w-full rounded-md border border-hairline bg-slate px-3 text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-hairline-strong focus:border-hairline-strong";
 
 const FIELD_SIZE = { sm: "h-8 text-[12.5px]", md: "h-9 text-[13.5px]" } as const;
 const TEXTAREA_SIZE = { sm: "text-[12.5px]", md: "text-[13.5px]" } as const;
@@ -139,7 +139,7 @@ export function Chip({
   ...props
 }: ChipProps) {
   const cls = `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
-    active ? "border-accent/60 bg-accent-dim text-fg" : "border-line text-fg-muted hover:text-fg hover:border-line-strong"
+    active ? "border-brass/60 bg-brass-dim text-fg" : "border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong"
   } ${className}`;
   if (href) {
     const { target, rel } = props as ChipAnchorProps;
@@ -174,7 +174,7 @@ export function PageHeader({ title, meta, actions }: { title: string; meta?: Rea
   return (
     <header className="flex items-end justify-between gap-4 mb-5">
       <div className="min-w-0">
-        <h1 className="text-[22px] leading-7 font-medium tracking-[-0.02em]">{title}</h1>
+        <h1 className="text-[22px] leading-7 font-medium tracking-[-0.01em]">{title}</h1>
         {meta && <div className="mt-1 text-[12.5px] text-fg-muted">{meta}</div>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
@@ -193,21 +193,21 @@ export function SectionHeading({ children, count }: { children: ReactNode; count
 
 export function EmptyState({ icon: Icon, text, action }: { icon: LucideIcon; text: string; action?: ReactNode }) {
   return (
-    <div className="rounded-md border border-dashed border-line-strong px-6 py-10 flex flex-col items-center text-center gap-3">
-      <span className="w-10 h-10 rounded-full bg-surface-2 border border-line flex items-center justify-center text-fg-muted">
-        <Icon className="w-[18px] h-[18px]" aria-hidden />
-      </span>
-      <p className="text-[13.5px] text-fg-muted max-w-xs">{text}</p>
+    <div className="flex flex-col items-start gap-3 py-6">
+      <p className="flex items-center gap-2 text-[13.5px] text-fg-muted">
+        <Icon className="w-4 h-4 shrink-0" aria-hidden />
+        {text}
+      </p>
       {action}
     </div>
   );
 }
 
-/** The list container and its row. Rows are edge-to-edge inside one bordered surface. */
+/** The list container and its row. Rows are edge-to-edge, separated by a hairline. */
 export function List({ children }: { children: ReactNode }) {
-  return <ul className="rounded-md border border-line bg-surface-1 divide-y divide-line overflow-hidden">{children}</ul>;
+  return <div>{children}</div>;
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <li className={`flex items-center gap-3 px-3 h-10 hover:bg-surface-2 transition-colors duration-150 ${className}`}>{children}</li>;
+  return <li className={`hairline-row flex items-center gap-3 px-3 h-11 hover:bg-slate-2 transition-colors ${className}`}>{children}</li>;
 }

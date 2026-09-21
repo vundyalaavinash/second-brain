@@ -313,7 +313,7 @@ export function RulesDrawer({ retentionDays, onClose, reload }: Props) {
                   defaultValue={c.color}
                   onBlur={(e) => void updateCategoryColor(c.id, e.target.value)}
                   aria-label={`${c.name} colour`}
-                  className="focus-ring w-6 h-6 rounded-sm border border-line bg-transparent"
+                  className="focus-ring w-6 h-6 rounded-sm border border-hairline bg-transparent"
                 />
                 <Input size="sm" className="flex-1 min-w-0" defaultValue={c.name} onBlur={(e) => void updateCategoryName(c.id, e.target.value)} />
               </Row>

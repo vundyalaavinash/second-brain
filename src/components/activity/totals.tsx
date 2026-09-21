@@ -22,10 +22,10 @@ function Column({ heading, entries }: { heading: string; entries: Entry[] }) {
           {top.map((e) => (
             <Row key={e.key}>
               <span className="flex-1 min-w-0 truncate text-[13px]">{e.label}</span>
-              <span className="w-16 h-1 rounded-full bg-line shrink-0 overflow-hidden">
+              <span className="w-16 h-1 rounded-full bg-hairline shrink-0 overflow-hidden">
                 <span
                   className="block h-full rounded-full"
-                  style={{ width: `${(e.ms / max) * 100}%`, backgroundColor: e.color ?? "var(--color-accent-dim)" }}
+                  style={{ width: `${(e.ms / max) * 100}%`, backgroundColor: e.color ?? "var(--color-brass-dim)" }}
                 />
               </span>
               <span className="font-mono text-[11px] text-fg-faint shrink-0">{formatDuration(e.ms)}</span>

@@ -73,8 +73,8 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center pt-[18vh]" onClick={onClose}>
-      <div className="frost w-[560px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 h-10 flex items-center gap-2 text-[13px] text-fg-muted border-b border-line">
+      <div className="panel w-[560px] max-w-[92vw] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 h-10 flex items-center gap-2 text-[13px] text-fg-muted border-b border-hairline">
           {kind ? <KindIcon kind={kind} /> : <InboxIcon className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />}
           {title ?? (kind ? `File to ${KIND_LABEL[kind].toLowerCase()}` : "Move to")}
         </div>
@@ -100,7 +100,7 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
             }
           }}
           placeholder={kind ? "Type to filter or create" : "Type to filter"}
-          className="w-full h-11 px-4 bg-transparent border-b border-line outline-none text-[14px] focus:border-line-strong"
+          className="w-full h-11 px-4 bg-transparent border-b border-hairline outline-none text-[14px] focus:border-hairline-strong"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
           {rows.length === 0 && (
@@ -113,7 +113,7 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
               key={r.key}
               onMouseEnter={() => setIndex(i)}
               onClick={r.run}
-              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-surface-3 text-fg" : "text-fg-muted"}`}
+              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-slate-2 text-fg" : "text-fg-muted"}`}
             >
               {r.icon}
               <span className="flex-1 truncate">{r.label}</span>

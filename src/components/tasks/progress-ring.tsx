@@ -2,10 +2,10 @@ export function ProgressRing({ percent, size = 36, stroke = 3, className = "" }:
   const p = Math.max(0, Math.min(100, percent));
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const color = p >= 100 ? "var(--color-success)" : "var(--color-accent)";
+  const color = p >= 100 ? "var(--color-success)" : "var(--color-brass)";
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${p}% done`} className={className}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-hairline)" strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}

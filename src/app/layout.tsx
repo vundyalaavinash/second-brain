@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Manrope, Newsreader, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Dock } from "@/components/dock";
+import { Dock } from "@/components/dock/dock";
 import { CommandPalette } from "@/components/command-palette";
 import { Shortcuts } from "@/components/shortcuts";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const ui = Manrope({ variable: "--font-ui-src", subsets: ["latin"], weight: ["400", "500", "600"], display: "swap" });
+const doc = Newsreader({ variable: "--font-doc-src", subsets: ["latin"], weight: ["400", "500"], style: ["normal", "italic"], display: "swap" });
+const mono = Geist_Mono({ variable: "--font-mono-src", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Second Brain",
@@ -15,8 +16,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen bg-bg text-fg">
+    <html lang="en" className={`${ui.variable} ${doc.variable} ${mono.variable}`}>
+      <body className="min-h-screen bg-ink text-fg font-ui">
         <main className="min-h-screen pb-28">{children}</main>
         <Dock />
         <CommandPalette />

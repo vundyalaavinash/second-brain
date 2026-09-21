@@ -7,6 +7,8 @@ import { fractionOfDay, formatDuration } from "./format";
 import { Legend, AFK_COLOR } from "./legend";
 
 const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21];
+// Data colour for an uncategorised session, not a UI token: category colours are
+// user-chosen hex values (see ActivityCategory.color), so this fallback matches that space.
 const DEFAULT_COLOR = "#62626b";
 
 interface Props {
@@ -51,7 +53,7 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
 
   return (
     <div ref={containerRef} className="relative flex flex-col gap-1.5">
-      <div className="relative h-10 rounded-md bg-surface-1 border border-line overflow-hidden">
+      <div className="relative h-10 rounded-md bg-slate border border-hairline overflow-hidden">
         {sessions.map((s) => {
           const startFrac = fractionOfDay(s.startedAt, day);
           const endFrac = fractionOfDay(s.endedAt, day);

@@ -2,29 +2,36 @@
 @import "../components/editor/editor.css";
 
 @theme {
-  --color-bg: #09090b;
-  --color-surface-1: rgba(255, 255, 255, 0.03);
-  --color-surface-2: rgba(255, 255, 255, 0.05);
-  --color-surface-3: rgba(255, 255, 255, 0.08);
-  --color-line: rgba(255, 255, 255, 0.07);
-  --color-line-strong: rgba(255, 255, 255, 0.12);
-  --color-fg: #f2f2f0;
-  --color-fg-muted: #9b9ba4;
-  --color-fg-faint: #62626b;
-  --color-accent: #4cc9ff;
-  --color-accent-dim: rgba(76, 201, 255, 0.14);
-  --color-danger: #ff5c6c;
-  --color-success: #52d38a;
-  --color-warn: #f5c451;
+  --color-ink: #0f1218;
+  --color-slate: #171b23;
+  --color-slate-2: #1e232d;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-hairline-strong: rgba(255, 255, 255, 0.14);
+  --color-fg: #edebe4;
+  --color-fg-muted: #a3a8b4;
+  --color-fg-faint: #6b7080;
+  --color-paper: #f4f0e8;
+  --color-paper-2: #ece7dd;
+  --color-paper-rule: rgba(15, 18, 24, 0.1);
+  --color-paper-fg: #1b1f27;
+  --color-paper-muted: #5b6070;
+  --color-brass: #e0a93c;
+  --color-brass-dim: rgba(224, 169, 60, 0.16);
+  --color-brass-ink: #2a1f07;
+  --color-success: #7fb88a;
+  --color-warn: #d9a441;
+  --color-danger: #d66a5c;
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ui: var(--font-ui-src), ui-sans-serif, system-ui, sans-serif;
+  --font-doc: var(--font-doc-src), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-mono-src), ui-monospace, "SF Mono", Menlo, monospace;
 
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
 
-  --shadow-float: 0 24px 64px -24px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  --shadow-dock: 0 20px 50px -20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-paper: 0 30px 80px -40px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 @layer base {
@@ -33,20 +40,20 @@
   }
 
   body {
-    background: var(--color-bg);
+    background: var(--color-ink);
     color: var(--color-fg);
-    font-family: var(--font-sans);
+    font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
     font-size: 14px;
     line-height: 1.55;
   }
 
   * {
-    border-color: var(--color-line);
+    border-color: var(--color-hairline);
   }
 
   ::selection {
-    background: var(--color-accent-dim);
+    background: var(--color-brass-dim);
   }
 
   input,
@@ -63,34 +70,47 @@
   }
 
   :focus-visible {
-    outline: 2px solid rgba(76, 201, 255, 0.55);
+    outline: 2px solid var(--color-brass);
     outline-offset: 2px;
   }
 }
 
-/* Frosted floating chrome: dock, palette, pickers. */
-@layer components {
-  .frost {
-    background: rgba(18, 18, 22, 0.78);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border: 1px solid var(--color-line-strong);
-    box-shadow: var(--shadow-float);
-  }
-}
-
-/* Solid floating chrome for menus that sit over content that must stay legible underneath
- * them (editor popovers, drawers): same chrome as .frost but opaque instead of blurred. */
+/* Solid floating chrome for menus, drawers, and the dock: opaque so content underneath
+ * stays legible. */
 .panel {
-  background: rgba(18, 18, 22, 0.96);
-  border: 1px solid var(--color-line-strong);
-  box-shadow: var(--shadow-float);
+  background: var(--color-slate);
+  border: 1px solid var(--color-hairline-strong);
+  box-shadow: var(--shadow-dock);
 }
 
 /* Focus ring used by every interactive primitive; overrides the global outline fallback. */
 .focus-ring:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(76, 201, 255, 0.55);
+  box-shadow: 0 0 0 2px var(--color-ink), 0 0 0 4px var(--color-brass);
+}
+
+.on-paper .focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-brass);
+}
+
+.hairline-row {
+  border-bottom: 1px solid var(--color-hairline);
+}
+.hairline-row:last-child {
+  border-bottom: 0;
+}
+
+.on-paper {
+  background: var(--color-paper);
+  color: var(--color-paper-fg);
+}
+.on-paper ::selection {
+  background: var(--color-brass-dim);
+}
+.on-paper a {
+  color: #7a5a12;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 @keyframes pulse-accent {
@@ -107,15 +127,24 @@
   animation: pulse-accent 1.4s ease-in-out infinite;
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .kbd {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--color-fg-faint);
-  border: 1px solid var(--color-line-strong);
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 5px;
   padding: 1px 5px;
   line-height: 1.4;
-  background: var(--color-surface-2);
+  background: var(--color-slate-2);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -164,20 +193,20 @@
   list-style: decimal;
 }
 .md a {
-  color: var(--color-accent);
+  color: var(--color-brass);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .md code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  background: var(--color-surface-3);
+  background: var(--color-slate-2);
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
 .md pre {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-line);
+  background: var(--color-slate-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 6px;
   padding: 0.75em 1em;
   overflow-x: auto;
@@ -187,12 +216,72 @@
   padding: 0;
 }
 .md blockquote {
-  border-left: 2px solid var(--color-line-strong);
+  border-left: 2px solid var(--color-hairline-strong);
   padding-left: 0.9em;
   color: var(--color-fg-muted);
 }
 .md hr {
   border: 0;
-  border-top: 1px solid var(--color-line);
+  border-top: 1px solid var(--color-hairline);
   margin: 1.2em 0;
 }
+
+/* Document typography, used inside `.on-paper` (Task 2: document sheet). */
+.doc {
+  font-family: var(--font-doc);
+  font-size: 17px;
+  line-height: 1.6;
+  max-width: 68ch;
+}
+.doc h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 500;
+}
+.doc h2 {
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.doc h3 {
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+.doc p,
+.doc ul,
+.doc ol,
+.doc pre,
+.doc blockquote {
+  margin: 0.7em 0;
+}
+.doc code,
+.doc pre {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  background: var(--color-paper-2);
+}
+.doc code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.doc pre {
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.doc pre code {
+  background: none;
+  padding: 0;
+}
+.doc blockquote {
+  border-left: 2px solid var(--color-paper-rule);
+  padding-left: 0.9em;
+  color: var(--color-paper-muted);
+}
+.doc hr {
+  border: 0;
+  border-top: 1px solid var(--color-paper-rule);
+  margin: 1.2em 0;
+}
+/* .doc a inherits .on-paper a: .doc is only ever rendered inside .on-paper (Task 2). */
