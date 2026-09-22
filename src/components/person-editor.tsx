@@ -10,6 +10,7 @@ import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Eye, Pencil, Trash2, Save } from "lucide-react";
 import type { PersonDTO } from "@/lib/dto";
 import { Button, Chip, IconButton } from "./ui";
+import { Crumb } from "./shell/crumb";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
@@ -76,6 +77,8 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
 
   return (
     <div className="flex flex-col gap-3">
+      {/* The route trail already contributes "People", so the page supplies only its title. */}
+      <Crumb title={name} />
       <header className="flex items-center gap-2 h-10 mb-3">
         <Link href="/people" className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
           <ArrowLeft className="w-3.5 h-3.5" />

@@ -24,6 +24,8 @@ export function NewContainerForm({ kind }: { kind: ContainerKind }) {
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
       setName("");
+      // The sidebar tree lists the active containers of this kind; tell it to refetch.
+      window.dispatchEvent(new Event("sb:containers-changed"));
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

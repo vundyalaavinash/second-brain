@@ -77,7 +77,7 @@ export function PromptBar() {
   const [menuIndex, setMenuIndex] = useState(0);
   const [pendingItemId, setPendingItemId] = useState<number | null>(null);
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  const mounted = useRef(false);
+  const prevMultiline = useRef(multiline);
   const containerId = container?.id ?? null;
 
   const submit = useCallback(async () => {
@@ -186,13 +186,14 @@ export function PromptBar() {
   }, []);
 
   // Growing into a textarea (or shrinking back) swaps the element, which drops focus to the
-  // body; put the caret back where the typing left off. Skipped on the first render so the
-  // bar never steals focus from the page it mounts over.
+  // body; put the caret back where the typing left off. Only an actual swap does that, so the
+  // effect compares against the previous value rather than tracking whether it has run before:
+  // a mount runs the effect too, and a first-run guard that only flips a flag still leaves
+  // every later re-run (React 19 remounts, Strict Mode's double invoke) stealing focus from
+  // the page the bar sits over.
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+    if (prevMultiline.current === multiline) return;
+    prevMultiline.current = multiline;
     const field = fieldRef.current;
     if (!field) return;
     field.focus();
@@ -323,7 +324,7 @@ export function PromptBar() {
       <div
         onDrop={onDropFiles}
         onDragOver={(e) => e.preventDefault()}
-        className="panel relative rounded-lg flex items-start gap-2 px-2.5 py-2 min-h-12"
+        className="panel relative rounded-lg flex items-start gap-2 px-2.5 py-2 min-h-14"
       >
         <span className="shrink-0 mt-0.5 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-hairline text-[12px] text-fg-muted">
           <mode.icon className="w-3.5 h-3.5" aria-hidden />

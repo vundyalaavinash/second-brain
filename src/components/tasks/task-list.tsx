@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TaskDTO, ProgressDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { quickParse } from "@/domain/tasks/quick-parse";
@@ -49,6 +49,27 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
   function publishProgress(p: ProgressDTO) {
     onProgress?.(p);
   }
+
+  // A task added from the prompt bar (or undone from its toast) is written straight to the
+  // API, so this list only learns about it from the event.
+  useEffect(() => {
+    let alive = true;
+    function onChanged() {
+      void (async () => {
+        const res = await fetch(`/api/tasks?container=${containerId}&status=all`);
+        if (!res.ok || !alive) return;
+        const body = (await res.json()) as { tasks: TaskDTO[]; progress: ProgressDTO };
+        if (!alive) return;
+        setTasks(body.tasks);
+        onProgress?.(body.progress);
+      })();
+    }
+    window.addEventListener("sb:tasks-changed", onChanged);
+    return () => {
+      alive = false;
+      window.removeEventListener("sb:tasks-changed", onChanged);
+    };
+  }, [containerId, onProgress]);
 
   /** Re-fetches the full task list and progress from the server; used to reconcile after a
    * reorder, whose response only carries the reordered open tasks. */

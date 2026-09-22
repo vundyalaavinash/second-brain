@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 
 interface Toast { id: number; text: string; href?: string; hrefLabel?: string; action?: { label: string; onClick(): void } }
@@ -10,10 +10,25 @@ const TOAST_MS = 5000;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // One dismissal timer per toast. They outlive the toast that scheduled them by up to five
+  // seconds, so unmounting the provider has to cancel them rather than leave them to fire
+  // setState on a gone tree.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const push = useCallback((t: Omit<Toast, "id">) => {
     const id = Date.now() + Math.random();
     setToasts((list) => [...list, { ...t, id }]);
-    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), TOAST_MS);
+    const timer = setTimeout(() => {
+      timers.current = timers.current.filter((x) => x !== timer);
+      setToasts((list) => list.filter((x) => x.id !== id));
+    }, TOAST_MS);
+    timers.current.push(timer);
+  }, []);
+  useEffect(() => {
+    const scheduled = timers;
+    return () => {
+      for (const timer of scheduled.current) clearTimeout(timer);
+      scheduled.current = [];
+    };
   }, []);
   const value = useMemo(() => ({ push }), [push]);
   return (

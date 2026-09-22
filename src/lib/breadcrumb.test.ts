@@ -9,10 +9,14 @@ describe("crumbsFor", () => {
   });
   // Only the parent: the page supplies its own title through `<Crumb>`, so a route that
   // contributed an empty tail would leave the bar showing a trailing slash and nothing after it.
-  it("nests containers, items, and people under their list", () => {
-    expect(crumbsFor("/c/launch-newsletter")).toEqual([{ label: "Projects, areas, resources", href: "/projects" }]);
+  it("nests items and people under their list", () => {
     expect(crumbsFor("/items/13")).toEqual([{ label: "Library", href: "/library" }]);
     expect(crumbsFor("/people/ada")).toEqual([{ label: "People", href: "/people" }]);
+  });
+  // A container page names its own kind through `<Crumb parent>`, so a route trail here
+  // would show the parent twice.
+  it("leaves the whole trail to the container page", () => {
+    expect(crumbsFor("/c/launch-newsletter")).toEqual([]);
   });
   it("falls back to Home", () => {
     expect(crumbsFor("/")).toEqual([{ label: "Home" }]);

@@ -9,7 +9,9 @@ const TOP: Record<string, string> = { "/today": "Today", "/inbox": "Inbox", "/pr
  */
 export function crumbsFor(pathname: string): Crumb[] {
   if (TOP[pathname]) return [{ label: TOP[pathname] }];
-  if (pathname.startsWith("/c/")) return [{ label: "Projects, areas, resources", href: "/projects" }];
+  // A container page supplies both halves itself — `<Crumb parent title>` names the kind it
+  // belongs to ("Projects", "Areas", "Resources"), so a trail here would repeat the parent.
+  if (pathname.startsWith("/c/")) return [];
   if (pathname.startsWith("/items/")) return [{ label: "Library", href: "/library" }];
   if (pathname.startsWith("/people/")) return [{ label: "People", href: "/people" }];
   return [{ label: "Home" }];

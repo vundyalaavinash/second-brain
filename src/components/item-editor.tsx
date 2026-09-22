@@ -354,7 +354,6 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
               if (save === "dirty") void persist();
             }}
             placeholder={item.type === "note" ? "Write, or press / for blocks" : "Your notes about this item"}
-            className="min-h-[260px]"
             onReady={onEditorReady}
           />
         )}

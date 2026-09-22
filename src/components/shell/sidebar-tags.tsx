@@ -35,17 +35,20 @@ export function SidebarTags({ pathname, onNavigate }: { pathname: string; onNavi
     };
   }, [pathname]);
 
+  // A tag whose last item was deleted still has a row; a chip reading zero is a dead end.
+  const shown = tags.filter((t) => t.count > 0).slice(0, MAX_TAGS);
+
   return (
     <section className="flex flex-col gap-2 px-3 pt-4">
       <span className="micro">Tags</span>
-      {tags.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="text-[12.5px] text-fg-faint m-0">No tags yet</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
-          {tags.slice(0, MAX_TAGS).map((t) => (
+          {shown.map((t) => (
             <Chip key={t.name} href={`/search?tag=${encodeURIComponent(t.name)}`} onClick={onNavigate}>
               {t.name}
-              {t.count > 0 && <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>}
+              <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>
             </Chip>
           ))}
         </div>

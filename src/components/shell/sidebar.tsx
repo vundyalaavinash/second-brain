@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { NAV_ITEMS, type NavItem } from "../nav";
 import { Icon } from "../icons";
-import { IconButton } from "../ui";
+import { IconButton, Kbd } from "../ui";
 import { SidebarTree } from "./sidebar-tree";
 import { SidebarTags } from "./sidebar-tags";
 import { setStored, useStored } from "./use-stored";
@@ -88,6 +88,10 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
     };
   }, [pathname]);
 
+  function openPalette() {
+    window.dispatchEvent(new Event("sb:palette"));
+  }
+
   function toggleCollapsed() {
     setStored(COLLAPSED_KEY, collapsed ? "0" : "1");
   }
@@ -136,7 +140,7 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
         <button type="button" aria-label="Close menu" onClick={onClose} className="focus-ring fixed inset-0 z-30 bg-black/50 min-[900px]:hidden" />
       )}
       <div
-        className={`${drawer ? "flex" : "hidden"} fixed inset-y-0 left-0 z-40 w-[264px] flex-col bg-layer-1 border-r border-hairline min-[900px]:flex min-[900px]:sticky min-[900px]:top-0 min-[900px]:bottom-auto min-[900px]:left-auto min-[900px]:z-auto min-[900px]:h-screen ${
+        className={`${drawer ? "flex" : "hidden"} col-start-1 fixed inset-y-0 left-0 z-40 w-[264px] flex-col bg-layer-1 border-r border-hairline min-[900px]:flex min-[900px]:sticky min-[900px]:top-0 min-[900px]:bottom-auto min-[900px]:left-auto min-[900px]:z-auto min-[900px]:h-screen ${
           collapsed ? "min-[900px]:w-16" : "min-[900px]:w-[264px]"
         }`}
       >
@@ -146,11 +150,24 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
               <circle cx="10" cy="10" r="10" fill="var(--color-violet)" />
               <circle cx="10" cy="10" r="4" fill="var(--color-carbon)" />
             </svg>
-            {!collapsed && <span className="text-[13px] font-medium">Second brain</span>}
+            {!collapsed && <span className="font-doc text-[18px] font-medium">Second brain</span>}
           </Link>
-          {!collapsed && <span className="flex-1" />}
-          <IconButton label="Search" icon={Search} onClick={() => window.dispatchEvent(new Event("sb:palette"))} />
+          {collapsed && <IconButton label="Search" icon={Search} onClick={openPalette} />}
         </div>
+        {!collapsed && (
+          <div className="shrink-0 px-3 pb-2">
+            <button
+              type="button"
+              aria-label="Search"
+              onClick={openPalette}
+              className="focus-ring w-full bg-layer-2 border border-hairline rounded-md h-9 px-3 flex items-center gap-2 text-fg-faint text-[13px]"
+            >
+              <Search className="w-4 h-4 shrink-0" aria-hidden />
+              <span className="flex-1 min-w-0 truncate text-left">Search or jump to</span>
+              <Kbd>⌘K</Kbd>
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           <nav aria-label="Main" className={collapsed ? "px-2" : "px-3"}>

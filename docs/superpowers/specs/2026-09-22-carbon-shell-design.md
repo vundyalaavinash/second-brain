@@ -55,8 +55,8 @@ Top to bottom:
    - a hairline;
    - Activity (danger dot when the helper is not recording), Library, Archive.
    - Search and Capture are not rows: search is the button above, capture is the prompt bar. Their `g s` and `g c` shortcuts and palette entries stay.
-4. Under Projects and Areas, a disclosure caret reveals the active containers of that kind (from `/api/containers?type=project|area`, fetched once on mount, refetched on `sb:containers-changed`), each a 32 px row linking to `/c/<slug>`; a project row shows its progress ring at 14 px. Open state is per kind, persisted in `localStorage` key `sb.sidebar.open`.
-5. `.micro` heading "Tags" and the ten most used tags as chips with counts (from `/api/tags?counts=1`), each linking to `/search?tag=<name>`; "All tags" links to `/library`.
+4. Under Projects and Areas, a disclosure caret reveals the active containers of that kind (from `/api/containers?kind=project|area`, fetched once on mount, refetched on `sb:containers-changed`), each a 32 px row linking to `/c/<slug>`; a project row shows its progress ring at 14 px. Open state is per kind, persisted in `localStorage` key `sb.sidebar.open`.
+5. `.micro` heading "Tags" and the ten most used tags as chips with counts (from `/api/tags?counts=1`), each linking to `/search?tag=<name>`; "All tags" links to `/library`. Tags with no items are not shown.
 6. Bottom card: helper state ("Recording" with a success dot, "Not recording" with a danger dot, "Paused" with a warn dot) linking to `/activity`, and a collapse button (chevrons) that narrows the sidebar to 64 px showing icons only, persisted in `localStorage` key `sb.sidebar.collapsed`. Collapsed rows show their label in a tooltip.
 
 The inbox count and helper state polls move from the dock into the sidebar unchanged (same URLs, same intervals).

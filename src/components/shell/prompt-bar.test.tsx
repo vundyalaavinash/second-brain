@@ -137,6 +137,15 @@ describe("PromptBar", () => {
     expect(screen.queryByRole("listbox", { name: "Prompt commands" })).toBeNull();
   });
 
+  // The refocus effect below runs on mount as well as on a real single-line/box swap, so a
+  // guard that only remembers "has run" would take focus off whatever the page put it on.
+  it("leaves focus alone on mount", () => {
+    const before = document.activeElement;
+    mount();
+    expect(document.activeElement).not.toBe(field());
+    expect(document.activeElement).toBe(before);
+  });
+
   it("keeps the caret in the field when shift+enter grows it into a box", async () => {
     const fetchFn = mockFetch({ id: 30, type: "note", title: "Two lines" });
     mount();

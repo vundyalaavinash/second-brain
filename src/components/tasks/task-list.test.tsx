@@ -44,6 +44,37 @@ describe("TaskList", () => {
     expect(await screen.findByText("Ship it")).toBeTruthy();
   });
 
+  it("refetches the list and the progress when a task changes elsewhere", async () => {
+    const added: TaskDTO = { ...base, id: 3, title: "Booked from the prompt bar", sortOrder: 1 };
+    const refreshed = { open: 2, done: 0, total: 2, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
+    const urls: string[] = [];
+    stub(async (url) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ tasks: [base, added], progress: refreshed }), { status: 200 });
+    });
+    const onProgress = vi.fn();
+    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} onProgress={onProgress} today="2026-09-16" />);
+    expect(screen.queryByText("Booked from the prompt bar")).toBeNull();
+
+    await act(async () => { window.dispatchEvent(new Event("sb:tasks-changed")); });
+
+    expect(urls).toEqual(["/api/tasks?container=5&status=all"]);
+    expect(await screen.findByText("Booked from the prompt bar")).toBeTruthy();
+    expect(onProgress).toHaveBeenCalledWith(refreshed);
+  });
+
+  it("stops listening for task changes once it unmounts", async () => {
+    const urls: string[] = [];
+    stub(async (url) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
+    });
+    const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    unmount();
+    await act(async () => { window.dispatchEvent(new Event("sb:tasks-changed")); });
+    expect(urls).toEqual([]);
+  });
+
   it("marks done with one PATCH and reverts on failure", async () => {
     const patches: unknown[] = [];
     let fail = false;

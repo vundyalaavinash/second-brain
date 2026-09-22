@@ -37,6 +37,22 @@ async function waitForEditor(hasEditor: () => boolean): Promise<void> {
   }
 }
 
+describe("PersonEditor", () => {
+  // The route trail contributes "People"; a parent on the page's own crumb would repeat it.
+  it("portals just its title into the breadcrumb slot", () => {
+    const slot = document.createElement("span");
+    slot.id = "crumb-slot";
+    document.body.appendChild(slot);
+    try {
+      render(<PersonEditor initial={person} />);
+      expect(slot.textContent).toBe("/Ada");
+      expect(slot.querySelector("a")).toBeNull();
+    } finally {
+      slot.remove();
+    }
+  });
+});
+
 describe("PersonEditor with RichEditor", () => {
   it("flushes the pending edit and saves the typed text on an immediate ⌘S", async () => {
     const patches: unknown[] = [];

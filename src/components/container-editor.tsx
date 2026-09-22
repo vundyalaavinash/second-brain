@@ -80,6 +80,10 @@ export function ContainerEditor({
   // dependency array keeps persist's identity stable too, so the unmount-flush effect below
   // doesn't tear down and fire a false flush on every render.
   const routerRef = useRef(router);
+  // The name the sidebar tree was last told about, so a save that only touched the body does
+  // not make it refetch. `persist` reads it out of a ref because its own deps deliberately
+  // exclude the live name.
+  const announcedName = useRef(initial.name);
 
   useEffect(() => {
     latest.current = { name, description, goal, deadline, standard, category };
@@ -127,6 +131,10 @@ export function ContainerEditor({
           if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
           const updated = (await res.json()) as ContainerDTO;
           setC(updated);
+          if (updated.name !== announcedName.current) {
+            announcedName.current = updated.name;
+            window.dispatchEvent(new Event("sb:containers-changed"));
+          }
           // Only a live save redirects: an unmount flush has no page left to navigate, and
           // redirecting anyway would yank the user to the renamed container's new URL.
           if (!fromUnmount && updated.slug !== c.slug) routerRef.current.replace(`/c/${updated.slug}`);
@@ -195,6 +203,8 @@ export function ContainerEditor({
       return;
     }
     setC((await res.json()) as ContainerDTO);
+    // Archiving drops the container out of the sidebar tree's active list; restoring puts it back.
+    window.dispatchEvent(new Event("sb:containers-changed"));
     router.refresh();
   }
 
@@ -249,7 +259,7 @@ export function ContainerEditor({
         <ChevronRight className={`w-3.5 h-3.5 motion-safe:transition-transform ${aboutOpen ? "rotate-90" : ""}`} aria-hidden />
       </Button>
       {aboutOpen && (
-        <div id={aboutPanelId}>
+        <div id={aboutPanelId} className="pane p-6">
           <RichEditor
             value={description}
             onChange={(md) => {

@@ -9,7 +9,7 @@ function isParent(crumb: Crumb): crumb is Crumb & { href: string } {
   return crumb.href !== undefined;
 }
 
-export function TopBar({ onMenu, onRail }: { onMenu(): void; onRail(): void }) {
+export function TopBar({ onMenu, onRail, railOpen }: { onMenu(): void; onRail(): void; railOpen: boolean }) {
   const pathname = usePathname();
   const crumbs = crumbsFor(pathname);
   const trail = crumbs.filter(isParent);
@@ -32,7 +32,7 @@ export function TopBar({ onMenu, onRail }: { onMenu(): void; onRail(): void }) {
         {tail && <span className="text-fg crumb-fallback">{tail.label}</span>}
       </nav>
       <span className="flex-1" />
-      <IconButton label="Context" icon={PanelRight} onClick={onRail} className="min-[1180px]:hidden rail-toggle" />
+      <IconButton label="Context" icon={PanelRight} onClick={onRail} aria-expanded={railOpen} className="min-[1180px]:hidden rail-toggle" />
     </div>
   );
 }
