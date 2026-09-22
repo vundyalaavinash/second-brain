@@ -114,13 +114,14 @@ const STATUS_RANK = sql`case ${tasks.status} when 'open' then 0 when 'done' then
 export function listTasks(
   db: DB,
   /** `dueOnOrBefore` also drops the undated: a SQL comparison against null is never true. */
-  filter: { containerId?: number | null; status?: TaskStatus | "all"; dueOnOrBefore?: string } = {},
+  filter: { containerId?: number | null; status?: TaskStatus | "all"; dueOnOrBefore?: string; sourceItemId?: number } = {},
 ): Task[] {
   const conds = [];
   if (filter.containerId !== undefined) conds.push(containerWhere(filter.containerId));
   const status = filter.status ?? "open";
   if (status !== "all") conds.push(eq(tasks.status, status));
   if (filter.dueOnOrBefore !== undefined) conds.push(lte(tasks.dueDate, filter.dueOnOrBefore));
+  if (filter.sourceItemId !== undefined) conds.push(eq(tasks.sourceItemId, filter.sourceItemId));
   return db
     .select()
     .from(tasks)

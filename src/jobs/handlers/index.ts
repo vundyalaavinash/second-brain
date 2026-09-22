@@ -3,12 +3,14 @@ import type { JobHandlers } from "@/jobs/worker";
 import type { EmbedProvider } from "@/providers/embed/types";
 import type { FetchLike } from "@/domain/items/links";
 import type { PdfExtractFn, OcrFn } from "@/domain/items/extract";
+import type { ChatProvider } from "@/providers/chat";
 import { createEmbedHandler } from "./embed";
 import { createFetchLinkHandler } from "./fetch-link";
 import { createExtractPdfHandler } from "./extract-pdf";
 import { createOcrImageHandler } from "./ocr-image";
 import { createBackupHandler } from "./backup";
 import { createTranscribeFinalHandler } from "./transcribe-final";
+import { createSummarizeMeetingHandler } from "./summarize-meeting";
 
 export interface HandlerDeps {
   db: DB;
@@ -20,6 +22,8 @@ export interface HandlerDeps {
   whisperBin?: string | null;
   ffmpegBin?: string | null;
   hasChatKey?: () => boolean;
+  /** Left out, the summary job resolves a provider from the key when it runs. */
+  chatProvider?: ChatProvider | null;
 }
 
 export function createJobHandlers(deps: HandlerDeps): JobHandlers {
@@ -34,6 +38,7 @@ export function createJobHandlers(deps: HandlerDeps): JobHandlers {
       ffmpegBin: deps.ffmpegBin,
       hasChatKey: deps.hasChatKey,
     }),
+    summarize_meeting: createSummarizeMeetingHandler({ db: deps.db, provider: deps.chatProvider }),
     backup: createBackupHandler({ db: deps.db }),
   };
 }

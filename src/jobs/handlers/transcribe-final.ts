@@ -8,7 +8,7 @@ import type { JobHandler } from "@/jobs/worker";
 import { jobPayload } from "@/jobs/payload";
 import { enqueueJob } from "@/jobs/queue";
 import { getItem, parseMeta, rechunkItem, updateItem } from "@/domain/items";
-import { getSetting } from "@/domain/settings";
+import { hasChatKey } from "@/providers/chat";
 import { checkTools } from "@/domain/meetings/tools";
 import { parseWhisperJson, segmentsToText, type Segment } from "@/domain/meetings/transcript";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
@@ -21,15 +21,13 @@ const run = promisify(execFile);
 const WHISPER_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const FFMPEG_TIMEOUT_MS = 30 * 60 * 1000;
 
-export const CHAT_KEY_SETTING = "anthropic.apiKey";
-
 export interface TranscribeFinalDeps {
   db: DB;
   /** Injectable so tests never reach for what is installed on the machine. */
   whisperBin?: string | null;
   ffmpegBin?: string | null;
   finalModel?: string | null;
-  /** Task 3 owns the summary; without a key there is nothing to summarise with. */
+  /** Without a key there is nothing to summarise with; injectable so tests never look. */
   hasChatKey?: () => boolean;
 }
 
@@ -38,10 +36,6 @@ interface MeetingMeta {
   transcript?: Segment[];
   final_transcript_ready?: boolean;
   liveTranscript?: unknown;
-}
-
-export function defaultHasChatKey(db: DB): boolean {
-  return !!(process.env.ANTHROPIC_API_KEY?.trim() || getSetting(db, CHAT_KEY_SETTING, "").trim());
 }
 
 /** True when the file is already what whisper wants: 16 kHz mono 16-bit PCM in a RIFF wrapper. */
@@ -118,8 +112,8 @@ export function createTranscribeFinalHandler(deps: TranscribeFinalDeps): JobHand
       updateItem(db, itemId, { extractedText: segmentsToText(segments), status: "ready", error: null, meta: next as Record<string, unknown> });
       rechunkItem(db, itemId);
       enqueueJob(db, "embed", { itemId }, itemId);
-      const hasChatKey = deps.hasChatKey ?? (() => defaultHasChatKey(db));
-      if (hasChatKey()) enqueueJob(db, "summarize_meeting", { itemId }, itemId);
+      const keyed = deps.hasChatKey ?? (() => hasChatKey(db));
+      if (keyed()) enqueueJob(db, "summarize_meeting", { itemId }, itemId);
     } catch (err) {
       if (err instanceof TranscriptFailure) throw err;
       fail(itemId, err instanceof Error ? err.message : String(err));

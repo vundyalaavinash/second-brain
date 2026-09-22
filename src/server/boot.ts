@@ -6,6 +6,7 @@ import { createJobHandlers } from "@/jobs/handlers";
 import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
 import { backupFilePath } from "@/jobs/handlers/backup";
 import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
+import { hasChatKey } from "@/providers/chat";
 import { getEmbedProvider } from "./providers";
 
 const g = globalThis as unknown as { __sbWorker?: JobWorker; __sbBackupInterval?: NodeJS.Timeout };
@@ -30,7 +31,11 @@ export function boot(): JobWorker {
   }
   const embed = getEmbedProvider();
   if (!embed) console.warn("[boot] SB_EMBED=off: semantic search disabled");
-  const worker = new JobWorker(db, createJobHandlers({ db, embed }), { log: (m) => console.log(`[worker] ${m}`) });
+  // Read once for the log line; the handlers ask again per job, so a key added later works.
+  if (!hasChatKey(db)) console.log("[boot] no Anthropic key: meeting summaries are off");
+  const worker = new JobWorker(db, createJobHandlers({ db, embed, hasChatKey: () => hasChatKey(db) }), {
+    log: (m) => console.log(`[worker] ${m}`),
+  });
   worker.start();
   if (embed) {
     void embed
