@@ -89,9 +89,9 @@ export function ContainerEditor({
 
   // Tells the prompt bar which container is open, so a capture from it lands here.
   useEffect(() => {
-    setCurrentContainer(c.id);
+    setCurrentContainer({ id: c.id, name: c.name });
     return () => setCurrentContainer(null);
-  }, [c.id]);
+  }, [c.id, c.name]);
 
   const persist = useCallback(
     (fromUnmount = false): Promise<void> => {

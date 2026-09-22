@@ -18,7 +18,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="relative flex flex-col min-w-0 min-h-screen">
           <TopBar onMenu={() => setDrawer(true)} onRail={() => setRailOpen((v) => !v)} />
           <main className="flex-1 min-w-0 pb-28">{children}</main>
-          <div className="absolute left-4 right-4 bottom-4 z-20">
+          {/* Sticky, not fixed: it stays over the page but keeps the main column's width,
+            * so it never reaches across the sidebar. `main`'s padding leaves it room. */}
+          <div className="sticky bottom-4 px-4 z-20">
             <PromptBar />
           </div>
         </div>

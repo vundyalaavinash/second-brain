@@ -37,11 +37,12 @@ const MODE: Record<Intent["kind"], { label: string; icon: typeof FileText }> = {
   search: { label: "Search", icon: Search },
 };
 
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+/** The menu's entries while `value` is still a bare `/word` being typed: `/t` leaves Task. */
+function matchingEntries(value: string): PromptEntry[] {
+  const typed = /^\/(\w*)$/.exec(value);
+  if (!typed) return [];
+  const prefix = typed[1].toLowerCase();
+  return PROMPT_ENTRIES.filter((entry) => entry.word.startsWith(prefix));
 }
 
 function subscribeNarrow(listener: () => void): () => void {
@@ -65,7 +66,7 @@ export function PromptBar() {
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
-  const containerId = useCurrentContainer();
+  const container = useCurrentContainer();
   const { captureNote, captureLink, uploadFiles } = useCapture();
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, wideOnServer);
   const [text, setText] = useState("");
@@ -76,16 +77,17 @@ export function PromptBar() {
   const [menuIndex, setMenuIndex] = useState(0);
   const [pendingItemId, setPendingItemId] = useState<number | null>(null);
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-
-  const intent = detectIntent(text);
-  const mode = MODE[intent.kind];
-  const empty = text.trim().length === 0;
+  const mounted = useRef(false);
+  const containerId = container?.id ?? null;
 
   const submit = useCallback(async () => {
-    if (busy) return;
+    if (busy || !text.trim()) return;
     const current = detectIntent(text);
     if (current.kind === "search") {
-      if (!current.query) return;
+      if (!current.query) {
+        setError("Type something to search");
+        return;
+      }
       router.push(`/search?q=${encodeURIComponent(current.query)}`);
       setText("");
       setError(null);
@@ -95,7 +97,14 @@ export function PromptBar() {
       setError("Add a task title");
       return;
     }
-    if (current.kind === "note" && !current.body) return;
+    if (current.kind === "note" && !current.body) {
+      setError("Type a note");
+      return;
+    }
+    if (current.kind === "link" && !current.url) {
+      setError("Type a link");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -124,18 +133,19 @@ export function PromptBar() {
         });
         window.dispatchEvent(new Event("sb:tasks-changed"));
       } else if (current.kind === "note") {
-        const item = await captureNote(current.body);
-        toast.push({ text: "Captured to Inbox", href: `/items/${item.id}` });
+        const item = await captureNote(current.body, { containerId });
+        toast.push({ text: container ? `Captured to ${container.name}` : "Captured to Inbox", href: `/items/${item.id}` });
         window.dispatchEvent(new Event("sb:inbox-changed"));
       } else {
-        const item = await captureLink(current.url);
+        const item = await captureLink(current.url, { containerId });
         if ("duplicate" in item) {
+          // Nothing was written, so nothing needs re-reading.
           toast.push({ text: "Already captured", href: `/items/${item.duplicate}` });
         } else {
-          toast.push({ text: "Link captured", href: `/items/${item.id}` });
+          toast.push({ text: container ? `Link captured to ${container.name}` : "Link captured", href: `/items/${item.id}` });
           setPendingItemId(item.id);
+          window.dispatchEvent(new Event("sb:inbox-changed"));
         }
-        window.dispatchEvent(new Event("sb:inbox-changed"));
       }
       setText("");
       setMultiline(false);
@@ -146,10 +156,11 @@ export function PromptBar() {
     } finally {
       setBusy(false);
     }
-  }, [busy, text, containerId, router, toast, captureNote, captureLink]);
+  }, [busy, text, container, containerId, router, toast, captureNote, captureLink]);
 
   const sendFiles = useCallback(
     async (files: File[]) => {
+      if (busy) return;
       setBusy(true);
       setError(null);
       try {
@@ -162,20 +173,32 @@ export function PromptBar() {
         setBusy(false);
       }
     },
-    [uploadFiles, containerId, toast],
+    [busy, uploadFiles, containerId, toast],
   );
 
-  // `c` focuses the bar from anywhere that is not a field, so it never eats a typed letter.
+  // `shortcuts.tsx` owns the `c` key and calls the bar with this event.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.key !== "c" || isTyping(e.target)) return;
-      e.preventDefault();
+    function onRequest() {
       fieldRef.current?.focus();
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("sb:prompt-focus", onRequest);
+    return () => window.removeEventListener("sb:prompt-focus", onRequest);
   }, []);
+
+  // Growing into a textarea (or shrinking back) swaps the element, which drops focus to the
+  // body; put the caret back where the typing left off. Skipped on the first render so the
+  // bar never steals focus from the page it mounts over.
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const field = fieldRef.current;
+    if (!field) return;
+    field.focus();
+    const end = field.value.length;
+    field.setSelectionRange(end, end);
+  }, [multiline]);
 
   // A captured link is read in the background; the glow breathes until the item settles.
   useEffect(() => {
@@ -193,7 +216,7 @@ export function PromptBar() {
           const res = await fetch(`/api/items/${pendingItemId}`);
           if (!res.ok || stopped) return;
           const item = (await res.json()) as ItemDTO;
-          if (item.status !== "pending") setPendingItemId(null);
+          if (!stopped && item.status !== "pending") setPendingItemId(null);
         } catch {
           /* offline: keep waiting until the limit */
         }
@@ -205,6 +228,15 @@ export function PromptBar() {
     };
   }, [pendingItemId]);
 
+  if (pathname === "/capture") return null;
+
+  const intent = detectIntent(text);
+  const mode = MODE[intent.kind];
+  const empty = text.trim().length === 0;
+  const menuEntries = menuOpen ? matchingEntries(text) : [];
+  const activeIndex = Math.min(menuIndex, Math.max(0, menuEntries.length - 1));
+  const placeholder = narrow ? "Ask or capture" : LABEL;
+
   function choose(entry: PromptEntry) {
     setText(`/${entry.word} `);
     setMenuOpen(false);
@@ -214,29 +246,25 @@ export function PromptBar() {
   function onChange(value: string) {
     setText(value);
     setError(null);
-    if (value === "/") {
-      setMenuIndex(0);
-      setMenuOpen(true);
-    } else if (!value.startsWith("/") || value.includes(" ")) {
-      setMenuOpen(false);
-    }
+    setMenuIndex(0);
+    setMenuOpen(matchingEntries(value).length > 0);
   }
 
   function onKeyDown(e: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    if (menuOpen) {
+    if (menuEntries.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setMenuIndex((i) => (i + 1) % PROMPT_ENTRIES.length);
+        setMenuIndex((i) => (i + 1) % menuEntries.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setMenuIndex((i) => (i - 1 + PROMPT_ENTRIES.length) % PROMPT_ENTRIES.length);
+        setMenuIndex((i) => (i - 1 + menuEntries.length) % menuEntries.length);
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        choose(PROMPT_ENTRIES[menuIndex]);
+        choose(menuEntries[activeIndex]);
         return;
       }
       if (e.key === "Escape") {
@@ -263,15 +291,6 @@ export function PromptBar() {
     void submit();
   }
 
-  function onDropFiles(e: DragEvent<HTMLDivElement>) {
-    const dropped = Array.from(e.dataTransfer.files);
-    if (!dropped.length) return;
-    e.preventDefault();
-    void sendFiles(dropped);
-  }
-
-  if (pathname === "/capture") return null;
-
   function onPaste(e: ReactClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const pasted = Array.from(e.clipboardData.files);
     if (!pasted.length) return;
@@ -279,7 +298,12 @@ export function PromptBar() {
     void sendFiles(pasted);
   }
 
-  const placeholder = narrow ? "Ask or capture" : LABEL;
+  function onDropFiles(e: DragEvent<HTMLDivElement>) {
+    const dropped = Array.from(e.dataTransfer.files);
+    if (!dropped.length) return;
+    e.preventDefault();
+    void sendFiles(dropped);
+  }
 
   return (
     <form
@@ -295,7 +319,7 @@ export function PromptBar() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 -top-[480px] overflow-hidden" aria-hidden>
         <div className={`glow -bottom-80 left-1/2 -translate-x-1/2 ${pendingItemId === null ? "" : "glow-breathing"}`} />
       </div>
-      {menuOpen && <PromptMenu activeIndex={menuIndex} onChoose={choose} />}
+      {menuEntries.length > 0 && <PromptMenu entries={menuEntries} activeIndex={activeIndex} onChoose={choose} />}
       <div
         onDrop={onDropFiles}
         onDragOver={(e) => e.preventDefault()}

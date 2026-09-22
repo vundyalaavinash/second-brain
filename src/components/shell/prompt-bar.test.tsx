@@ -19,8 +19,21 @@ function mockFetch(body: unknown, status = 201) {
   vi.stubGlobal("fetch", fn);
   return fn;
 }
+
+function mount() {
+  render(
+    <ToastProvider>
+      <PromptBar />
+    </ToastProvider>,
+  );
+}
+
+function field(): HTMLInputElement | HTMLTextAreaElement {
+  return screen.getByRole("textbox", { name: "Ask, capture, or add a task" }) as HTMLInputElement | HTMLTextAreaElement;
+}
+
 function type(text: string) {
-  const input = screen.getByRole("textbox", { name: "Ask, capture, or add a task" });
+  const input = field();
   fireEvent.change(input, { target: { value: text } });
   fireEvent.keyDown(input, { key: "Enter" });
 }
@@ -28,12 +41,8 @@ function type(text: string) {
 describe("PromptBar", () => {
   it("adds a task in the current container and toasts", async () => {
     const fetchFn = mockFetch({ id: 9, title: "Call the bank" });
-    setCurrentContainer(4);
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
+    setCurrentContainer({ id: 4, name: "Health" });
+    mount();
     type("+ Call the bank");
     await waitFor(() => expect(screen.getByText("Task added")).toBeTruthy());
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
@@ -43,79 +52,111 @@ describe("PromptBar", () => {
 
   it("captures a note to the inbox", async () => {
     const fetchFn = mockFetch({ id: 12, type: "note", title: "Remember" });
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
+    mount();
     type("Remember the milk");
     await waitFor(() => expect(screen.getByText("Captured to Inbox")).toBeTruthy());
     expect((fetchFn.mock.calls[0] as unknown as [string])[0]).toBe("/api/items");
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/items/12");
   });
 
+  it("captures a note into the open container and says where it went", async () => {
+    const fetchFn = mockFetch({ id: 13, type: "note", title: "Remember" });
+    setCurrentContainer({ id: 4, name: "Health" });
+    mount();
+    type("Remember the milk");
+    await waitFor(() => expect(screen.getByText("Captured to Health")).toBeTruthy());
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ type: "note", containerId: 4 });
+  });
+
+  it("names the already captured link and leaves the inbox alone", async () => {
+    mockFetch({ existingId: 7 }, 409);
+    const changed = vi.fn();
+    window.addEventListener("sb:inbox-changed", changed);
+    mount();
+    type("https://example.com/x");
+    await waitFor(() => expect(screen.getByText("Already captured")).toBeTruthy());
+    expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/items/7");
+    expect(changed).not.toHaveBeenCalled();
+    window.removeEventListener("sb:inbox-changed", changed);
+  });
+
   it("navigates for search", () => {
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
+    mount();
     type("?tax");
     expect(push).toHaveBeenCalledWith("/search?q=tax");
   });
 
   it("shows the server error and keeps the text", async () => {
     mockFetch({ error: "Body required" }, 400);
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
+    mount();
     type("x");
     await waitFor(() => expect(screen.getByText("Body required")).toBeTruthy());
-    expect((screen.getByRole("textbox", { name: "Ask, capture, or add a task" }) as HTMLInputElement).value).toBe("x");
+    expect((field() as HTMLInputElement).value).toBe("x");
   });
 
   it("refuses a task with no title", async () => {
     const fetchFn = mockFetch({ id: 1 });
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
+    mount();
     type("+");
     await waitFor(() => expect(screen.getByText("Add a task title")).toBeTruthy());
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it("asks for the missing half of a bare command word", async () => {
+    const fetchFn = mockFetch({ id: 1 });
+    mount();
+    type("?");
+    await waitFor(() => expect(screen.getByText("Type something to search")).toBeTruthy());
+    // With a trailing space the slash menu is closed, so Enter reaches submit.
+    type("/note ");
+    await waitFor(() => expect(screen.getByText("Type a note")).toBeTruthy());
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("opens the prompt menu on a leading slash and inserts the chosen word", () => {
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
-    const input = screen.getByRole("textbox", { name: "Ask, capture, or add a task" }) as HTMLInputElement;
+    mount();
+    const input = field();
     fireEvent.change(input, { target: { value: "/" } });
     expect(screen.getByRole("listbox", { name: "Prompt commands" })).toBeTruthy();
+    expect(screen.getAllByRole("option")).toHaveLength(4);
     fireEvent.click(screen.getByRole("option", { name: /Task/ }));
-    expect(input.value).toBe("/task ");
+    expect((input as HTMLInputElement).value).toBe("/task ");
     expect(screen.queryByRole("listbox", { name: "Prompt commands" })).toBeNull();
   });
 
-  it("focuses the input on c, but not while typing", () => {
-    render(
-      <ToastProvider>
-        <PromptBar />
-      </ToastProvider>,
-    );
-    const input = screen.getByRole("textbox", { name: "Ask, capture, or add a task" });
-    fireEvent.keyDown(window, { key: "c" });
-    expect(document.activeElement).toBe(input);
-    const other = document.createElement("textarea");
-    document.body.appendChild(other);
-    other.focus();
-    fireEvent.keyDown(other, { key: "c" });
-    expect(document.activeElement).toBe(other);
-    other.remove();
+  it("filters the menu by what is typed and closes when nothing matches", () => {
+    mount();
+    const input = field();
+    fireEvent.change(input, { target: { value: "/t" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("Task")]);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect((input as HTMLInputElement).value).toBe("/task ");
+    fireEvent.change(input, { target: { value: "/zz" } });
+    expect(screen.queryByRole("listbox", { name: "Prompt commands" })).toBeNull();
+  });
+
+  it("keeps the caret in the field when shift+enter grows it into a box", async () => {
+    const fetchFn = mockFetch({ id: 30, type: "note", title: "Two lines" });
+    mount();
+    const input = field();
+    fireEvent.change(input, { target: { value: "first" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    const box = field();
+    expect(box.tagName).toBe("TEXTAREA");
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe("first".length);
+    fireEvent.change(box, { target: { value: "first\nsecond" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(screen.getByText("Captured to Inbox")).toBeTruthy());
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ body: "first\nsecond" });
+  });
+
+  it("focuses the field when the shortcut layer asks for it", () => {
+    mount();
+    window.dispatchEvent(new Event("sb:prompt-focus"));
+    expect(document.activeElement).toBe(field());
   });
 });

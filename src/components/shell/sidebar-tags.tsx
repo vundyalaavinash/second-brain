@@ -45,7 +45,7 @@ export function SidebarTags({ pathname, onNavigate }: { pathname: string; onNavi
           {tags.slice(0, MAX_TAGS).map((t) => (
             <Chip key={t.name} href={`/search?tag=${encodeURIComponent(t.name)}`} onClick={onNavigate}>
               {t.name}
-              <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>
+              {t.count > 0 && <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>}
             </Chip>
           ))}
         </div>

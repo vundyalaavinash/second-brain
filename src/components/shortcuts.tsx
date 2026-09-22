@@ -6,14 +6,17 @@ import { NAV_ITEMS, SEARCH_ITEM, CAPTURE_ITEM } from "./nav";
 
 const SEQUENCE_WINDOW_MS = 900;
 
-function isTyping(target: EventTarget | null): boolean {
+/** True when the key belongs to whatever the user is editing, so a bare-letter shortcut
+ * must stay out of the way. */
+export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
   const tag = el.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
 }
 
-/** `g` then a letter jumps between views; `/` focuses the search box when present. */
+/** The one window-level key handler: `g` then a letter jumps between views, `/` focuses the
+ * search box when present, and a bare `c` calls the prompt bar to the front. */
 export function Shortcuts() {
   const router = useRouter();
   useEffect(() => {
@@ -42,7 +45,14 @@ export function Shortcuts() {
         if (href) {
           e.preventDefault();
           router.push(href);
+          return;
         }
+      }
+      // `c` on its own (the `g c` sequence above has already claimed its own `c`) puts the
+      // caret in the prompt bar, wherever in the shell it is mounted.
+      if (e.key === "c") {
+        e.preventDefault();
+        window.dispatchEvent(new Event("sb:prompt-focus"));
       }
     }
     window.addEventListener("keydown", onKey);

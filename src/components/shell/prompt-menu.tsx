@@ -20,8 +20,8 @@ const OPTION = "flex items-center gap-3 px-2 h-9 rounded-sm cursor-pointer text-
  * The slash menu above the prompt bar. Focus stays in the input, so the active entry is
  * named by `aria-activedescendant` rather than moved.
  */
-export function PromptMenu({ activeIndex, onChoose }: { activeIndex: number; onChoose: (entry: PromptEntry) => void }) {
-  const active = PROMPT_ENTRIES[activeIndex] ?? PROMPT_ENTRIES[0];
+export function PromptMenu({ entries, activeIndex, onChoose }: { entries: PromptEntry[]; activeIndex: number; onChoose: (entry: PromptEntry) => void }) {
+  const active = entries[activeIndex] ?? entries[0];
   return (
     <div
       role="listbox"
@@ -29,7 +29,7 @@ export function PromptMenu({ activeIndex, onChoose }: { activeIndex: number; onC
       aria-activedescendant={`prompt-option-${active.word}`}
       className="panel absolute bottom-full left-0 right-0 mb-2 rounded-md p-1 flex flex-col gap-0.5 z-40"
     >
-      {PROMPT_ENTRIES.map((entry, i) => (
+      {entries.map((entry, i) => (
         <div
           key={entry.word}
           id={`prompt-option-${entry.word}`}

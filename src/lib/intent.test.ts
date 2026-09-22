@@ -16,6 +16,16 @@ describe("detectIntent", () => {
     expect(detectIntent("?tax forms")).toEqual({ kind: "search", query: "tax forms" });
     expect(detectIntent("/search tax")).toEqual({ kind: "search", query: "tax" });
   });
+  it("links with /link", () => {
+    expect(detectIntent("/link https://example.com/x")).toEqual({ kind: "link", url: "https://example.com/x" });
+  });
+  it("reads a bare command word as that kind with nothing in it", () => {
+    expect(detectIntent("/note")).toEqual({ kind: "note", body: "" });
+    expect(detectIntent("/search")).toEqual({ kind: "search", query: "" });
+    expect(detectIntent("?")).toEqual({ kind: "search", query: "" });
+    expect(detectIntent("/task", now)).toEqual({ kind: "task", title: "", priority: "normal", dueDate: null });
+    expect(detectIntent("/link")).toEqual({ kind: "link", url: "" });
+  });
   it("notes by default and with /note", () => {
     expect(detectIntent("Remember the milk")).toEqual({ kind: "note", body: "Remember the milk" });
     expect(detectIntent("/note https://not-a-link.example is text")).toEqual({ kind: "note", body: "https://not-a-link.example is text" });
