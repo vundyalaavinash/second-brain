@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { RecordingChip } from "./recording-chip";
 import type { RecorderStatusDTO } from "@/lib/dto";
 
@@ -27,6 +27,7 @@ function stubFetch(initial: RecorderStatusDTO) {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -74,6 +75,34 @@ describe("RecordingChip", () => {
     render(<RecordingChip />);
     await screen.findByText("Product sync");
     expect(screen.queryByRole("button", { name: "Keep recording" })).toBeNull();
+  });
+
+  it("tells the rest of the page when a poll finds the session over", async () => {
+    // The helper can exit on its own; nothing clicked, so only the poll knows.
+    let current = status();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(current)),
+    );
+    const announced = vi.fn();
+    window.addEventListener("sb:recording-changed", announced);
+
+    // The poll is a timer, so it is a fake one from before the chip mounts.
+    vi.useFakeTimers();
+    render(<RecordingChip />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText("Product sync")).toBeTruthy();
+
+    current = status({ state: "idle", itemId: undefined, title: undefined, startedAt: undefined });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5100);
+    });
+
+    expect(screen.queryByText("Product sync")).toBeNull();
+    expect(announced).toHaveBeenCalledTimes(1);
+    window.removeEventListener("sb:recording-changed", announced);
   });
 
   it("shows a failed session with the message, and clears it on stop", async () => {

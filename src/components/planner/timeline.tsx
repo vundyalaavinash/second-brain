@@ -145,17 +145,20 @@ export function Timeline({ date, meetings }: { date: string; meetings: MeetingLi
                         Join
                       </a>
                     )}
-                    {/* The block itself is a button, so this one sits above it and takes back the pointer. */}
-                    <button
-                      type="button"
-                      onClick={() => recorder.record({ calendarEventId: m.id })}
-                      disabled={!!recorder.blocked}
-                      aria-label={`Record ${m.title}`}
-                      title={recorder.blocked ?? undefined}
-                      className="focus-ring rounded-sm pointer-events-auto text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      Record
-                    </button>
+                    {/* The block itself is a button, so this one sits above it and takes back the
+                      * pointer; a disabled button takes none, so the reason hangs on the wrapper. */}
+                    <span title={recorder.title ?? undefined} className="pointer-events-auto">
+                      <button
+                        type="button"
+                        onClick={() => recorder.record({ calendarEventId: m.id })}
+                        disabled={!!recorder.blocked}
+                        aria-label={`Record ${m.title}`}
+                        title={recorder.title ?? undefined}
+                        className="focus-ring rounded-sm text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
+                      >
+                        Record
+                      </button>
+                    </span>
                   </span>
                 )}
               </div>

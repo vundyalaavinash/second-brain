@@ -105,7 +105,7 @@ export class Recorder extends EventEmitter {
       proc.stdout?.resume();
     }
     proc.on("error", (err) => this.onSpawnError(err));
-    proc.on("exit", (code) => this.onExit(code));
+    proc.on("exit", (code, signal) => this.onExit(code, signal));
 
     this.emit("change", this.status());
     return { itemId: item.id, startedAt };
@@ -159,7 +159,7 @@ export class Recorder extends EventEmitter {
     this.emit("change", this.status());
   }
 
-  private onExit(code: number | null): void {
+  private onExit(code: number | null, signal: NodeJS.Signals | null = null): void {
     const itemId = this.current.itemId;
     const wasStopping = this.current.state === "stopping";
     this.proc = null;
@@ -167,12 +167,13 @@ export class Recorder extends EventEmitter {
     this.live = null;
     if (itemId === undefined) return;
 
-    // SIGINT leaves a null code; what matters is whether we were the ones who asked.
-    const failed = !wasStopping && code !== 0 && code !== null;
+    // An exit nobody asked for is a failure, including a null code: that is a signal, and
+    // the only signals this helper gets are the ones `stop` sends.
+    const failed = !wasStopping && code !== 0;
     this.finishItem(itemId, failed ? "error" : "done");
     // Whatever happened, the WAV on disk is a recording: it always gets a final pass.
     enqueueJob(this.deps.db, "transcribe_final", { itemId, source: "recording" }, itemId);
-    this.current = failed ? { state: "error", itemId, error: `recorder exited with ${code}` } : { state: "idle" };
+    this.current = failed ? { state: "error", itemId, error: `recorder exited with ${code ?? signal}` } : { state: "idle" };
     this.emit("change", this.status());
   }
 
@@ -192,6 +193,8 @@ export class Recorder extends EventEmitter {
    * the live pass stops and the final transcript still comes off disk.
    */
   private onStderr(text: string): void {
+    // A line that arrives after the session has ended has nothing left to describe.
+    if (this.current.state !== "recording" && this.current.state !== "stopping") return;
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;

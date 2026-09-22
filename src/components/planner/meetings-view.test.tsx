@@ -150,12 +150,31 @@ describe("MeetingsView", () => {
     });
   });
 
-  it("keeps record out of reach, and says why, while a tool is missing", async () => {
+  it("says it is checking before the first answer, then lets go", async () => {
+    stubRecorder({ state: "idle", missing: [] });
+    mount();
+    const record = screen.getByRole("button", { name: "Record now" });
+    expect(record.hasAttribute("disabled")).toBe(true);
+    expect(record.getAttribute("title")).toBe("Checking the recorder");
+    await waitFor(() => expect(record.hasAttribute("disabled")).toBe(false));
+    expect(record.hasAttribute("title")).toBe(false);
+  });
+
+  it("keeps record out of reach, and says why, while the recorder helper is missing", async () => {
     stubRecorder({ state: "idle", missing: ["recorder", "finalModel"] });
     mount();
     const record = screen.getByRole("button", { name: "Record now" });
-    await waitFor(() => expect(record.hasAttribute("disabled")).toBe(true));
-    expect(record.getAttribute("title")).toBe("Recording needs the recorder helper, the final transcript model. Run the setup script and reload");
+    await waitFor(() => expect(record.getAttribute("title")).toBe("Recording needs the recorder helper. Run the setup script and reload"));
+    expect(record.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("still records when only the transcript tools are missing, and says what they are", async () => {
+    // The meeting is captured to disk either way; the transcript catches up later.
+    stubRecorder({ state: "idle", missing: ["whisper", "finalModel"] });
+    mount();
+    const record = screen.getByRole("button", { name: "Record now" });
+    await waitFor(() => expect(record.getAttribute("title")).toBe("Transcription needs: whisper-cli, the final transcript model"));
+    expect(record.hasAttribute("disabled")).toBe(false);
   });
 
   it("keeps record out of reach while another meeting is recording", async () => {

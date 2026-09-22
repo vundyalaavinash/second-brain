@@ -11,6 +11,7 @@
  *   SB_FAKE_RECORDER_EXIT_CODE  the code that exit uses (default 1)
  *   SB_FAKE_RECORDER_DEVICE_MS  emit a `device` line after this many ms
  *   SB_FAKE_RECORDER_STALL_MS   emit the `stdout consumer stalled` error after this many ms
+ *   SB_FAKE_RECORDER_KILL_MS    kill itself with SIGKILL after this many ms (no clean exit)
  */
 
 const fs = require("node:fs");
@@ -79,6 +80,8 @@ function finish(code) {
 }
 
 after("SB_FAKE_RECORDER_EXIT_MS", () => finish(Number(process.env.SB_FAKE_RECORDER_EXIT_CODE ?? 1)));
+// No handler runs for SIGKILL: the header is left as it was, exactly like a crash.
+after("SB_FAKE_RECORDER_KILL_MS", () => process.kill(process.pid, "SIGKILL"));
 
 process.on("SIGINT", () => finish(0));
 process.on("SIGTERM", () => finish(0));

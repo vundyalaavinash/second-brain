@@ -102,12 +102,21 @@ export class LiveTranscriber {
   private busy = false;
   private stopped = false;
   private loggedError = false;
+  private readonly dir: string;
+  /** Only a directory this transcriber made is a directory it may delete. */
+  private readonly ownsDir: boolean;
   private readonly base: string;
 
   constructor(private readonly deps: LiveTranscriberDeps) {
-    const dir = deps.tmpDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "sb-live-"));
-    fs.mkdirSync(dir, { recursive: true });
-    this.base = path.join(dir, `live-${deps.itemId}`);
+    this.ownsDir = !deps.tmpDir;
+    this.dir = deps.tmpDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "sb-live-"));
+    fs.mkdirSync(this.dir, { recursive: true });
+    this.base = path.join(this.dir, `live-${deps.itemId}`);
+  }
+
+  /** Where the scratch WAV for each window is written. */
+  get scratchDir(): string {
+    return this.dir;
   }
 
   /** Append PCM from the recorder, keeping only the last window. */
@@ -123,11 +132,13 @@ export class LiveTranscriber {
     this.timer.unref?.();
   }
 
+  /** Ends the session. A window still running finishes into the void: its text is dropped. */
   stop(): void {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     for (const suffix of [".wav", ".txt"]) fs.rmSync(`${this.base}${suffix}`, { force: true });
+    if (this.ownsDir) fs.rmSync(this.dir, { recursive: true, force: true });
   }
 
   /** Exposed for tests and for the first window: transcribe what is buffered right now. */

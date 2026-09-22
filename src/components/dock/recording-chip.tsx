@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { RecorderStatusDTO } from "@/lib/dto";
 
@@ -26,6 +26,8 @@ export function RecordingChip() {
   const [status, setStatus] = useState<RecorderStatusDTO>(IDLE);
   const [now, setNow] = useState(0);
   const [busy, setBusy] = useState(false);
+  // What the last answer said, so a poll can tell a change from a repeat without a render.
+  const seenState = useRef<RecorderStatusDTO["state"]>("idle");
 
   const post = useCallback((path: string) => {
     setBusy(true);
@@ -33,7 +35,9 @@ export function RecordingChip() {
       try {
         const res = await fetch(path, { method: "POST" });
         if (res.ok) {
-          setStatus((await res.json()) as RecorderStatusDTO);
+          const next = (await res.json()) as RecorderStatusDTO;
+          seenState.current = next.state;
+          setStatus(next);
           setNow(Date.now());
         }
       } catch {
@@ -50,21 +54,32 @@ export function RecordingChip() {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    /**
+     * `announce` is true only for the poll. A session can end without anyone clicking (the
+     * helper exits, or Task 4 stops it), and the Record buttons elsewhere would go on showing
+     * it as running; the poll that notices tells them. Only the poll announces, so the event
+     * the buttons dispatch themselves can never come back round as another announcement.
+     */
+    async function load(announce: boolean) {
       try {
         const res = await fetch("/api/meetings/recorder", { cache: "no-store" });
         if (!res.ok || cancelled) return;
-        setStatus((await res.json()) as RecorderStatusDTO);
+        const next = (await res.json()) as RecorderStatusDTO;
+        if (cancelled) return;
+        const changed = next.state !== seenState.current;
+        seenState.current = next.state;
+        setStatus(next);
         setNow(Date.now());
+        if (changed && announce) window.dispatchEvent(new Event("sb:recording-changed"));
       } catch {
         /* offline: the next poll tries again */
       }
     }
-    void load();
-    const onChanged = () => void load();
+    void load(false);
+    const onChanged = () => void load(false);
     window.addEventListener("sb:recording-changed", onChanged);
     // A live session is worth asking after; an idle recorder only changes on the event above.
-    const timer = idle ? null : setInterval(load, POLL_MS);
+    const timer = idle ? null : setInterval(() => void load(true), POLL_MS);
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);

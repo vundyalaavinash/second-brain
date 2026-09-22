@@ -66,6 +66,7 @@ describe("Recorder", () => {
     await recorder.stop();
     delete process.env.SB_FAKE_RECORDER_EXIT_MS;
     delete process.env.SB_FAKE_RECORDER_STALL_MS;
+    delete process.env.SB_FAKE_RECORDER_KILL_MS;
     t.cleanup();
   });
 
@@ -137,6 +138,18 @@ describe("Recorder", () => {
     const status = recorder.status();
     expect(status.itemId).toBe(item.id);
     expect(status.error).toMatch(/exited/);
+    expect(meta(t, item.id).recording!.state).toBe("error");
+    expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
+  });
+
+  it("treats a helper killed outright as a failure, and still queues the transcript", async () => {
+    // SIGKILL leaves no exit code at all; nobody asked for it, so the session failed.
+    process.env.SB_FAKE_RECORDER_KILL_MS = "150";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().state === "error");
+
+    expect(recorder.status().error).toBe("recorder exited with SIGKILL");
     expect(meta(t, item.id).recording!.state).toBe("error");
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
   });

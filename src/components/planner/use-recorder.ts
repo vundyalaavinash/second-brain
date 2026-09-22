@@ -18,13 +18,33 @@ export interface RecordingTarget {
   adhoc?: boolean;
 }
 
-/** The reason Record is out of reach, or null when it is ready. */
-export function recordBlockedReason(status: RecorderStatusDTO): string | null {
-  if (status.missing.length > 0) {
-    return `Recording needs ${status.missing.map((m) => TOOL_LABELS[m] ?? m).join(", ")}. Run the setup script and reload`;
-  }
-  if (status.state === "recording" || status.state === "stopping") return "A recording is already running";
-  return null;
+export interface RecordAffordance {
+  /** Why the button is out of reach, or null when it can be pressed. */
+  blocked: string | null;
+  /** What the button says for itself, blocked or not. */
+  title: string | null;
+}
+
+function label(key: string): string {
+  return TOOL_LABELS[key] ?? key;
+}
+
+/**
+ * What the Record buttons should look like right now.
+ *
+ * Only the recorder helper is the difference between recording and not: without whisper or a
+ * model the meeting is still captured to disk, and the transcript catches up once the tools
+ * are installed. So a missing transcription tool is a note on a live button, not a locked one.
+ */
+export function recordAffordance(status: RecorderStatusDTO, loaded: boolean): RecordAffordance {
+  /** A reason that both stops the button and explains it. */
+  const stop = (reason: string): RecordAffordance => ({ blocked: reason, title: reason });
+
+  if (!loaded) return stop("Checking the recorder");
+  if (status.missing.includes("recorder")) return stop("Recording needs the recorder helper. Run the setup script and reload");
+  if (status.state === "recording" || status.state === "stopping") return stop("A recording is already running");
+  if (status.missing.length > 0) return { blocked: null, title: `Transcription needs: ${status.missing.map(label).join(", ")}` };
+  return { blocked: null, title: null };
 }
 
 /**
@@ -34,11 +54,15 @@ export function recordBlockedReason(status: RecorderStatusDTO): string | null {
  */
 export function useRecorder(): {
   status: RecorderStatusDTO;
+  loaded: boolean;
   blocked: string | null;
+  title: string | null;
   error: string | null;
   record: (target: RecordingTarget) => void;
 } {
   const [status, setStatus] = useState<RecorderStatusDTO>({ state: "idle", missing: [] });
+  // Until the first answer lands, the buttons say so rather than promising a recording.
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,7 +70,11 @@ export function useRecorder(): {
     async function load() {
       try {
         const res = await fetch("/api/meetings/recorder", { cache: "no-store" });
-        if (res.ok && !cancelled) setStatus((await res.json()) as RecorderStatusDTO);
+        if (!res.ok || cancelled) return;
+        const next = (await res.json()) as RecorderStatusDTO;
+        if (cancelled) return;
+        setStatus(next);
+        setLoaded(true);
       } catch {
         /* offline: the buttons stay as they were */
       }
@@ -83,5 +111,6 @@ export function useRecorder(): {
     })();
   }, []);
 
-  return { status, blocked: recordBlockedReason(status), error, record };
+  const { blocked, title } = recordAffordance(status, loaded);
+  return { status, loaded, blocked, title, error, record };
 }

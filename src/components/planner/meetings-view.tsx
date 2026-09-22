@@ -90,6 +90,7 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
             onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
             onRecord={() => recorder.record({ calendarEventId: m.id })}
             blocked={recorder.blocked}
+            recordTitle={recorder.title}
           />
         ))}
       </List>
@@ -117,8 +118,8 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           className="max-w-[320px]"
         />
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
-        <span title={recorder.blocked ?? undefined} className="ml-auto">
-          <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.blocked ?? undefined}>
+        <span title={recorder.title ?? undefined} className="ml-auto">
+          <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>
             Record now
           </Button>
         </span>

@@ -41,7 +41,12 @@ beforeAll(async () => {
   const { getDb } = await import("@/db/client");
   const { JobWorker } = await import("@/jobs/worker");
   const { createJobHandlers } = await import("@/jobs/handlers");
-  const worker = new JobWorker(getDb(), createJobHandlers({ db: getDb(), embed: createFakeEmbedProvider() }));
+  // The audio upload queues a transcript job; with the tools left null it fails on the spot
+  // instead of scanning this machine's PATH for whisper.
+  const worker = new JobWorker(
+    getDb(),
+    createJobHandlers({ db: getDb(), embed: createFakeEmbedProvider(), whisperBin: null, ffmpegBin: null, hasChatKey: () => false }),
+  );
   drain = async () => {
     while (await worker.runOnce()) {
       /* drain */
