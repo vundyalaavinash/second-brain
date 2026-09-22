@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, notInArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, items, type CalendarEvent, type Item, type MeetingStatus } from "@/db/schema";
 import { createItem } from "@/domain/items";
@@ -48,30 +48,31 @@ export function isInterview(title: string): boolean {
   return /interview/i.test(title);
 }
 
-export function replaceCalendarEvents(db: DB, events: CalendarEventInput[]): { days: string[]; inserted: number } {
+/** The local-day range a calendar payload speaks for: `[from, to)`. */
+export interface CalendarWindow {
+  from: string;
+  to: string;
+}
+
+/**
+ * Upserts the payload by `externalId` and drops the events that vanished from the window.
+ * Rows keep their `id` (sessions reference it), `item_id`, and `no_record`; a payload without a
+ * window speaks only for the days it carries, which is what older helpers mean by a post.
+ */
+export function replaceCalendarEvents(
+  db: DB,
+  events: CalendarEventInput[],
+  window?: CalendarWindow,
+): { days: string[]; inserted: number; removed: number } {
   const days = [...new Set(events.map((e) => localDay(e.startsAt)))];
   const externalIds = events.map((e) => e.externalId);
   let inserted = 0;
+  let removed = 0;
   db.transaction((tx) => {
-    // The calendar owns everything but our own two columns, so carry those across the delete-and-reinsert.
-    const kept = new Map<string, { itemId: number | null; noRecord: number }>();
-    if (days.length) {
-      const rows = tx
-        .select({ externalId: calendarEvents.externalId, itemId: calendarEvents.itemId, noRecord: calendarEvents.noRecord })
-        .from(calendarEvents)
-        .where(
-          externalIds.length
-            ? or(inArray(calendarEvents.day, days), inArray(calendarEvents.externalId, externalIds))
-            : inArray(calendarEvents.day, days),
-        )
-        .all();
-      for (const row of rows) kept.set(row.externalId, { itemId: row.itemId, noRecord: row.noRecord });
-      tx.delete(calendarEvents).where(inArray(calendarEvents.day, days)).run();
-    }
     for (const e of events) {
       if (Date.parse(e.endsAt) <= Date.parse(e.startsAt)) continue;
       const joinUrl = e.joinUrl ?? joinUrlFrom(e.location, e.notes);
-      const prior = kept.get(e.externalId);
+      // item_id and no_record are ours, not the calendar's: they stay off the upsert so a refresh keeps them.
       const values = {
         externalId: e.externalId,
         title: e.title.trim() || "Untitled event",
@@ -88,15 +89,22 @@ export function replaceCalendarEvents(db: DB, events: CalendarEventInput[]): { d
         allDay: e.allDay ? 1 : 0,
         status: e.status ?? "none",
         calendarTitle: e.calendarTitle ?? "",
-        itemId: prior?.itemId ?? null,
-        noRecord: prior?.noRecord ?? 0,
       };
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();
       inserted++;
     }
+    const inWindow = window
+      ? and(gte(calendarEvents.day, window.from), lt(calendarEvents.day, window.to))
+      : days.length
+        ? inArray(calendarEvents.day, days)
+        : undefined;
+    if (inWindow) {
+      const stale = externalIds.length ? and(inWindow, notInArray(calendarEvents.externalId, externalIds)) : inWindow;
+      removed = tx.delete(calendarEvents).where(stale).run().changes;
+    }
   });
   labelMeetings(db, days);
-  return { days, inserted };
+  return { days, inserted, removed };
 }
 
 /** The stored attendee-name JSON as a list of names; tolerant of anything else. */

@@ -162,6 +162,42 @@ describe("activity api", () => {
     expect(after.helper.calendarsSeen).toBe(3);
   });
 
+  it("trims oversized notes and attendee lists instead of rejecting the payload", async () => {
+    // 3999 chars + one astral emoji = 4001 UTF-16 units but 4000 graphemes: the helper's own cap can overshoot zod's.
+    const notes = "x".repeat(3999) + "\u{1F600}";
+    expect(notes.length).toBe(4001);
+    const res = await r.calendar.POST(
+      json(
+        "POST",
+        "/api/activity/calendar",
+        {
+          events: [
+            {
+              externalId: "e1",
+              title: "Interview: Jane",
+              startsAt: at(1000),
+              endsAt: at(2800),
+              attendees: 12,
+              hasCallLink: false,
+              attendeeNames: Array.from({ length: 12 }, (_, i) => `Guest ${i}`),
+              joinUrl: "not a url",
+              notes,
+            },
+          ],
+        },
+        TOKEN,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const m = (await getDay()).meetings[0];
+    expect(m.attendeeNames).toHaveLength(10);
+    expect(m.joinUrl).toBeNull();
+    const { getDb } = await import("@/db/client");
+    const { calendarEvents } = await import("@/db/schema");
+    const row = getDb().select().from(calendarEvents).all()[0];
+    expect(row.notes.length).toBe(4000);
+  });
+
   it("manages rules, reorders, and recategorises", async () => {
     const list = (await (await r.rules.GET()).json()) as { id: number }[];
     const cats = (await getDay()).categories as { id: number; name: string }[];

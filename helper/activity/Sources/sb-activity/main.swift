@@ -21,7 +21,7 @@ struct Heartbeat: Encodable {
     var helper: HelperInfo?
 }
 struct HelperInfo: Encodable { var version: String; var permissions: Permissions }
-struct CalendarBody: Encodable { var events: [EventPayload]; var calendarsSeen: Int }
+struct CalendarBody: Encodable { var events: [EventPayload]; var window: CalendarWindow; var calendarsSeen: Int? }
 
 let args = CommandLine.arguments
 let once = args.contains("--once")
@@ -136,13 +136,15 @@ func tick() {
     if calendarChanged || now.timeIntervalSince(lastCalendar) >= CALENDAR_INTERVAL {
         calendarChanged = false
         lastCalendar = now
-        let body = CalendarBody(events: calendar.upcoming(now: now), calendarsSeen: calendar.calendarsSeen)
+        let body = CalendarBody(events: calendar.upcoming(now: now), window: calendar.window(now: now), calendarsSeen: calendar.calendarsSeen)
         if let data = try? encoder.encode(body) { _ = client.post("/api/activity/calendar", json: data) }
     }
 }
 
 /// Held for the process's life so the calendar-change subscription stays alive.
 let calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { _ in
+    // The store hands back cached objects until it is reset, so the next fetch would miss the change.
+    calendar.reset()
     calendarChanged = true
 }
 

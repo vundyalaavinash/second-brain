@@ -18,17 +18,31 @@ struct EventPayload: Encodable {
     var calendarTitle: String
 }
 
+/// The local-day range `[from, to)` a payload speaks for, so the server can drop what vanished.
+struct CalendarWindow: Encodable {
+    var from: String
+    var to: String
+}
+
 final class CalendarReader {
     private let store = EKEventStore()
     private(set) var granted = false
     private let iso = ISO8601DateFormatter()
-    /// A whole meeting-provider link, so the server can offer a Join button.
+    /// A whole meeting-provider link. The character class matches the server's, so a link in
+    /// `<a href="...">Click</a>` does not swallow the quote and the markup after it.
     private let joinRe = try! NSRegularExpression(
-        pattern: "https?://\\S*(zoom\\.us|meet\\.google\\.com|teams\\.microsoft\\.com|webex\\.com)\\S*", options: .caseInsensitive)
+        pattern: "https?://[^\\s<>\"')]*(zoom\\.us|meet\\.google\\.com|teams\\.microsoft\\.com|webex\\.com)[^\\s<>\"')]*",
+        options: .caseInsensitive)
     private let callRe = try! NSRegularExpression(pattern: "(zoom\\.us|meet\\.google\\.com|teams\\.microsoft\\.com|webex\\.com)", options: .caseInsensitive)
 
-    /// How many event calendars this Mac exposes; 0 means nothing is set up yet.
-    var calendarsSeen: Int { granted ? store.calendars(for: .event).count : 0 }
+    /// How many calendar accounts this Mac exposes, ignoring the built-in local ones; nil until access is granted.
+    var calendarsSeen: Int? {
+        guard granted else { return nil }
+        return store.calendars(for: .event).filter { cal in
+            guard let type = cal.source?.sourceType else { return false }
+            return type != .local
+        }.count
+    }
 
     func requestAccess() {
         let sem = DispatchSemaphore(value: 0)
@@ -40,9 +54,26 @@ final class CalendarReader {
         _ = sem.wait(timeout: .now() + 30)
     }
 
+    /// Drops cached objects so the next fetch sees what changed.
+    func reset() {
+        store.reset()
+    }
+
     private func firstMatch(_ re: NSRegularExpression, in text: String) -> String? {
         guard let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), let r = Range(m.range, in: text) else { return nil }
         return String(text[r])
+    }
+
+    /// Trims to `max` UTF-16 units — the length the server counts — without splitting a surrogate pair.
+    private func capped(_ s: String, _ max: Int) -> String {
+        let units = s.utf16
+        guard units.count > max else { return s }
+        var cut = units.index(units.startIndex, offsetBy: max)
+        while cut > units.startIndex, String.Index(cut, within: s) == nil {
+            cut = units.index(before: cut)
+        }
+        guard let end = String.Index(cut, within: s) else { return "" }
+        return String(s[s.startIndex..<end])
     }
 
     private func statusName(_ status: EKEventStatus) -> String {
@@ -54,15 +85,31 @@ final class CalendarReader {
         }
     }
 
-    /// Events from 30 days back to 60 days ahead, all-day ones included.
+    private func bounds(_ now: Date) -> (start: Date, end: Date) {
+        let cal = Foundation.Calendar.current
+        let today = cal.startOfDay(for: now)
+        // Whole local days only, so every day in the window is fetched in full.
+        return (cal.date(byAdding: .day, value: -30, to: today)!, cal.date(byAdding: .day, value: 61, to: today)!)
+    }
+
+    private func dayString(_ date: Date) -> String {
+        let c = Foundation.Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// The local days these events speak for: 30 back through 60 ahead, end exclusive.
+    func window(now: Date = Date()) -> CalendarWindow {
+        let b = bounds(now)
+        return CalendarWindow(from: dayString(b.start), to: dayString(b.end))
+    }
+
+    /// Every event in the window, all-day ones included.
     func upcoming(now: Date = Date()) -> [EventPayload] {
         guard granted else { return [] }
-        let cal = Foundation.Calendar.current
-        let start = cal.date(byAdding: .day, value: -30, to: cal.startOfDay(for: now))!
-        let end = cal.date(byAdding: .day, value: 60, to: now)!
-        let pred = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        let b = bounds(now)
+        let pred = store.predicateForEvents(withStart: b.start, end: b.end, calendars: nil)
         return store.events(matching: pred).map { e in
-            let notes = String((e.notes ?? "").prefix(4000))
+            let notes = capped(e.notes ?? "", 4000)
             let location = e.location ?? ""
             let text = [e.url?.absoluteString, location, notes].compactMap { $0 }.joined(separator: " ")
             let joinUrl = firstMatch(joinRe, in: text)
@@ -81,7 +128,7 @@ final class CalendarReader {
                 notes: notes,
                 allDay: e.isAllDay,
                 status: statusName(e.status),
-                calendarTitle: e.calendar.title)
+                calendarTitle: e.calendar?.title ?? "")
         }
     }
 }

@@ -114,15 +114,39 @@ describe("calendar", () => {
     expect(joinUrlFrom("nothing")).toBeNull();
   });
 
-  it("keeps item_id and no_record when a day is replaced", () => {
+  it("keeps the row id, item_id, and no_record when an event is updated", () => {
     replaceCalendarEvents(t.db, [{ externalId: "a", title: "Weekly sync", startsAt: at(0), endsAt: at(1800), attendees: 4, hasCallLink: false }]);
     const ev = t.db.select().from(calendarEvents).get()!;
     const item = captureMeeting(t.db, ev.id);
     t.db.update(calendarEvents).set({ noRecord: 1 }).where(eq(calendarEvents.id, ev.id)).run();
     replaceCalendarEvents(t.db, [{ externalId: "a", title: "Weekly sync (moved)", startsAt: at(0), endsAt: at(900), attendees: 4, hasCallLink: false }]);
-    const after = t.db.select().from(calendarEvents).get()!;
-    expect(after.title).toBe("Weekly sync (moved)");
-    expect(after.itemId).toBe(item.id);
-    expect(after.noRecord).toBe(1);
+    const rows = t.db.select().from(calendarEvents).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: ev.id, title: "Weekly sync (moved)", endsAt: at(900), itemId: item.id, noRecord: 1 });
+  });
+
+  it("drops events that vanish from the window and leaves the ones outside it", () => {
+    const inside = { externalId: "in", title: "Inside", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const alsoInside = { externalId: "in2", title: "Also inside", startsAt: "2026-09-23T09:00:00.000Z", endsAt: "2026-09-23T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const outside = { externalId: "out", title: "Outside", startsAt: "2026-10-05T09:00:00.000Z", endsAt: "2026-10-05T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const window = { from: "2026-09-20", to: "2026-09-30" };
+    replaceCalendarEvents(t.db, [inside, alsoInside], window);
+    replaceCalendarEvents(t.db, [outside], { from: "2026-10-01", to: "2026-10-10" });
+    const keptId = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "in")).get()!.id;
+
+    const r = replaceCalendarEvents(t.db, [inside], window);
+    expect(r.removed).toBe(1);
+    const rows = t.db.select().from(calendarEvents).all();
+    expect(rows.map((e) => e.externalId).sort()).toEqual(["in", "out"]);
+    expect(rows.find((e) => e.externalId === "in")!.id).toBe(keptId);
+  });
+
+  it("without a window a payload speaks only for the days it carries", () => {
+    const monday = { externalId: "m", title: "Monday", startsAt: "2026-09-21T09:00:00.000Z", endsAt: "2026-09-21T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const tuesday = { externalId: "t1", title: "Tuesday", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const tuesdayToo = { externalId: "t2", title: "Tuesday too", startsAt: "2026-09-22T11:00:00.000Z", endsAt: "2026-09-22T12:00:00.000Z", attendees: 1, hasCallLink: false };
+    replaceCalendarEvents(t.db, [monday, tuesday, tuesdayToo]);
+    replaceCalendarEvents(t.db, [tuesday]);
+    expect(t.db.select().from(calendarEvents).all().map((e) => e.externalId).sort()).toEqual(["m", "t1"]);
   });
 });
