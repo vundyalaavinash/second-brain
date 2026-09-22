@@ -326,7 +326,7 @@ export function Dock() {
             aria-label="Main"
             onPointerMove={magnify.onPointerMove}
             onPointerLeave={magnify.onPointerLeave}
-            className="panel relative rounded-full h-16 px-3 flex items-end gap-1"
+            className="panel relative rounded-full h-16 px-3 flex items-center gap-1"
           >
             {/* The lit top edge that makes the pill read as glass rather than a flat plate. */}
             <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-b from-white/10 to-transparent" aria-hidden />

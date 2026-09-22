@@ -23,7 +23,7 @@ export interface DockItemProps {
   dot?: boolean;
   title?: string;
   expanded?: boolean;
-  /** Capture: a raised violet circle rather than a flat square. */
+  /** Capture: a violet circle with the same footprint as the other items, so the row stays centred. */
   raised?: boolean;
   scale?: number;
   onClick?: () => void;
@@ -56,7 +56,7 @@ export function DockItem({
   const tip = !active && (hovered || focused);
   const ariaLabel = [label, badge ? `${badge} waiting` : null, dot ? "not recording" : null].filter(Boolean).join(", ");
   const look = raised
-    ? "w-12 h-12 rounded-full -translate-y-2 bg-violet text-on-violet shadow-[0_10px_24px_-8px_var(--color-violet)]"
+    ? "w-11 h-11 rounded-full bg-violet text-on-violet shadow-[0_8px_20px_-8px_var(--color-violet)] hover:brightness-110"
     : `w-11 h-11 rounded-2xl ${active ? "text-violet-bright" : "text-fg-muted hover:text-fg"}`;
 
   /** A click focuses without `:focus-visible`, and then the hover already shows the tooltip. */
@@ -88,7 +88,7 @@ export function DockItem({
 
   return (
     <div
-      className="relative flex items-end"
+      className="relative flex items-center"
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onFocus={(e) => setFocused(isKeyboard(e.target as HTMLElement))}
