@@ -6,25 +6,42 @@ export interface HelperState {
   lastSeen: string | null;
   version: string | null;
   permissions: { accessibility: boolean; calendar: boolean; automation: Record<string, boolean> } | null;
+  /** How many event calendars the helper can see; null until it has reported. */
+  calendarsSeen: number | null;
 }
 
-const EMPTY: HelperState = { lastSeen: null, version: null, permissions: null };
+const CALENDARS_SEEN_KEY = "activity.helper.calendarsSeen";
+const EMPTY: HelperState = { lastSeen: null, version: null, permissions: null, calendarsSeen: null };
+
+function readCalendarsSeen(db: DB): number | null {
+  const raw = getSetting(db, CALENDARS_SEEN_KEY, "");
+  if (raw === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
 
 export function getHelperState(db: DB): HelperState {
+  const calendarsSeen = readCalendarsSeen(db);
   try {
-    return { ...EMPTY, ...(JSON.parse(getSetting(db, "activity_helper_state", "{}")) as Partial<HelperState>) };
+    const stored = JSON.parse(getSetting(db, "activity_helper_state", "{}")) as Partial<HelperState>;
+    return { ...EMPTY, ...stored, calendarsSeen };
   } catch {
-    return EMPTY;
+    return { ...EMPTY, calendarsSeen };
   }
 }
 
-export function recordHelperSeen(db: DB, at: string, helper?: { version: string; permissions: HelperState["permissions"] }): void {
+export function recordHelperSeen(
+  db: DB,
+  at: string,
+  helper?: { version?: string; permissions?: HelperState["permissions"]; calendarsSeen?: number },
+): void {
   const prev = getHelperState(db);
   setSetting(
     db,
     "activity_helper_state",
     JSON.stringify({ lastSeen: at, version: helper?.version ?? prev.version, permissions: helper?.permissions ?? prev.permissions }),
   );
+  if (helper?.calendarsSeen !== undefined) setSetting(db, CALENDARS_SEEN_KEY, String(helper.calendarsSeen));
 }
 
 export function isPaused(db: DB): boolean {

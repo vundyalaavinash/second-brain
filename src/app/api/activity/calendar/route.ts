@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { replaceCalendarEvents } from "@/domain/activity";
+import { recordHelperSeen, replaceCalendarEvents } from "@/domain/activity";
 import { requireHelperToken } from "@/lib/activity-auth";
 import { errorResponse } from "@/lib/api";
 
@@ -17,8 +17,18 @@ const Body = z.object({
       endsAt: Iso,
       attendees: z.number().int().nonnegative().default(0),
       hasCallLink: z.boolean().default(false),
+      organizer: z.string().default(""),
+      attendeeNames: z.array(z.string()).max(10).default([]),
+      location: z.string().default(""),
+      joinUrl: z.string().url().nullable().default(null),
+      notes: z.string().max(4000).default(""),
+      allDay: z.boolean().default(false),
+      status: z.enum(["accepted", "tentative", "declined", "none"]).default("none"),
+      calendarTitle: z.string().default(""),
     }),
   ),
+  /** How many event calendars the helper can see; absent from older helpers. */
+  calendarsSeen: z.number().int().nonnegative().optional(),
 });
 
 export async function POST(req: Request): Promise<Response> {
@@ -27,7 +37,10 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-    return NextResponse.json(replaceCalendarEvents(getDb(), parsed.data.events));
+    const db = getDb();
+    const { events, calendarsSeen } = parsed.data;
+    if (calendarsSeen !== undefined) recordHelperSeen(db, new Date().toISOString(), { calendarsSeen });
+    return NextResponse.json(replaceCalendarEvents(db, events));
   } catch (err) {
     return errorResponse(err);
   }

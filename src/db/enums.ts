@@ -33,3 +33,6 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const TASK_PRIORITIES = ["low", "normal", "high"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const MEETING_STATUSES = ["accepted", "tentative", "declined", "none"] as const;
+export type MeetingStatus = (typeof MEETING_STATUSES)[number];

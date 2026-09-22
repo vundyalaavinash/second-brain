@@ -50,6 +50,13 @@
       "when": 1789921344631,
       "tag": "0006_items_pinned",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790085978418,
+      "tag": "0007_planner",
+      "breakpoints": true
     }
   ]
 }

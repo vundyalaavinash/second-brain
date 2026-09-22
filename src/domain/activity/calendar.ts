@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents, items, type CalendarEvent, type Item } from "@/db/schema";
+import { activitySessions, calendarEvents, items, type CalendarEvent, type Item, type MeetingStatus } from "@/db/schema";
 import { createItem } from "@/domain/items";
 import { ActivityError, listCategories } from "./rules";
 
@@ -11,6 +11,24 @@ export interface CalendarEventInput {
   endsAt: string;
   attendees: number;
   hasCallLink: boolean;
+  organizer?: string;
+  attendeeNames?: string[];
+  location?: string;
+  joinUrl?: string | null;
+  notes?: string;
+  allDay?: boolean;
+  status?: MeetingStatus;
+  calendarTitle?: string;
+}
+
+/** Known meeting providers first; any https link is a usable fallback. */
+const PROVIDER_RE = /https?:\/\/[^\s<>"')]*(?:teams\.microsoft\.com|zoom\.us|meet\.google\.com|webex\.com)[^\s<>"')]*/i;
+const ANY_RE = /https?:\/\/[^\s<>"')]+/i;
+
+/** The first meeting link in any of the texts, else the first url, else null. */
+export function joinUrlFrom(...texts: (string | null | undefined)[]): string | null {
+  const joined = texts.filter(Boolean).join(" ");
+  return joined.match(PROVIDER_RE)?.[0] ?? joined.match(ANY_RE)?.[0] ?? null;
 }
 
 /** Local calendar day (YYYY-MM-DD) of an ISO timestamp. */
@@ -32,19 +50,46 @@ export function isInterview(title: string): boolean {
 
 export function replaceCalendarEvents(db: DB, events: CalendarEventInput[]): { days: string[]; inserted: number } {
   const days = [...new Set(events.map((e) => localDay(e.startsAt)))];
+  const externalIds = events.map((e) => e.externalId);
   let inserted = 0;
   db.transaction((tx) => {
-    if (days.length) tx.delete(calendarEvents).where(inArray(calendarEvents.day, days)).run();
+    // The calendar owns everything but our own two columns, so carry those across the delete-and-reinsert.
+    const kept = new Map<string, { itemId: number | null; noRecord: number }>();
+    if (days.length) {
+      const rows = tx
+        .select({ externalId: calendarEvents.externalId, itemId: calendarEvents.itemId, noRecord: calendarEvents.noRecord })
+        .from(calendarEvents)
+        .where(
+          externalIds.length
+            ? or(inArray(calendarEvents.day, days), inArray(calendarEvents.externalId, externalIds))
+            : inArray(calendarEvents.day, days),
+        )
+        .all();
+      for (const row of rows) kept.set(row.externalId, { itemId: row.itemId, noRecord: row.noRecord });
+      tx.delete(calendarEvents).where(inArray(calendarEvents.day, days)).run();
+    }
     for (const e of events) {
       if (Date.parse(e.endsAt) <= Date.parse(e.startsAt)) continue;
+      const joinUrl = e.joinUrl ?? joinUrlFrom(e.location, e.notes);
+      const prior = kept.get(e.externalId);
       const values = {
         externalId: e.externalId,
         title: e.title.trim() || "Untitled event",
         startsAt: e.startsAt,
         endsAt: e.endsAt,
         attendees: e.attendees,
-        hasCallLink: e.hasCallLink ? 1 : 0,
+        hasCallLink: joinUrl || e.hasCallLink ? 1 : 0,
         day: localDay(e.startsAt),
+        organizer: e.organizer ?? "",
+        attendeeNames: JSON.stringify(e.attendeeNames ?? []),
+        location: e.location ?? "",
+        joinUrl,
+        notes: e.notes ?? "",
+        allDay: e.allDay ? 1 : 0,
+        status: e.status ?? "none",
+        calendarTitle: e.calendarTitle ?? "",
+        itemId: prior?.itemId ?? null,
+        noRecord: prior?.noRecord ?? 0,
       };
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();
       inserted++;
@@ -52,6 +97,29 @@ export function replaceCalendarEvents(db: DB, events: CalendarEventInput[]): { d
   });
   labelMeetings(db, days);
   return { days, inserted };
+}
+
+/** The stored attendee-name JSON as a list of names; tolerant of anything else. */
+export function parseAttendeeNames(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Events starting on a day in [from, to), oldest first; `q` matches title, organizer, or an attendee name. */
+export function listMeetings(db: DB, opts: { from: string; to: string; q?: string }): CalendarEvent[] {
+  const rows = db
+    .select()
+    .from(calendarEvents)
+    .where(and(gte(calendarEvents.day, opts.from), lt(calendarEvents.day, opts.to)))
+    .orderBy(asc(calendarEvents.startsAt))
+    .all();
+  const q = opts.q?.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((e) => [e.title, e.organizer, e.attendeeNames].join(" ").toLowerCase().includes(q));
 }
 
 export function findMeetingFor(db: DB, at: string): CalendarEvent | undefined {
@@ -94,6 +162,11 @@ export function labelMeetings(db: DB, days: string[]): number {
 }
 
 export function findCapturedMeetingItem(db: DB, eventId: number): Item | undefined {
+  const ev = db.select({ itemId: calendarEvents.itemId }).from(calendarEvents).where(eq(calendarEvents.id, eventId)).get();
+  if (ev?.itemId) {
+    const linked = db.select().from(items).where(eq(items.id, ev.itemId)).get();
+    if (linked) return linked;
+  }
   return db
     .select()
     .from(items)
@@ -110,7 +183,10 @@ export function captureMeeting(db: DB, eventId: number): Item {
   const ev = db.select().from(calendarEvents).where(eq(calendarEvents.id, eventId)).get();
   if (!ev) throw new ActivityError("Meeting not found", 404);
   const existing = findCapturedMeetingItem(db, eventId);
-  if (existing) return existing;
+  if (existing) {
+    if (ev.itemId !== existing.id) db.update(calendarEvents).set({ itemId: existing.id }).where(eq(calendarEvents.id, ev.id)).run();
+    return existing;
+  }
   const body = [
     `**When:** ${localDay(ev.startsAt)} ${fmtTime(ev.startsAt)} to ${fmtTime(ev.endsAt)}`,
     `**Who:** ${ev.attendees} attendees`,
@@ -121,11 +197,13 @@ export function captureMeeting(db: DB, eventId: number): Item {
     "",
     "- [ ] ",
   ].join("\n");
-  return createItem(db, {
+  const item = createItem(db, {
     type: "meeting",
     title: ev.title,
     body,
     status: "ready",
     meta: { calendarEventId: ev.id, interview: isInterview(ev.title) },
   });
+  db.update(calendarEvents).set({ itemId: item.id }).where(eq(calendarEvents.id, ev.id)).run();
+  return item;
 }

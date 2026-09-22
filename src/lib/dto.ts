@@ -112,6 +112,7 @@ export interface HelperStateDTO {
   lastSeen: string | null;
   version: string | null;
   permissions: { accessibility: boolean; calendar: boolean; automation: Record<string, boolean> } | null;
+  calendarsSeen: number | null;
 }
 export interface ActivitySessionDTO {
   id: number; startedAt: string; endedAt: string; appId: string | null; appName: string | null; title: string | null;
@@ -120,6 +121,8 @@ export interface ActivitySessionDTO {
 export interface ActivityMeetingDTO {
   id: number; title: string; startsAt: string; endsAt: string; attendees: number; hasCallLink: boolean; interview: boolean;
   scheduledMs: number; actualMs: number; itemId: number | null;
+  organizer: string; attendeeNames: string[]; location: string; joinUrl: string | null; allDay: boolean;
+  status: "accepted" | "tentative" | "declined" | "none"; calendarTitle: string; noRecord: boolean;
 }
 export interface ActivityDayDTO {
   day: string;

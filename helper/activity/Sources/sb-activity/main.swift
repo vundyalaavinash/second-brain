@@ -1,8 +1,9 @@
+import EventKit
 import Foundation
 
 let VERSION = "1.0.0"
 let SAMPLE_INTERVAL: TimeInterval = 5
-let CALENDAR_INTERVAL: TimeInterval = 60
+let CALENDAR_INTERVAL: TimeInterval = 300
 let RETRY_INTERVAL: TimeInterval = 30
 let AFK_SECONDS: Double = 180
 let MAX_BUFFER = 12 * 60 * 60 / 5  // 12 hours of heartbeats
@@ -20,6 +21,7 @@ struct Heartbeat: Encodable {
     var helper: HelperInfo?
 }
 struct HelperInfo: Encodable { var version: String; var permissions: Permissions }
+struct CalendarBody: Encodable { var events: [EventPayload]; var calendarsSeen: Int }
 
 let args = CommandLine.arguments
 let once = args.contains("--once")
@@ -67,6 +69,8 @@ var lastCalendar = Date.distantPast
 var lastRetry = Date.distantPast
 var lastHelperInfo = Date.distantPast
 var lastPausedPing = Date.distantPast
+/// Set when macOS reports a calendar change; the next tick (at most 5 s later) reposts.
+var calendarChanged = false
 
 func excluded(_ s: Sample) -> Bool {
     if let id = s.appId, exclusions.apps.contains(id) { return true }
@@ -129,11 +133,17 @@ func tick() {
         flush()
         if !buffer.isEmpty { lastRetry = now }
     }
-    if now.timeIntervalSince(lastCalendar) >= CALENDAR_INTERVAL {
+    if calendarChanged || now.timeIntervalSince(lastCalendar) >= CALENDAR_INTERVAL {
+        calendarChanged = false
         lastCalendar = now
-        let events = calendar.upcoming(now: now)
-        if let data = try? encoder.encode(["events": events]) { _ = client.post("/api/activity/calendar", json: data) }
+        let body = CalendarBody(events: calendar.upcoming(now: now), calendarsSeen: calendar.calendarsSeen)
+        if let data = try? encoder.encode(body) { _ = client.post("/api/activity/calendar", json: data) }
     }
+}
+
+/// Held for the process's life so the calendar-change subscription stays alive.
+let calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { _ in
+    calendarChanged = true
 }
 
 log("started, server \(serverURL), data \(dataDir)")

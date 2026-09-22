@@ -1,7 +1,7 @@
 import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents, items } from "@/db/schema";
-import { dayBounds, isInterview } from "./calendar";
+import { activitySessions, calendarEvents, items, type MeetingStatus } from "@/db/schema";
+import { dayBounds, isInterview, parseAttendeeNames } from "./calendar";
 
 /** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
 const CLIP_LOOKBACK_MS = 2 * 86_400_000;
@@ -30,6 +30,14 @@ export interface ActivityMeeting {
   scheduledMs: number;
   actualMs: number;
   itemId: number | null;
+  organizer: string;
+  attendeeNames: string[];
+  location: string;
+  joinUrl: string | null;
+  allDay: boolean;
+  status: MeetingStatus;
+  calendarTitle: string;
+  noRecord: boolean;
 }
 
 export interface ActivityDay {
@@ -114,7 +122,15 @@ export function getDay(db: DB, day: string): ActivityDay {
     interview: isInterview(ev.title),
     scheduledMs: Date.parse(ev.endsAt) - Date.parse(ev.startsAt),
     actualMs: active.filter((s) => s.meetingId === ev.id).reduce((a, s) => a + ms(s), 0),
-    itemId: capturedByEvent.get(ev.id) ?? null,
+    itemId: ev.itemId ?? capturedByEvent.get(ev.id) ?? null,
+    organizer: ev.organizer,
+    attendeeNames: parseAttendeeNames(ev.attendeeNames),
+    location: ev.location,
+    joinUrl: ev.joinUrl,
+    allDay: ev.allDay === 1,
+    status: ev.status,
+    calendarTitle: ev.calendarTitle,
+    noRecord: ev.noRecord === 1,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }

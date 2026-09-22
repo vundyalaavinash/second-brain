@@ -15,6 +15,7 @@ let r: {
   exclusions: typeof import("./activity/exclusions/route");
   pause: typeof import("./activity/pause/route");
   capture: typeof import("./activity/meetings/[id]/capture/route");
+  status: typeof import("./activity/status/route");
   label: typeof import("./activity/sessions/[id]/label/route");
 };
 const TOKEN = "abc123";
@@ -44,6 +45,7 @@ beforeAll(async () => {
     exclusions: await import("./activity/exclusions/route"),
     pause: await import("./activity/pause/route"),
     capture: await import("./activity/meetings/[id]/capture/route"),
+    status: await import("./activity/status/route"),
     label: await import("./activity/sessions/[id]/label/route"),
   };
 });
@@ -121,6 +123,43 @@ describe("activity api", () => {
     const c2 = await r.capture.POST(json("POST", "/x"), params(d.meetings[0].id));
     expect(c2.status).toBe(200);
     expect((await c1.json()).id).toBe((await c2.json()).id);
+  });
+
+  it("takes the richer calendar fields and the calendars-seen signal", async () => {
+    const before = (await (await r.status.GET()).json()) as { helper: { calendarsSeen: number | null } };
+    expect(before.helper.calendarsSeen).toBeNull();
+    const res = await r.calendar.POST(
+      json(
+        "POST",
+        "/api/activity/calendar",
+        {
+          events: [
+            {
+              externalId: "e1",
+              title: "Interview: Jane",
+              startsAt: at(1000),
+              endsAt: at(2800),
+              attendees: 2,
+              hasCallLink: false,
+              organizer: "Ada",
+              attendeeNames: ["Ada", "Jane"],
+              location: "Room 4",
+              notes: "Join https://zoom.us/j/9",
+              status: "accepted",
+              calendarTitle: "Work",
+            },
+          ],
+          calendarsSeen: 3,
+        },
+        TOKEN,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const m = (await getDay()).meetings[0];
+    expect(m).toMatchObject({ organizer: "Ada", attendeeNames: ["Ada", "Jane"], joinUrl: "https://zoom.us/j/9", status: "accepted", calendarTitle: "Work", allDay: false, noRecord: false, hasCallLink: true });
+    expect(m.itemId).not.toBeNull(); // the capture from the previous test survived the day replace
+    const after = (await (await r.status.GET()).json()) as { helper: { calendarsSeen: number | null } };
+    expect(after.helper.calendarsSeen).toBe(3);
   });
 
   it("manages rules, reorders, and recategorises", async () => {

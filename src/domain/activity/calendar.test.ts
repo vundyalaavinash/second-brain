@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
+import { eq } from "drizzle-orm";
 import { activitySessions, calendarEvents } from "@/db/schema";
-import { replaceCalendarEvents, findMeetingFor, isInterview, captureMeeting, labelMeetings, localDay, dayBounds } from "./calendar";
+import { replaceCalendarEvents, findMeetingFor, isInterview, captureMeeting, labelMeetings, localDay, dayBounds, listMeetings, joinUrlFrom } from "./calendar";
 import { ingestHeartbeat } from "./sessions";
 import { parseMeta } from "@/domain/items";
 
@@ -64,5 +65,64 @@ describe("calendar", () => {
     expect(item.body).toContain("2 attendees");
     expect(captureMeeting(t.db, ev.id).id).toBe(item.id);
     expect(() => captureMeeting(t.db, 999)).toThrow(/not found/);
+  });
+
+  it("stores the richer fields and derives a join url", () => {
+    replaceCalendarEvents(t.db, [
+      {
+        externalId: "e1",
+        title: "Sync",
+        startsAt: "2026-09-22T09:00:00.000Z",
+        endsAt: "2026-09-22T09:30:00.000Z",
+        attendees: 3,
+        hasCallLink: true,
+        organizer: "Ada",
+        attendeeNames: ["Ada", "Bo"],
+        location: "Teams",
+        joinUrl: null,
+        notes: "Join: https://teams.microsoft.com/l/meetup-join/abc",
+        allDay: false,
+        status: "accepted",
+        calendarTitle: "Work",
+      },
+    ]);
+    const [ev] = listMeetings(t.db, { from: "2026-09-22", to: "2026-09-23" });
+    expect(ev.organizer).toBe("Ada");
+    expect(JSON.parse(ev.attendeeNames)).toEqual(["Ada", "Bo"]);
+    expect(ev.joinUrl).toBe("https://teams.microsoft.com/l/meetup-join/abc");
+    expect(ev.status).toBe("accepted");
+    expect(ev.calendarTitle).toBe("Work");
+    expect(ev.allDay).toBe(0);
+    expect(ev.noRecord).toBe(0);
+    expect(ev.itemId).toBeNull();
+  });
+
+  it("lists meetings in a window with a text filter", () => {
+    replaceCalendarEvents(t.db, [
+      { externalId: "d1", title: "Design review", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 2, hasCallLink: false, attendeeNames: ["Cy"] },
+      { externalId: "d2", title: "Weekly sync", startsAt: "2026-09-24T09:00:00.000Z", endsAt: "2026-09-24T10:00:00.000Z", attendees: 5, hasCallLink: false, organizer: "Bo" },
+    ]);
+    expect(listMeetings(t.db, { from: "2026-09-20", to: "2026-09-30" }).map((e) => e.title)).toEqual(["Design review", "Weekly sync"]);
+    expect(listMeetings(t.db, { from: "2026-09-20", to: "2026-09-30", q: "cy" }).map((e) => e.title)).toEqual(["Design review"]);
+    expect(listMeetings(t.db, { from: "2026-09-20", to: "2026-09-30", q: "bo" }).map((e) => e.title)).toEqual(["Weekly sync"]);
+    expect(listMeetings(t.db, { from: "2026-09-23", to: "2026-09-30" }).map((e) => e.title)).toEqual(["Weekly sync"]);
+  });
+
+  it("joinUrlFrom prefers meeting providers and falls back to any https url", () => {
+    expect(joinUrlFrom("room 4", "https://zoom.us/j/1", "see https://example.com")).toBe("https://zoom.us/j/1");
+    expect(joinUrlFrom(null, "notes https://example.com/x")).toBe("https://example.com/x");
+    expect(joinUrlFrom("nothing")).toBeNull();
+  });
+
+  it("keeps item_id and no_record when a day is replaced", () => {
+    replaceCalendarEvents(t.db, [{ externalId: "a", title: "Weekly sync", startsAt: at(0), endsAt: at(1800), attendees: 4, hasCallLink: false }]);
+    const ev = t.db.select().from(calendarEvents).get()!;
+    const item = captureMeeting(t.db, ev.id);
+    t.db.update(calendarEvents).set({ noRecord: 1 }).where(eq(calendarEvents.id, ev.id)).run();
+    replaceCalendarEvents(t.db, [{ externalId: "a", title: "Weekly sync (moved)", startsAt: at(0), endsAt: at(900), attendees: 4, hasCallLink: false }]);
+    const after = t.db.select().from(calendarEvents).get()!;
+    expect(after.title).toBe("Weekly sync (moved)");
+    expect(after.itemId).toBe(item.id);
+    expect(after.noRecord).toBe(1);
   });
 });

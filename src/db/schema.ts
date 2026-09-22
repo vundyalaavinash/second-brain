@@ -9,10 +9,11 @@ import {
   RESOURCE_CATEGORIES,
   TASK_STATUSES,
   TASK_PRIORITIES,
+  MEETING_STATUSES,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -186,6 +187,19 @@ export const calendarEvents = sqliteTable(
     attendees: integer("attendees").notNull().default(0),
     hasCallLink: integer("has_call_link").notNull().default(0),
     day: text("day").notNull(),
+    organizer: text("organizer").notNull().default(""),
+    /** JSON array of attendee display names, capped by the helper. */
+    attendeeNames: text("attendee_names").notNull().default("[]"),
+    location: text("location").notNull().default(""),
+    joinUrl: text("join_url"),
+    notes: text("notes").notNull().default(""),
+    allDay: integer("all_day").notNull().default(0),
+    status: text("status", { enum: MEETING_STATUSES }).notNull().default("none"),
+    calendarTitle: text("calendar_title").notNull().default(""),
+    /** The captured meeting item, kept across calendar refreshes. */
+    itemId: integer("item_id").references(() => items.id, { onDelete: "set null" }),
+    /** Person-set: do not record this meeting. Kept across calendar refreshes. */
+    noRecord: integer("no_record").notNull().default(0),
   },
   (t) => [index("calendar_events_day_idx").on(t.day)],
 );
@@ -255,6 +269,21 @@ export const tasks = sqliteTable(
   (t) => [index("tasks_container_status_order_idx").on(t.containerId, t.status, t.sortOrder), index("tasks_status_due_idx").on(t.status, t.dueDate)],
 );
 export type Task = typeof tasks.$inferSelect;
+
+export const dailyPlanEntries = sqliteTable(
+  "daily_plan_entries",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    date: text("date").notNull(),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("daily_plan_date_task_idx").on(t.date, t.taskId), index("daily_plan_date_idx").on(t.date)],
+);
+export type DailyPlanEntry = typeof dailyPlanEntries.$inferSelect;
 
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;
