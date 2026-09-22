@@ -13,7 +13,7 @@ export function Crumb({ title, parent }: { title: string; parent?: { label: stri
     <>
       {parent ? (
         <>
-          <a href={parent.href} className="focus-ring text-fg-muted hover:text-fg rounded-sm">
+          <a href={parent.href} className="crumb-parent focus-ring text-fg-muted hover:text-fg rounded-sm">
             {parent.label}
           </a>
           <span className="text-fg-faint">/</span>

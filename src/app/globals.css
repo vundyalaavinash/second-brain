@@ -176,6 +176,11 @@
   display: none;
 }
 
+/* A page that names its own parent stands in for the route trail, not after it. */
+.crumb-trail:has(+ #crumb-slot .crumb-parent) {
+  display: none;
+}
+
 /* The rail column and its toggle exist only while a page has portalled something in. */
 #rail-slot:empty {
   display: none;
