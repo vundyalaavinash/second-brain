@@ -9,7 +9,7 @@ const route = vi.hoisted(() => ({ path: "/inbox" }));
 vi.mock("next/navigation", () => ({ usePathname: () => route.path, useRouter: () => ({ push }) }));
 
 const FIELD = "Ask, capture, or add a task";
-const ROWS = ["Today", "Inbox, 3 waiting", "Projects", "Areas", "Resources", "People", "Activity", "Library", "Archive", "Search", "Capture"];
+const ROWS = ["Planner", "Inbox, 3 waiting", "Projects", "Areas", "Resources", "People", "Activity", "Library", "Archive", "Search", "Capture"];
 
 /** The polls the dock inherited from the sidebar, plus capture and the link it watches. */
 function stubFetch(itemStatus = "pending") {
@@ -89,14 +89,14 @@ describe("Dock", () => {
     mount();
     await waitFor(() => expect(labels()).toEqual(ROWS));
     expect(screen.getByRole("link", { name: "Inbox, 3 waiting" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Planner" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("marks the view a nested route belongs to", () => {
     route.path = "/people/ana";
     mount();
     expect(screen.getByRole("link", { name: "People" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Today" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Planner" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("counts the inbox into the row's label", async () => {
@@ -181,7 +181,7 @@ describe("Dock", () => {
   it("keeps five items on a narrow screen and puts the rest in the sheet", async () => {
     stubMatchMedia(true);
     mount();
-    await waitFor(() => expect(labels()).toEqual(["Today", "Inbox, 3 waiting", "Search", "Capture", "More"]));
+    await waitFor(() => expect(labels()).toEqual(["Planner", "Inbox, 3 waiting", "Search", "Capture", "More"]));
     const more = screen.getByRole("button", { name: "More" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(more);

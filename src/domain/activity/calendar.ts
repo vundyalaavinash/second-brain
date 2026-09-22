@@ -130,6 +130,18 @@ export function listMeetings(db: DB, opts: { from: string; to: string; q?: strin
   return rows.filter((e) => [e.title, e.organizer, e.attendeeNames].join(" ").toLowerCase().includes(q));
 }
 
+/** The person's "do not record this one" flag. Kept across calendar refreshes by the upsert. */
+export function setMeetingNoRecord(db: DB, id: number, noRecord: boolean): CalendarEvent {
+  const updated = db
+    .update(calendarEvents)
+    .set({ noRecord: noRecord ? 1 : 0 })
+    .where(eq(calendarEvents.id, id))
+    .returning()
+    .get();
+  if (!updated) throw new ActivityError("Meeting not found", 404);
+  return updated;
+}
+
 export function findMeetingFor(db: DB, at: string): CalendarEvent | undefined {
   return db
     .select()

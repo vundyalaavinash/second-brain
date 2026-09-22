@@ -31,3 +31,5 @@ export const ReorderTasksBody = z.object({ containerId: z.number().int().positiv
 export const PlanBody = z.object({ date: DateString, taskId: z.number().int().positive() }).strict();
 export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.number().int().positive()) }).strict();
 export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();
+
+export const MeetingPatchBody = z.object({ noRecord: z.boolean() }).strict();

@@ -73,10 +73,14 @@ export function unfinished(db: DB, date: string): Task[] {
  * on `to` is left where it is and is not counted. */
 export function carryOver(db: DB, from: string, to: string): number {
   let moved = 0;
-  for (const task of unfinished(db, from)) {
-    if (entryId(db, to, task.id) !== undefined) continue;
-    addToPlan(db, to, task.id);
-    moved += 1;
-  }
+  // The reads and the inserts share the connection the transaction opened, so `db` here is
+  // already inside it; drizzle's `tx` handle is not a `DB` and could not be passed on.
+  db.transaction(() => {
+    for (const task of unfinished(db, from)) {
+      if (entryId(db, to, task.id) !== undefined) continue;
+      addToPlan(db, to, task.id);
+      moved += 1;
+    }
+  });
   return moved;
 }

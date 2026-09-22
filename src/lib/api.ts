@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { items, type Item, type Container, type Person, type Task } from "@/db/schema";
+import { items, type CalendarEvent, type Item, type Container, type Person, type Task } from "@/db/schema";
 import { domainOf } from "@/lib/text";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
@@ -10,7 +10,8 @@ import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
-import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
+import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
+import type { ActivityMeetingDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -136,6 +137,34 @@ export function serializeTask(t: Task): TaskDTO {
 /** The plan entry's order wins over the task's own: on a plan, position means the day's order. */
 export function serializePlanTask(t: Task & { planId: number; sortOrder: number }): PlanTaskDTO {
   return { ...serializeTask(t), sortOrder: t.sortOrder, planId: t.planId };
+}
+
+/**
+ * A calendar row as the Planner reads it. `actualMs` is 0: measuring how long a meeting was
+ * actually attended means walking that day's sessions, which `getDay` does for the Activity
+ * page; the Planner shows scheduled time and never asks for the measured figure.
+ */
+export function serializeMeeting(ev: CalendarEvent): ActivityMeetingDTO {
+  return {
+    id: ev.id,
+    title: ev.title,
+    startsAt: ev.startsAt,
+    endsAt: ev.endsAt,
+    attendees: ev.attendees,
+    hasCallLink: ev.hasCallLink === 1,
+    interview: isInterview(ev.title),
+    scheduledMs: Date.parse(ev.endsAt) - Date.parse(ev.startsAt),
+    actualMs: 0,
+    itemId: ev.itemId,
+    organizer: ev.organizer,
+    attendeeNames: parseAttendeeNames(ev.attendeeNames),
+    location: ev.location,
+    joinUrl: ev.joinUrl,
+    allDay: ev.allDay === 1,
+    status: ev.status,
+    calendarTitle: ev.calendarTitle,
+    noRecord: ev.noRecord === 1,
+  };
 }
 
 export function serializePerson(p: Person & { itemCount?: number }, itemCount?: number): PersonDTO {

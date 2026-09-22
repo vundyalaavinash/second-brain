@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from "motion/react";
 import {
   Archive,
   BookBookmark,
-  CalendarBlank,
+  CalendarCheck,
   DotsThree,
   Flag,
   ListBullets,
@@ -35,7 +35,7 @@ const DIM_THROTTLE_MS = 300;
 const NARROW = "(max-width: 719px)";
 
 const ICONS: Record<IconName, Glyph> = {
-  today: CalendarBlank,
+  planner: CalendarCheck,
   inbox: Tray,
   project: Flag,
   area: Stack,
@@ -51,7 +51,7 @@ const ICONS: Record<IconName, Glyph> = {
 const BRAIN_ITEMS = NAV_ITEMS.filter((n) => n.section === "brain");
 const TOOLS_ITEMS = NAV_ITEMS.filter((n) => n.section === "tools");
 /** The two the narrow pill keeps; everything else moves into the sheet. */
-const NARROW_ITEMS = NAV_ITEMS.filter((n) => n.href === "/today" || n.href === "/inbox");
+const NARROW_ITEMS = NAV_ITEMS.filter((n) => n.href === "/planner" || n.href === "/inbox");
 const SHEET_ITEMS = NAV_ITEMS.filter((n) => !NARROW_ITEMS.includes(n));
 
 function subscribeNarrow(listener: () => void): () => void {

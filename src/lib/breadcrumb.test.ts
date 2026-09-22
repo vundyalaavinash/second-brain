@@ -4,8 +4,13 @@ import { crumbsFor } from "./breadcrumb";
 describe("crumbsFor", () => {
   it("maps top-level routes", () => {
     expect(crumbsFor("/inbox")).toEqual([{ label: "Inbox" }]);
-    expect(crumbsFor("/today")).toEqual([{ label: "Today" }]);
+    expect(crumbsFor("/planner")).toEqual([{ label: "Planner" }]);
     expect(crumbsFor("/search")).toEqual([{ label: "Search" }]);
+  });
+  // The Planner's own views are routes of their own, so the bar links back to the day.
+  it("nests the Planner views under the Planner", () => {
+    expect(crumbsFor("/planner/week")).toEqual([{ label: "Planner", href: "/planner" }, { label: "Week" }]);
+    expect(crumbsFor("/planner/meetings")).toEqual([{ label: "Planner", href: "/planner" }, { label: "Meetings" }]);
   });
   // Only the parent: the page supplies its own title through `<Crumb>`, so a route that
   // contributed an empty tail would leave the bar showing a trailing slash and nothing after it.

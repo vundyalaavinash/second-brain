@@ -36,7 +36,7 @@ afterEach(() => {
 describe("CommandPalette", () => {
   it("lists the views", () => {
     open();
-    expect(screen.getByText("Today")).toBeTruthy();
+    expect(screen.getByText("Planner")).toBeTruthy();
     expect(screen.getByText("Archive")).toBeTruthy();
   });
 

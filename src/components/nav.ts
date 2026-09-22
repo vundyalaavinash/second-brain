@@ -1,4 +1,4 @@
-export type IconName = "today" | "inbox" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture";
+export type IconName = "planner" | "inbox" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture";
 
 export interface NavItem {
   href: string;
@@ -11,7 +11,7 @@ export interface NavItem {
 
 /** Order is the dock order. Every entry has a `g` + letter shortcut. */
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/today", label: "Today", shortcut: "g d", icon: "today", section: "brain" },
+  { href: "/planner", label: "Planner", shortcut: "g d", icon: "planner", section: "brain" },
   { href: "/inbox", label: "Inbox", shortcut: "g i", icon: "inbox", badge: "inbox", section: "brain" },
   { href: "/projects", label: "Projects", shortcut: "g p", icon: "project", section: "brain" },
   { href: "/areas", label: "Areas", shortcut: "g a", icon: "area", section: "brain" },

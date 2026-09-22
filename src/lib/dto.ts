@@ -154,3 +154,48 @@ export interface ActivityWeekDTO {
   days: { day: string; activeMs: number; byCategory: { categoryId: number | null; ms: number }[] }[];
   categories: ActivityCategoryDTO[];
 }
+
+/** What the Planner knows about the helper's calendar access, for the setup card. */
+export interface PlannerCalendarDTO {
+  /** How many calendars the helper can see; null until it has reported at all. */
+  calendarsSeen: number | null;
+  permission: boolean;
+}
+
+export interface PlannerDayDTO {
+  date: string;
+  plan: PlanTaskDTO[];
+  unfinishedYesterday: TaskDTO[];
+  /** Open tasks due on or before the date that are not already on the plan. */
+  due: { overdue: TaskDTO[]; today: TaskDTO[] };
+  meetings: ActivityMeetingDTO[];
+  calendar: PlannerCalendarDTO;
+}
+
+export interface PlannerWeekDayDTO {
+  date: string;
+  meetings: ActivityMeetingDTO[];
+  due: TaskDTO[];
+}
+
+export interface PlannerWeekDTO {
+  start: string;
+  days: PlannerWeekDayDTO[];
+}
+
+/** What the linked meeting item already holds, so a row can badge it without loading the item. */
+export interface MeetingItemDTO {
+  id: number;
+  hasNotes: boolean;
+  hasTranscript: boolean;
+  hasSummary: boolean;
+}
+
+export type MeetingListDTO = ActivityMeetingDTO & { item?: MeetingItemDTO };
+
+export interface PlannerMeetingsDTO {
+  from: string;
+  to: string;
+  meetings: MeetingListDTO[];
+  calendar: PlannerCalendarDTO;
+}
