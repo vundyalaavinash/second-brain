@@ -13,7 +13,7 @@ const containers = [
 describe("SidebarTree", () => {
   it("opens, lists containers, and persists the open state", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(containers), { headers: { "content-type": "application/json" } })));
-    render(<SidebarTree kind="project" label="Projects" href="/projects" pathname="/projects" />);
+    render(<SidebarTree kind="project" label="Projects" pathname="/projects" />);
     fireEvent.click(screen.getByRole("button", { name: "Show projects" }));
     await waitFor(() => expect(screen.getByText("Launch newsletter")).toBeTruthy());
     expect(JSON.parse(localStorage.getItem("sb.sidebar.open") ?? "{}")).toEqual({ project: true });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import { NAV_ITEMS, type NavItem } from "../nav";
@@ -8,6 +8,7 @@ import { Icon } from "../icons";
 import { IconButton } from "../ui";
 import { SidebarTree } from "./sidebar-tree";
 import { SidebarTags } from "./sidebar-tags";
+import { setStored, useStored } from "./use-stored";
 import type { HelperStateDTO } from "@/lib/dto";
 
 const POLL_MS = 20_000;
@@ -23,19 +24,23 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
   const [inboxCount, setInboxCount] = useState(0);
   const [helperDown, setHelperDown] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Null until the store is read on the client, so the server and the first client render
+  // agree on the expanded width.
+  const collapsed = useStored(COLLAPSED_KEY) === "1";
 
-  // Persisted width is read after mount so the server and the first client render agree.
+  // A tap inside the off-canvas drawer navigates, so the drawer has to get out of the way.
+  const close = useCallback(() => {
+    if (drawer) onClose();
+  }, [drawer, onClose]);
+
   useEffect(() => {
-    try {
-      // localStorage is unreadable on the server, so reading it during render would
-      // break hydration. Runs once.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (localStorage.getItem(COLLAPSED_KEY) === "1") setCollapsed(true);
-    } catch {
-      /* private mode */
+    if (!drawer) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
     }
-  }, []);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer, onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,13 +89,7 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
   }, [pathname]);
 
   function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
+    setStored(COLLAPSED_KEY, collapsed ? "0" : "1");
   }
 
   function isActive(href: string): boolean {
@@ -108,6 +107,7 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
           aria-label={[item.label, badge ? `${badge} waiting` : null, dot ? "not recording" : null].filter(Boolean).join(", ")}
           aria-current={active ? "page" : undefined}
           title={collapsed ? item.label : undefined}
+          onClick={close}
           className={`focus-ring relative flex items-center gap-2.5 h-9 rounded-sm text-[13px] transition-colors duration-150 ${
             collapsed ? "justify-center px-0" : item.tree ? "pl-2.5 pr-8" : "px-2.5"
           } ${active ? "bg-layer-3 text-fg" : "text-fg-muted hover:text-fg hover:bg-layer-2"}`}
@@ -122,7 +122,7 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
           ) : null}
           {dot && <span className="w-1.5 h-1.5 rounded-full bg-danger shrink-0" aria-hidden />}
         </Link>
-        {item.tree && !collapsed && <SidebarTree kind={item.tree} label={item.label} href={item.href} pathname={pathname} />}
+        {item.tree && !collapsed && <SidebarTree kind={item.tree} label={item.label} pathname={pathname} onNavigate={close} />}
       </li>
     );
   }
@@ -141,7 +141,7 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
         }`}
       >
         <div className={`flex shrink-0 ${collapsed ? "flex-col items-center gap-1 py-2" : "items-center gap-2 h-12 px-3"}`}>
-          <Link href="/" aria-label="Second brain" title="Second brain" className="focus-ring rounded-sm inline-flex items-center gap-2">
+          <Link href="/" aria-label="Second brain" title="Second brain" onClick={close} className="focus-ring rounded-sm inline-flex items-center gap-2">
             <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
               <circle cx="10" cy="10" r="10" fill="var(--color-violet)" />
               <circle cx="10" cy="10" r="4" fill="var(--color-carbon)" />
@@ -158,12 +158,13 @@ export function Sidebar({ drawer, onClose, pathname }: { drawer: boolean; onClos
             <hr className="border-0 border-t border-hairline my-2" />
             <ul className="list-none m-0 p-0 flex flex-col gap-0.5">{TOOLS_ITEMS.map(renderRow)}</ul>
           </nav>
-          {!collapsed && <SidebarTags />}
+          {!collapsed && <SidebarTags pathname={pathname} onNavigate={close} />}
         </div>
 
         <div className={`shrink-0 flex items-center gap-2 border-t border-hairline ${collapsed ? "flex-col py-2 px-2" : "p-3"}`}>
           <Link
             href="/activity"
+            onClick={close}
             aria-label={`Activity, ${status.toLowerCase()}`}
             title={status}
             className={`focus-ring pane flex items-center gap-2 h-9 ${collapsed ? "w-9 justify-center px-0" : "flex-1 px-3"}`}

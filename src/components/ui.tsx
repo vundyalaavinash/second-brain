@@ -2,6 +2,7 @@ import type {
   AnchorHTMLAttributes,
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  MouseEventHandler,
   ReactNode,
   Ref,
   SelectHTMLAttributes,
@@ -121,7 +122,7 @@ export function Select({
 }
 
 type ChipVisualProps = { icon?: LucideIcon; active?: boolean; children?: ReactNode };
-type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
+type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel"> & { onClick?: MouseEventHandler<HTMLElement> };
 
 type ChipProps =
   | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span"; ref?: Ref<HTMLButtonElement> })
@@ -146,9 +147,9 @@ export function Chip({
     active ? CHIP_ACTIVE : CHIP_BASE
   } ${className}`;
   if (href) {
-    const { target, rel } = props as ChipAnchorProps;
+    const { target, rel, onClick } = props as ChipAnchorProps;
     return (
-      <Link href={href} className={cls} aria-label={ariaLabel} title={title} target={target} rel={rel}>
+      <Link href={href} className={cls} aria-label={ariaLabel} title={title} target={target} rel={rel} onClick={onClick}>
         {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
         {children}
       </Link>

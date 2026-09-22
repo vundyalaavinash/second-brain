@@ -4,32 +4,40 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { ContainerDTO } from "@/lib/dto";
 import { ProgressRing } from "../tasks/progress-ring";
+import { setStored, useStored } from "./use-stored";
 
 const KEY = "sb.sidebar.open";
 
-function readOpen(): Record<string, boolean> {
+/** A stored `"null"`, an array, or anything unparseable reads as "nothing is open". */
+function parseOpen(raw: string | null): Record<string, boolean> {
+  if (!raw) return {};
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "{}");
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, boolean>;
   } catch {
     return {};
   }
 }
 
 /** The disclosure under a Projects or Areas row: its active containers, one link each. */
-export function SidebarTree({ kind, label, pathname }: { kind: "project" | "area"; label: string; href: string; pathname: string }) {
-  const [open, setOpen] = useState(false);
+export function SidebarTree({
+  kind,
+  label,
+  pathname,
+  onNavigate,
+}: {
+  kind: "project" | "area";
+  label: string;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  const raw = useStored(KEY);
+  const open = parseOpen(raw)[kind] === true;
   const [items, setItems] = useState<ContainerDTO[] | null>(null);
 
-  // Read after mount, never during render: the server has no localStorage and hydration
-  // has to match.
-  useEffect(() => {
-    const o = readOpen();
-    // localStorage is unreadable on the server, so reading it during render would
-    // break hydration. Runs once.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (o[kind]) setOpen(true);
-  }, [kind]);
-
+  // `pathname` is a dependency so that creating, renaming, or archiving a container is
+  // picked up on the next navigation, not only when something dispatches the event.
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -47,16 +55,10 @@ export function SidebarTree({ kind, label, pathname }: { kind: "project" | "area
       alive = false;
       window.removeEventListener("sb:containers-changed", load);
     };
-  }, [open, kind]);
+  }, [open, kind, pathname]);
 
   function toggle() {
-    const next = !open;
-    setOpen(next);
-    try {
-      localStorage.setItem(KEY, JSON.stringify({ ...readOpen(), [kind]: next }));
-    } catch {
-      /* private mode */
-    }
+    setStored(KEY, JSON.stringify({ ...parseOpen(raw), [kind]: !open }));
   }
 
   return (
@@ -79,6 +81,7 @@ export function SidebarTree({ kind, label, pathname }: { kind: "project" | "area
               <Link
                 href={`/c/${c.slug}`}
                 aria-current={pathname === `/c/${c.slug}` ? "page" : undefined}
+                onClick={onNavigate}
                 className={`focus-ring flex items-center gap-2 h-8 px-2 rounded-sm text-[13px] truncate ${pathname === `/c/${c.slug}` ? "text-fg bg-layer-3" : "text-fg-muted hover:text-fg hover:bg-layer-2"}`}
               >
                 {kind === "project" && <ProgressRing percent={c.progress.percent} size={14} />}

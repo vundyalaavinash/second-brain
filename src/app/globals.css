@@ -170,6 +170,12 @@
   display: none;
 }
 
+/* A page-supplied title leads with a separator; with no route trail before it there is
+ * nothing to separate it from. */
+.crumb-trail:empty + #crumb-slot .crumb-sep {
+  display: none;
+}
+
 /* The rail column and its toggle exist only while a page has portalled something in. */
 #rail-slot:empty {
   display: none;

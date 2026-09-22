@@ -81,9 +81,10 @@
   font-size: 0;
 }
 
-/* The handle gutter sits inside the editor's 40px left padding. */
+/* The pair of 24px controls is 48px wide and the editor reserves a 40px gutter, so the
+ * handles start 8px before it and end flush with the text. */
 .block-handles {
-  left: 0;
+  left: -8px;
 }
 /* Literal hex, not tokens: highlight.js ships no theme here, and these five hues are
  * syntax-only — they are not part of the palette any utility class can reach. */

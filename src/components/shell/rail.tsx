@@ -1,16 +1,11 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useSlot } from "./use-slot";
 
 /** Portals a page's context column into the shell's rail slot. */
 export function Rail({ children }: { children: ReactNode }) {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    // The portal target only exists in the DOM after mount, so it cannot be read
-    // during render. Runs once.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSlot(document.getElementById("rail-slot"));
-  }, []);
+  const slot = useSlot("rail-slot");
   if (!slot) return null;
   return createPortal(
     <aside aria-label="Context" className="flex flex-col gap-6 p-4 h-full overflow-y-auto">
