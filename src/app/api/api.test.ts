@@ -128,9 +128,12 @@ describe("items api", () => {
     expect(servedHtml.headers.get("content-disposition")).toMatch(/^attachment/);
     expect(servedHtml.headers.get("x-content-type-options")).toBe("nosniff");
 
+    // Audio arrives as a meeting waiting on its transcript, not as a plain file.
     const audio = new FormData();
     audio.append("file", new File([new Uint8Array(Buffer.from("x"))], "call.m4a", { type: "audio/mp4" }));
-    expect((await routes.upload.POST(new Request("http://localhost/api/upload", { method: "POST", body: audio }))).status).toBe(415);
+    const audioRes = await routes.upload.POST(new Request("http://localhost/api/upload", { method: "POST", body: audio }));
+    expect(audioRes.status).toBe(201);
+    expect((await audioRes.json()).type).toBe("meeting");
     expect((await routes.upload.POST(new Request("http://localhost/api/upload", { method: "POST", body: new FormData() }))).status).toBe(400);
   });
 

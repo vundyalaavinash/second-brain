@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { MeetingsView } from "./meetings-view";
-import type { MeetingListDTO } from "@/lib/dto";
+import type { MeetingListDTO, RecorderStatusDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: () => {} }), usePathname: () => "/planner/meetings" }));
@@ -46,6 +46,19 @@ const MEETINGS: MeetingListDTO[] = [
 
 function mount() {
   render(<MeetingsView today={TODAY} meetings={MEETINGS} />);
+}
+
+/** The status the Record buttons read, and a record of the start they post. */
+function stubRecorder(status: RecorderStatusDTO) {
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/api/meetings/recorder/start" && init?.method === "POST") {
+      return Response.json({ ...status, state: "recording" });
+    }
+    if (String(input) === "/api/meetings/recorder") return Response.json(status);
+    return new Response("{}", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
 }
 
 /** By test id, not by role: the past group's rows sit inside a closed `details`. */
@@ -109,18 +122,47 @@ describe("MeetingsView", () => {
     expect(screen.queryByTestId("meeting-title")).toBeNull();
   });
 
-  it("keeps a row's record button out of reach until recording arrives", () => {
+  it("records a row's meeting against its calendar event", async () => {
+    const fetchMock = stubRecorder({ state: "idle", missing: [] });
     mount();
     const row = screen.getByText("Standup").closest("li") as HTMLElement;
     const record = within(row).getByRole("button", { name: "Record Standup" });
-    expect(record.hasAttribute("disabled")).toBe(true);
-    expect(record.getAttribute("title")).toBe("Recording arrives in the next update");
+    await waitFor(() => expect(record.hasAttribute("disabled")).toBe(false));
+
+    fireEvent.click(record);
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url) === "/api/meetings/recorder/start");
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String(call![1]?.body))).toEqual({ calendarEventId: 1 });
+    });
   });
 
-  it("keeps the header's record button out of reach too", () => {
+  it("starts an unplanned recording from the header", async () => {
+    const fetchMock = stubRecorder({ state: "idle", missing: [] });
     mount();
     const record = screen.getByRole("button", { name: "Record now" });
+    await waitFor(() => expect(record.hasAttribute("disabled")).toBe(false));
+
+    fireEvent.click(record);
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url) === "/api/meetings/recorder/start");
+      expect(JSON.parse(String(call![1]?.body))).toEqual({ adhoc: true });
+    });
+  });
+
+  it("keeps record out of reach, and says why, while a tool is missing", async () => {
+    stubRecorder({ state: "idle", missing: ["recorder", "finalModel"] });
+    mount();
+    const record = screen.getByRole("button", { name: "Record now" });
+    await waitFor(() => expect(record.hasAttribute("disabled")).toBe(true));
+    expect(record.getAttribute("title")).toBe("Recording needs the recorder helper, the final transcript model. Run the setup script and reload");
+  });
+
+  it("keeps record out of reach while another meeting is recording", async () => {
+    stubRecorder({ state: "recording", itemId: 4, title: "Retro", startedAt: new Date().toISOString(), missing: [] });
+    mount();
+    const record = screen.getByRole("button", { name: "Record now" });
+    await waitFor(() => expect(record.getAttribute("title")).toBe("A recording is already running"));
     expect(record.hasAttribute("disabled")).toBe(true);
-    expect(record.closest("[title]")?.getAttribute("title")).toBe("Recording arrives in the next update");
   });
 });

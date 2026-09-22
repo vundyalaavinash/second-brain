@@ -61,12 +61,11 @@ describe("capture", () => {
     expect(listJobs(t.db, { itemId: other.id }).map((j) => j.type)).toEqual(["embed"]);
     expect(getItemChunks(t.db, other.id)).toHaveLength(1);
 
-    expect(() => captureFile(t.db, { bytes: Buffer.from("aud"), name: "call.m4a", mime: "audio/mp4" })).toThrow(/meetings/);
-    try {
-      captureFile(t.db, { bytes: Buffer.from("aud"), name: "call.m4a", mime: "audio/mp4" });
-    } catch (e) {
-      expect((e as CaptureError).status).toBe(415);
-    }
+    const call = captureFile(t.db, { bytes: Buffer.from("aud"), name: "call.m4a", mime: "audio/mp4" });
+    expect(call.type).toBe("meeting");
+    expect(call.title).toBe("call");
+    expect(call.status).toBe("processing");
+    expect(listJobs(t.db, { itemId: call.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
   });
 
   it("updates content, rechunks, retags, and requeues embedding", () => {

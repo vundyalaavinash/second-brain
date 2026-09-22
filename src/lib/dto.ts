@@ -155,6 +155,20 @@ export interface ActivityWeekDTO {
   categories: ActivityCategoryDTO[];
 }
 
+/** The recording session as the chip and the Record buttons read it. */
+export interface RecorderStatusDTO {
+  state: "idle" | "recording" | "stopping" | "error";
+  itemId?: number;
+  title?: string;
+  startedAt?: string;
+  systemAudio?: boolean;
+  error?: string;
+  autoStarted?: boolean;
+  keep?: boolean;
+  /** Tool keys `checkTools` could not find; a non-empty list puts Record out of reach. */
+  missing: string[];
+}
+
 /** What the Planner knows about the helper's calendar access, for the setup card. */
 export interface PlannerCalendarDTO {
   /** How many calendars the helper can see; null until it has reported at all. */

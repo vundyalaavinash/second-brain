@@ -1,0 +1,169 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { makeTestDb, type TestDb } from "@/test/db";
+import { getItem, parseMeta } from "@/domain/items";
+import { listJobs } from "@/jobs/queue";
+import { Recorder, type RecorderStatus } from "./recorder";
+import { createAdhocMeeting } from "./index";
+import type { LiveSegment } from "./live";
+import { MeetingError } from "./errors";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const FAKE_RECORDER = path.join(here, "..", "..", "test", "fake-recorder.js");
+const FAKE_WHISPER = path.join(here, "..", "..", "test", "fake-whisper.js");
+
+interface RecordingMeta {
+  startedAt: string;
+  endedAt?: string;
+  wavPath: string;
+  state: string;
+  autoStarted: boolean;
+}
+
+function meta(t: TestDb, id: number): { recording?: RecordingMeta; liveTranscript?: LiveSegment[] } {
+  return parseMeta(getItem(t.db, id)!);
+}
+
+/** Poll until `check` passes, so the test never sleeps longer than it has to. */
+async function until(check: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error("timed out waiting for the condition");
+}
+
+describe("Recorder", () => {
+  let t: TestDb;
+  let filesDir: string;
+  let model: string;
+  let recorder: Recorder;
+
+  function make(over: { whisperBin?: string | null; baseModel?: string | null; windowMs?: number } = {}): Recorder {
+    return new Recorder({
+      db: t.db,
+      recorderBin: FAKE_RECORDER,
+      whisperBin: over.whisperBin === undefined ? null : over.whisperBin,
+      baseModel: over.baseModel === undefined ? null : over.baseModel,
+      filesDir,
+      windowMs: over.windowMs,
+    });
+  }
+
+  beforeEach(() => {
+    t = makeTestDb();
+    filesDir = path.join(t.dir, "files");
+    fs.mkdirSync(filesDir, { recursive: true });
+    model = path.join(t.dir, "ggml-base.en.bin");
+    fs.writeFileSync(model, "not a real model");
+    recorder = make();
+  });
+
+  afterEach(async () => {
+    await recorder.stop();
+    delete process.env.SB_FAKE_RECORDER_EXIT_MS;
+    delete process.env.SB_FAKE_RECORDER_STALL_MS;
+    t.cleanup();
+  });
+
+  it("starts a recording against an ad hoc meeting and writes the wav under the files dir", async () => {
+    const item = createAdhocMeeting(t.db, new Date("2026-09-22T14:05:00"));
+    expect(item.title).toBe("Meeting at 14:05");
+
+    const started = recorder.start(item);
+    expect(started.itemId).toBe(item.id);
+    expect(recorder.status().state).toBe("recording");
+    expect(recorder.status().title).toBe(item.title);
+
+    const recording = meta(t, item.id).recording!;
+    expect(recording.state).toBe("recording");
+    expect(recording.startedAt).toBe(started.startedAt);
+    expect(recording.wavPath.startsWith("meetings/")).toBe(true);
+    await until(() => fs.existsSync(path.join(filesDir, recording.wavPath)));
+    await until(() => recorder.status().systemAudio === true);
+  });
+
+  it("refuses a second session with a 409", () => {
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    const second = createAdhocMeeting(t.db, new Date());
+    let thrown: unknown;
+    try {
+      recorder.start(second);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(MeetingError);
+    expect((thrown as MeetingError).status).toBe(409);
+  });
+
+  it("writes live transcript segments while it records", async () => {
+    recorder = make({ whisperBin: FAKE_WHISPER, baseModel: model, windowMs: 200 });
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => (meta(t, item.id).liveTranscript?.length ?? 0) > 0);
+    const live = meta(t, item.id).liveTranscript!;
+    expect(live[0].text).toBe("hello world");
+    expect(typeof live[0].at).toBe("string");
+  });
+
+  it("stops, marks the recording done, and queues the final transcript", async () => {
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    const wav = path.join(filesDir, meta(t, item.id).recording!.wavPath);
+    await until(() => fs.existsSync(wav) && fs.statSync(wav).size > 44);
+    await recorder.stop();
+
+    expect(recorder.status().state).toBe("idle");
+    const recording = meta(t, item.id).recording!;
+    expect(recording.state).toBe("done");
+    expect(typeof recording.endedAt).toBe("string");
+    const queued = listJobs(t.db, { itemId: item.id });
+    expect(queued.map((j) => j.type)).toEqual(["transcribe_final"]);
+    expect(JSON.parse(queued[0].payload)).toEqual({ itemId: item.id, source: "recording" });
+    // The wav survives the stop: nothing recorded is thrown away.
+    expect(fs.statSync(path.join(filesDir, recording.wavPath)).size).toBeGreaterThan(44);
+  });
+
+  it("keeps the recording when the helper dies, and still queues the transcript", async () => {
+    process.env.SB_FAKE_RECORDER_EXIT_MS = "150";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().state === "error");
+
+    const status = recorder.status();
+    expect(status.itemId).toBe(item.id);
+    expect(status.error).toMatch(/exited/);
+    expect(meta(t, item.id).recording!.state).toBe("error");
+    expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
+  });
+
+  it("records a stalled stdout consumer without losing the session", async () => {
+    process.env.SB_FAKE_RECORDER_STALL_MS = "120";
+    recorder = make({ whisperBin: FAKE_WHISPER, baseModel: model, windowMs: 200 });
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().error === "stdout consumer stalled");
+    expect(recorder.status().state).toBe("recording");
+  });
+
+  it("emits change as the session moves", async () => {
+    const seen: RecorderStatus[] = [];
+    recorder.on("change", (s: RecorderStatus) => seen.push(s));
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await recorder.stop();
+    expect(seen.map((s) => s.state)).toEqual(["recording", "stopping", "idle"]);
+  });
+
+  it("marks the session kept", () => {
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item, { autoStarted: true });
+    expect(recorder.status().autoStarted).toBe(true);
+    expect(recorder.keep().keep).toBe(true);
+    expect(recorder.status().keep).toBe(true);
+  });
+});

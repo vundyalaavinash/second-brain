@@ -82,22 +82,23 @@ export function captureFile(
   input: { bytes: Buffer; name: string; mime: string; tags?: string[]; containerId?: number | null },
 ): Item {
   const kind = kindForMime(input.mime, input.name);
-  if (kind === "audio") {
-    throw new CaptureError("Audio files are captured as meetings, which arrive with the meetings slice", 415);
-  }
   assertContainerExists(db, input.containerId);
   const saved = saveFile(input.bytes, input.name);
+  // Dropped-in audio is a meeting with no notes yet: the transcript is what makes it one.
+  const audio = kind === "audio";
   const item = createItem(db, {
-    type: "file",
-    title: input.name,
+    type: audio ? "meeting" : "file",
+    title: audio ? input.name.replace(/\.[^./\\]+$/, "") || input.name : input.name,
     filePath: saved.relativePath,
     mimeType: input.mime,
+    status: audio ? "processing" : undefined,
     meta: { kind, size: input.bytes.length },
     containerId: input.containerId ?? null,
   });
   if (input.tags) setItemTags(db, item.id, input.tags);
   if (kind === "pdf") enqueueJob(db, "extract_pdf", { itemId: item.id }, item.id);
   else if (kind === "image") enqueueJob(db, "ocr_image", { itemId: item.id }, item.id);
+  else if (audio) enqueueJob(db, "transcribe_final", { itemId: item.id, source: "upload" }, item.id);
   else queueEmbedding(db, item.id);
   return getItem(db, item.id)!;
 }

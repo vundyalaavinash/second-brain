@@ -8,6 +8,7 @@ import { CaptureError, DuplicateError } from "@/domain/items/capture";
 import { getContainer, countContainerItems, ContainerError } from "@/domain/containers";
 import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
+import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
@@ -188,6 +189,7 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof ContainerError ||
     err instanceof PersonError ||
     err instanceof ActivityError ||
+    err instanceof MeetingError ||
     err instanceof AttachmentError ||
     err instanceof TaskError
   ) {

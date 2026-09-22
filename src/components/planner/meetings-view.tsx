@@ -7,9 +7,9 @@ import { formatDayHeading, todayLocal } from "../activity/format";
 import { Button, Input, List } from "../ui";
 import { MeetingRow } from "./meeting-row";
 import { openMeeting } from "./open-meeting";
+import { useRecorder } from "./use-recorder";
 
 const JSON_HEADERS = { "content-type": "application/json" };
-const RECORDING_SOON = "Recording arrives in the next update";
 
 interface Props {
   today: string;
@@ -47,6 +47,7 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const recorder = useRecorder();
 
   const q = query.trim().toLowerCase();
   const shown = q ? meetings.filter((m) => matches(m, q)) : meetings;
@@ -82,7 +83,14 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     return (
       <List>
         {list.map((m) => (
-          <MeetingRow key={m.id} meeting={m} onOpen={() => open(m.id)} onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)} />
+          <MeetingRow
+            key={m.id}
+            meeting={m}
+            onOpen={() => open(m.id)}
+            onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
+            onRecord={() => recorder.record({ calendarEventId: m.id })}
+            blocked={recorder.blocked}
+          />
         ))}
       </List>
     );
@@ -108,10 +116,9 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-[320px]"
         />
-        {/* The title is the point of the stub, so it hangs on a wrapper: a disabled button
-          * takes no pointer events and would never show it. */}
-        <span title={RECORDING_SOON} className="ml-auto">
-          <Button size="sm" disabled>
+        {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
+        <span title={recorder.blocked ?? undefined} className="ml-auto">
+          <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.blocked ?? undefined}>
             Record now
           </Button>
         </span>
@@ -143,7 +150,7 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           </details>
         </>
       )}
-      {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
+      {(error ?? recorder.error) && <p className="text-danger text-[12.5px] m-0">{error ?? recorder.error}</p>}
     </div>
   );
 }

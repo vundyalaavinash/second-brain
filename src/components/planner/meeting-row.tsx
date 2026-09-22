@@ -5,12 +5,13 @@ import { formatClock } from "../activity/format";
 import { Button, Chip } from "../ui";
 import { count } from "./open-meeting";
 
-const RECORDING_SOON = "Recording arrives in the next update";
-
 interface Props {
   meeting: MeetingListDTO;
   onOpen: () => void;
   onNoRecord: (noRecord: boolean) => void;
+  onRecord: () => void;
+  /** Why recording is out of reach, or null when the button is live. */
+  blocked: string | null;
 }
 
 /** The badges the linked item has earned. Nothing is shown for a meeting with no item yet. */
@@ -20,7 +21,7 @@ function badges(meeting: MeetingListDTO): string[] {
   return [item.hasNotes && "Notes", item.hasTranscript && "Transcript", item.hasSummary && "Summary"].filter((b): b is string => !!b);
 }
 
-export function MeetingRow({ meeting, onOpen, onNoRecord }: Props) {
+export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, blocked }: Props) {
   return (
     <li className="hairline-row flex items-center gap-3 px-3 py-2 min-h-11 flex-wrap hover:bg-layer-2 transition-colors">
       <span className="font-mono text-[11px] text-fg-faint shrink-0 w-24">
@@ -58,8 +59,9 @@ export function MeetingRow({ meeting, onOpen, onNoRecord }: Props) {
       >
         Don&apos;t record
       </Chip>
-      <span title={RECORDING_SOON} className="shrink-0">
-        <Button size="sm" disabled title={RECORDING_SOON} aria-label={`Record ${meeting.title}`}>
+      {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
+      <span title={blocked ?? undefined} className="shrink-0">
+        <Button size="sm" onClick={onRecord} disabled={!!blocked} title={blocked ?? undefined} aria-label={`Record ${meeting.title}`}>
           Record
         </Button>
       </span>

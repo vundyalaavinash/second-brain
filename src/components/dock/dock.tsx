@@ -22,6 +22,7 @@ import { CAPTURE_ITEM, NAV_ITEMS, SEARCH_ITEM, type IconName, type NavItem } fro
 import { PromptBar } from "../shell/prompt-bar";
 import { DockItem, type DockItemProps } from "./dock-item";
 import { DockSheet } from "./dock-sheet";
+import { RecordingChip } from "./recording-chip";
 import { useMagnify } from "./use-magnify";
 import type { HelperStateDTO, ItemDTO } from "@/lib/dto";
 
@@ -313,6 +314,13 @@ export function Dock() {
         className={`relative flex flex-col items-center transition-opacity duration-200 ${dimmed ? "opacity-40" : "opacity-100"}`}
       >
         <div className={`glow -bottom-72 left-1/2 -translate-x-1/2 ${pendingId === null ? "" : "glow-breathing"}`} aria-hidden />
+        {/* Beside the pill rather than in it: a running recording is a state, not a destination.
+          * It steps aside for the prompt bar, which takes the whole width. */}
+        {!open && (
+          <div className="absolute right-full bottom-2.5 mr-3">
+            <RecordingChip />
+          </div>
+        )}
         {sheetOpen && !open && narrow && (
           <DockSheet items={SHEET_ITEMS} icons={ICONS} pathname={pathname} onClose={closeSheet} onNavigate={hideSheet} />
         )}

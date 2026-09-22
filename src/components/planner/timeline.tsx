@@ -6,6 +6,7 @@ import type { ActivityMeetingDTO, MeetingItemDTO, MeetingListDTO } from "@/lib/d
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
 import { layoutBlocks } from "./timeline-layout";
+import { useRecorder } from "./use-recorder";
 
 /** One minute of the day is one pixel of the column: a 14-hour day is 840px, about a screen. */
 const PX_PER_MIN = 1;
@@ -41,6 +42,7 @@ const BADGES: { key: keyof Omit<MeetingItemDTO, "id">; label: string; dot: strin
 export function Timeline({ date, meetings }: { date: string; meetings: MeetingListDTO[] }) {
   const router = useRouter();
   const [now, setNow] = useState<number | null>(null);
+  const recorder = useRecorder();
 
   // The line is drawn from the clock, so it has no place in the server's HTML; the first
   // tick fires straight after mount and the rest follow every minute.
@@ -143,6 +145,17 @@ export function Timeline({ date, meetings }: { date: string; meetings: MeetingLi
                         Join
                       </a>
                     )}
+                    {/* The block itself is a button, so this one sits above it and takes back the pointer. */}
+                    <button
+                      type="button"
+                      onClick={() => recorder.record({ calendarEventId: m.id })}
+                      disabled={!!recorder.blocked}
+                      aria-label={`Record ${m.title}`}
+                      title={recorder.blocked ?? undefined}
+                      className="focus-ring rounded-sm pointer-events-auto text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      Record
+                    </button>
                   </span>
                 )}
               </div>

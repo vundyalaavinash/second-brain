@@ -33,3 +33,12 @@ export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.n
 export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();
 
 export const MeetingPatchBody = z.object({ noRecord: z.boolean() }).strict();
+
+/** One of the three ways a recording is aimed: a calendar row, a meeting item, or nothing yet. */
+export const StartRecordingBody = z
+  .object({
+    calendarEventId: z.number().int().positive().optional(),
+    itemId: z.number().int().positive().optional(),
+    adhoc: z.boolean().optional(),
+  })
+  .strict();
