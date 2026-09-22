@@ -16,6 +16,13 @@ export function TopBar({ onRail, railOpen }: { onRail(): void; railOpen: boolean
   const tail = crumbs.find((c) => !isParent(c));
   return (
     <div className="flex items-center gap-2 h-12 px-4 border-b border-hairline shrink-0">
+      <Link href="/" aria-label="Second brain home" className="focus-ring flex items-center gap-2 rounded-sm pr-3 mr-1 border-r border-hairline shrink-0">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="shrink-0">
+          <circle cx="10" cy="10" r="10" fill="var(--color-violet)" />
+          <circle cx="10" cy="10" r="4" fill="var(--color-carbon)" />
+        </svg>
+        <span className="font-doc text-[16px] font-medium leading-none text-fg">Second brain</span>
+      </Link>
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] min-w-0">
         <span className="crumb-trail flex items-center gap-2 min-w-0 empty:hidden">
           {trail.map((c, i) => (
