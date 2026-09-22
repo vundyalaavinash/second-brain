@@ -181,17 +181,32 @@ final class Recorder {
     private var systemQueue: [Int16] = []
     private var micDownmixer: Downmixer?
     private var systemTap: AudioSource?
+    private var configObserver: NSObjectProtocol?
+    private var stopped = false
     private let onChunk: (Data) -> Void
     private(set) var systemAudio = false
-    private(set) var framesWritten = 0
-    private(set) var systemFrames = 0
+    private var framesWritten = 0
+    private var systemFrames = 0
 
-    /// Two seconds of system audio; past that the microphone has fallen behind
-    /// (or stopped) and the oldest samples are dropped rather than queued.
-    private let maxQueued = Int(kTargetSampleRate) * 2
+    /// The mixer holds 200 ms of system audio at most. Anything older means the
+    /// microphone has fallen behind; dropping it keeps the two channels lined up
+    /// instead of letting a startup gap or a drop-out become a standing delay.
+    private let maxQueued = Int(kTargetSampleRate) / 5
+
+    /// Called on the main queue when macOS reconfigures the audio devices.
+    var onDeviceChange: ((Bool) -> Void)?
+    /// Called on the main queue when the recording cannot continue.
+    var onFatal: ((String) -> Void)?
 
     init(onChunk: @escaping (Data) -> Void) {
         self.onChunk = onChunk
+    }
+
+    /// Frame counts, read under the same lock that the audio threads write them with.
+    func counters() -> (frames: Int, systemFrames: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (framesWritten, systemFrames)
     }
 
     func start() throws {
@@ -206,6 +221,29 @@ final class Recorder {
             log("system audio needs macOS 14.2 or newer; recording the microphone only")
         }
 
+        try installMicTap()
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            throw RecorderError("could not start the audio engine: \(error.localizedDescription)")
+        }
+        // The tap has been running since before the engine; dropping what it
+        // queued in the meantime keeps system audio from sitting a fixed
+        // startup delay behind the microphone for the whole recording.
+        clearSystemQueue()
+
+        // Plugging in headphones or switching the default device stops the
+        // engine and invalidates the input format; the recording continues on
+        // the new device instead of ending there.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            self?.reconfigure()
+        }
+    }
+
+    private func installMicTap() throws {
         let input = engine.inputNode
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
@@ -215,15 +253,36 @@ final class Recorder {
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             self?.handleMic(buffer)
         }
-        engine.prepare()
+    }
+
+    private func reconfigure() {
+        guard !stopped else { return }
         do {
-            try engine.start()
+            engine.inputNode.removeTap(onBus: 0)
+            try installMicTap()
+            if !engine.isRunning {
+                engine.prepare()
+                try engine.start()
+            }
+            clearSystemQueue()
+            onDeviceChange?(systemAudio)
         } catch {
-            throw RecorderError("could not start the audio engine: \(error.localizedDescription)")
+            onFatal?("the audio devices changed and the recording could not follow: \(error.localizedDescription)")
         }
     }
 
+    private func clearSystemQueue() {
+        lock.lock()
+        systemQueue.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+
     func stop() {
+        stopped = true
+        if let configObserver {
+            NotificationCenter.default.removeObserver(configObserver)
+            self.configObserver = nil
+        }
         engine.inputNode.removeTap(onBus: 0)
         if engine.isRunning { engine.stop() }
         systemTap?.stop()
@@ -262,7 +321,9 @@ final class Recorder {
             lock.unlock()
         }
 
+        lock.lock()
         framesWritten += samples.count
+        lock.unlock()
         let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
         onChunk(data)
     }

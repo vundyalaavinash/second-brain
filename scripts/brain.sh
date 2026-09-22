@@ -159,10 +159,10 @@ download_whisper_models() {
   if [ -s "$final" ]; then
     ok "whisper medium.en already at $final"
   elif [ -s "$brew_final" ]; then
-    # whisper-cpp from Homebrew already has it; link rather than fetch 1.5 GB again.
+    # whisper-cpp from Homebrew already has it; link rather than fetch 1.5 GB
+    # again. The link, not its target, is the one path everything else names.
     ln -sf "$brew_final" "$final"
-    final="$brew_final"
-    ok "using the medium.en model already at $brew_final"
+    ok "linked the medium.en model already at $brew_final"
   else
     fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" || true
   fi

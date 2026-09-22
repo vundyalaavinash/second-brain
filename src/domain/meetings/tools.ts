@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DB } from "@/db/client";
 import { getSetting } from "@/domain/settings";
-import { dataDir } from "@/lib/paths";
+import { dataDir, modelsDir } from "@/lib/paths";
 
 export const WHISPER_BASE_KEY = "meetings.whisperBase";
 export const WHISPER_FINAL_KEY = "meetings.whisperFinal";
@@ -13,7 +13,7 @@ export function recorderBin(): string {
 }
 
 export function whisperModelsDir(): string {
-  return path.join(dataDir(), "models", "whisper");
+  return path.join(modelsDir(), "whisper");
 }
 
 /** PATH, plus the two Homebrew prefixes launchd agents do not inherit. */

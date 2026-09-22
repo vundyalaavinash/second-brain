@@ -21,7 +21,7 @@ func log(_ s: String) {
 
 /// One JSON object per line on stderr — the contract the Node side parses.
 func emit(_ object: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
+    guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
     stderrHandle.write(data)
     stderrHandle.write(Data("\n".utf8))
 }
@@ -54,20 +54,99 @@ let streamPCM = !probing
 let outputLock = NSLock()
 var writer: WavWriter?
 var recorder: Recorder?
-var stdoutOpen = true
 var finished = false
+var wavFailed = false
+
+/// stdout is drained on its own serial queue, and never under `outputLock`: a
+/// consumer that stops reading then blocks nothing but itself, and the capture
+/// thread and `finish()` keep running while a write sits wedged in the kernel.
+let stdoutQueue = DispatchQueue(label: "com.second-brain.recorder.stdout")
+let stdoutLock = NSLock()
+var stdoutBacklog: [Data] = []
+var stdoutBacklogBytes = 0
+var stdoutOpen = true
+/// Two seconds of 16 kHz mono 16-bit audio.
+let maxBacklogBytes = Int(kTargetSampleRate) * 2 * MemoryLayout<Int16>.size
 
 func writeChunk(_ data: Data) {
     outputLock.lock()
-    defer { outputLock.unlock() }
-    try? writer?.append(data)
-    guard streamPCM, stdoutOpen else { return }
+    var failure: String?
     do {
-        try stdoutHandle.write(contentsOf: data)
+        try writer?.append(data)
+    } catch {
+        failure = error.localizedDescription
+    }
+    outputLock.unlock()
+    if let failure {
+        wavWriteFailed(failure)
+        return
+    }
+    guard streamPCM else { return }
+    queueForStdout(data)
+}
+
+/// A WAV that cannot be written leaves a truncated recording, so say so once and
+/// stop with a non-zero status rather than recording into nothing.
+func wavWriteFailed(_ message: String) {
+    outputLock.lock()
+    let first = !wavFailed
+    wavFailed = true
+    outputLock.unlock()
+    guard first else { return }
+    emitError("cannot write \(wavPath): \(message)")
+    // Off the capture thread: finish() stops the engine that is calling us.
+    DispatchQueue.main.async { finish(1) }
+}
+
+func queueForStdout(_ data: Data) {
+    stdoutLock.lock()
+    guard stdoutOpen else {
+        stdoutLock.unlock()
+        return
+    }
+    stdoutBacklog.append(data)
+    stdoutBacklogBytes += data.count
+    var stalled = false
+    while stdoutBacklogBytes > maxBacklogBytes, !stdoutBacklog.isEmpty {
+        stdoutBacklogBytes -= stdoutBacklog.removeFirst().count
+        stalled = true
+    }
+    if stalled {
+        stdoutOpen = false
+        stdoutBacklog.removeAll()
+        stdoutBacklogBytes = 0
+    }
+    stdoutLock.unlock()
+    if stalled {
+        emitError("stdout consumer stalled")
+        return
+    }
+    stdoutQueue.async { drainStdout() }
+}
+
+func drainStdout() {
+    stdoutLock.lock()
+    guard stdoutOpen, !stdoutBacklog.isEmpty else {
+        stdoutLock.unlock()
+        return
+    }
+    let chunk = stdoutBacklog.removeFirst()
+    stdoutBacklogBytes -= chunk.count
+    stdoutLock.unlock()
+    do {
+        try stdoutHandle.write(contentsOf: chunk)
     } catch {
         // The reader went away (EPIPE); keep filling the WAV regardless.
-        stdoutOpen = false
+        closeStdout()
     }
+}
+
+func closeStdout() {
+    stdoutLock.lock()
+    stdoutOpen = false
+    stdoutBacklog.removeAll()
+    stdoutBacklogBytes = 0
+    stdoutLock.unlock()
 }
 
 func finish(_ code: Int32) -> Never {
@@ -78,6 +157,7 @@ func finish(_ code: Int32) -> Never {
     writer?.close()
     writer = nil
     outputLock.unlock()
+    if probing && pathArgument == nil { try? FileManager.default.removeItem(atPath: wavPath) }
     exit(code)
 }
 
@@ -115,16 +195,16 @@ do {
 
 let capture = Recorder { data in writeChunk(data) }
 recorder = capture
+capture.onDeviceChange = { systemAudio in emit(["state": "device", "systemAudio": systemAudio]) }
+capture.onFatal = { message in
+    emitError(message)
+    finish(1)
+}
 do {
     try capture.start()
 } catch {
-    outputLock.lock()
-    writer?.close()
-    writer = nil
-    outputLock.unlock()
-    if probing { try? FileManager.default.removeItem(atPath: wavPath) }
     emitError(error.localizedDescription)
-    exit(1)
+    finish(1)
 }
 
 emit(["state": "recording", "systemAudio": capture.systemAudio])
@@ -144,24 +224,19 @@ terminateSource.resume()
 if probing {
     DispatchQueue.main.asyncAfter(deadline: .now() + PROBE_SECONDS) {
         capture.stop()
-        outputLock.lock()
-        writer?.close()
-        writer = nil
-        outputLock.unlock()
-        let frames = capture.framesWritten
-        if pathArgument == nil { try? FileManager.default.removeItem(atPath: wavPath) }
+        let counters = capture.counters()
         // systemSeconds separates "the tap was created" from "the tap delivered".
         emit([
             "state": "probed",
             "systemAudio": capture.systemAudio,
-            "seconds": Double(frames) / kTargetSampleRate,
-            "systemSeconds": Double(capture.systemFrames) / kTargetSampleRate,
+            "seconds": Double(counters.frames) / kTargetSampleRate,
+            "systemSeconds": Double(counters.systemFrames) / kTargetSampleRate,
         ])
-        if frames == 0 {
+        if counters.frames == 0 {
             emitError("no audio was captured in \(Int(PROBE_SECONDS)) s")
-            exit(1)
+            finish(1)
         }
-        exit(0)
+        finish(0)
     }
 }
 

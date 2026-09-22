@@ -90,7 +90,7 @@ Two permissions matter, both asked for on that first run: **Microphone**, and on
 
     "$HOME/Library/Application Support/second-brain/bin/sb-recorder" --probe
 
-Recordings are written as 16 kHz mono WAV under `DATA_DIR/recordings/`, alongside their transcripts; nothing is uploaded, and both whisper models run locally.
+Recordings are written as 16 kHz mono WAV under `DATA_DIR/files/meetings/`, alongside their transcripts; nothing is uploaded, and both whisper models run locally.
 
 ## Planner
 
