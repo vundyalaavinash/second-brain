@@ -138,6 +138,18 @@ helper_status() {
         });'
     fi
   fi
+  local status
+  status="$(is_up && curl -sf --max-time 2 "$URL/api/activity/status" 2>/dev/null || true)"
+  if [ -n "$status" ]; then
+    printf '%s' "$status" | node -e '
+      let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+        try { const n = JSON.parse(s).helper.calendarsSeen;
+          console.log(`  calendars: ${typeof n === "number" ? n : "unknown"}`);
+        } catch { console.log("  calendars: unknown"); }
+      });'
+  else
+    printf '  calendars: unknown\n'
+  fi
 }
 
 write_plist() {

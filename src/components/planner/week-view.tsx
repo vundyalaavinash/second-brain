@@ -126,9 +126,12 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
     );
   }
 
+  const noMeetings = week.days.every((d) => d.meetings.length === 0);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 min-[1100px]:grid-cols-7 gap-3 items-start">{week.days.map(column)}</div>
+      {noMeetings && <p className="text-[13px] text-fg-faint m-0">No meetings this week</p>}
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
     </div>
   );

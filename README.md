@@ -72,9 +72,15 @@ A Swift helper (`helper/activity`, installed by `scripts/brain.sh setup` as the 
 
 Three macOS permissions make this work, and the system asks for each on first run: **Accessibility** (to read the focused window title), **Automation** per browser (to read the active tab's URL), and **Calendars** (to read upcoming events). Nothing is recorded before a permission is granted for that data.
 
+**Calendar**: add your Microsoft 365 account in System Settings › Internet Accounts with Calendars on; the helper reads it through EventKit.
+
 A set of exclusions ships pre-seeded (password managers, banking apps, and similar) so their app or domain never gets recorded; add more from the Rules drawer. Pause is a chip in the page header — the helper keeps pinging the server so "last seen" stays fresh, but nothing is stored while paused. Activity data is kept for 90 days by default and pruned nightly.
 
 To uninstall the helper: `scripts/brain.sh stop`, then `launchctl bootout gui/$(id -u)/com.second-brain.activity`, then delete `~/Library/LaunchAgents/com.second-brain.activity.plist` and `DATA_DIR/bin/sb-activity`.
+
+## Planner
+
+`/planner` has three views: **Day**, a timeline of the day's meetings beside the plan for it, with what is due below; **Week**, seven columns of meetings and due tasks, drag a task to another day to change its due date, or pick a day from its "Plan for" menu to add it to that day's plan; and **Meetings**, every meeting in the next 60 days, searchable by title, organizer, or attendee. Plan a task for today from its row menu anywhere in the app; a plan left unfinished offers a one-click carry-over to move it to today.
 
 ## Design docs
 

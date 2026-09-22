@@ -114,7 +114,7 @@ export function Timeline({ date, meetings }: { date: string; meetings: ActivityM
               <div className="relative pointer-events-none p-2 flex flex-col gap-0.5 h-full">
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="truncate text-[13px]">{m.title}</span>
-                  {m.itemId !== null && <span className="w-1.5 h-1.5 rounded-full bg-violet shrink-0" aria-hidden />}
+                  {m.itemId !== null && <span className="w-1.5 h-1.5 rounded-full bg-violet shrink-0" title="Has a note" aria-hidden />}
                 </span>
                 <span className="font-mono text-[11px] text-fg-faint">
                   {formatClock(m.startsAt)}–{formatClock(m.endsAt)}

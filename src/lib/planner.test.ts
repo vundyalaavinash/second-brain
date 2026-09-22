@@ -30,4 +30,9 @@ describe("hasUserNotes", () => {
     expect(hasUserNotes("Dropped-in recording")).toBe(true);
     expect(hasUserNotes("   ")).toBe(false);
   });
+
+  it("does not count text before Actions when there is no Notes heading", () => {
+    const body = ["Some preamble with real content", "", "## Actions", "", "- [ ] "].join("\n");
+    expect(hasUserNotes(body)).toBe(false);
+  });
 });
