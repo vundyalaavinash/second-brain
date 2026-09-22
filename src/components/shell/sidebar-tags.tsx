@@ -7,11 +7,9 @@ interface TagCount { name: string; count: number }
 
 const MAX_TAGS = 10;
 
-/** Until the counts parameter lands the endpoint answers with plain names, so a string
- * array is read as a zero count. */
 function normalise(data: unknown): TagCount[] {
   if (!Array.isArray(data)) return [];
-  return data.map((t) => (typeof t === "string" ? { name: t, count: 0 } : (t as TagCount))).filter((t) => typeof t.name === "string");
+  return (data as TagCount[]).filter((t) => typeof t?.name === "string").map((t) => ({ name: t.name, count: Number(t.count) || 0 }));
 }
 
 export function SidebarTags({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
@@ -47,7 +45,7 @@ export function SidebarTags({ pathname, onNavigate }: { pathname: string; onNavi
           {tags.slice(0, MAX_TAGS).map((t) => (
             <Chip key={t.name} href={`/search?tag=${encodeURIComponent(t.name)}`} onClick={onNavigate}>
               {t.name}
-              {t.count > 0 && <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>}
+              <span className="font-mono text-[10.5px] text-fg-faint">{t.count}</span>
             </Chip>
           ))}
         </div>

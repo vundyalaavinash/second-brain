@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { Paperclip, CornerDownLeft, Inbox as InboxIcon, FileText, Link2, File as FileIcon, X } from "lucide-react";
 import { isProbablyUrl } from "@/lib/text";
+import { useCapture } from "@/lib/use-capture";
 import type { ContainerDTO, ContainerRefDTO, ItemDTO } from "@/lib/dto";
 import { ContainerPicker } from "./container-picker";
 import { Button, Chip, Kbd } from "./ui";
@@ -12,15 +13,6 @@ import { KindIcon } from "./type-icon";
 interface Props {
   onCaptured: (item: ItemDTO) => void;
   defaultContainer?: ContainerRefDTO | null;
-}
-
-async function readError(res: Response): Promise<string> {
-  try {
-    const data = (await res.json()) as { error?: string };
-    return data.error ?? res.statusText;
-  } catch {
-    return res.statusText;
-  }
 }
 
 export function CaptureBox({ onCaptured, defaultContainer }: Props) {
@@ -35,6 +27,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
   const [duplicate, setDuplicate] = useState<{ existingId: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { captureNote, captureLink, uploadFiles } = useCapture();
 
   const mode: "note" | "link" | "file" = files.length ? "file" : isProbablyUrl(text) ? "link" : "note";
   const canSubmit = !busy && (text.trim().length > 0 || files.length > 0);
@@ -47,34 +40,18 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       setError(null);
       try {
         const created: ItemDTO[] = [];
+        const opts = { tags: tagList, containerId: target?.id ?? null };
         // Text/link goes first: a 409 duplicate must not have already uploaded (and thus
         // re-uploaded on "Save anyway") any attached files.
         if (text.trim()) {
-          const body = isProbablyUrl(text)
-            ? { type: "link", url: text.trim(), tags: tagList, containerId: target?.id ?? null, force }
-            : { type: "note", body: text, tags: tagList, containerId: target?.id ?? null };
-          const res = await fetch("/api/items", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          if (res.status === 409) {
-            const data = (await res.json()) as { existingId: number };
-            setDuplicate({ existingId: data.existingId });
+          const item = isProbablyUrl(text) ? await captureLink(text.trim(), { ...opts, force }) : await captureNote(text, opts);
+          if ("duplicate" in item) {
+            setDuplicate({ existingId: item.duplicate });
             return;
           }
-          if (!res.ok) throw new Error(await readError(res));
-          created.push((await res.json()) as ItemDTO);
+          created.push(item);
         }
-        for (const file of files) {
-          const form = new FormData();
-          form.append("file", file);
-          form.append("tags", tagList.join(","));
-          if (target) form.append("containerId", String(target.id));
-          const res = await fetch("/api/upload", { method: "POST", body: form });
-          if (!res.ok) throw new Error(await readError(res));
-          created.push((await res.json()) as ItemDTO);
-        }
+        created.push(...(await uploadFiles(files, opts)));
         setText("");
         setFiles([]);
         setTags("");
@@ -88,7 +65,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         setBusy(false);
       }
     },
-    [canSubmit, files, text, tags, target, onCaptured],
+    [canSubmit, files, text, tags, target, onCaptured, captureNote, captureLink, uploadFiles],
   );
 
   return (

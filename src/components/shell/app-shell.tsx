@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { ToastProvider } from "./toasts";
+import { PromptBar } from "./prompt-bar";
 
 /** The frame every page sits in: sidebar, breadcrumb bar, rail slot, toasts. */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -17,6 +18,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="relative flex flex-col min-w-0 min-h-screen">
           <TopBar onMenu={() => setDrawer(true)} onRail={() => setRailOpen((v) => !v)} />
           <main className="flex-1 min-w-0 pb-28">{children}</main>
+          <div className="absolute left-4 right-4 bottom-4 z-20">
+            <PromptBar />
+          </div>
         </div>
         <div
           id="rail-slot"

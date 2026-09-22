@@ -1,0 +1,23 @@
+import { describe, it, expect } from "vitest";
+import { detectIntent } from "./intent";
+
+// Tuesday 22 September 2026, local. quickParse resolves "fri" to the next Friday, so 25th.
+const now = new Date("2026-09-22T10:00:00");
+
+describe("detectIntent", () => {
+  it("links", () => {
+    expect(detectIntent(" https://example.com/x ")).toEqual({ kind: "link", url: "https://example.com/x" });
+  });
+  it("tasks with + and /task", () => {
+    expect(detectIntent("+ Call the bank fri", now)).toEqual({ kind: "task", title: "Call the bank", priority: "normal", dueDate: "2026-09-25" });
+    expect(detectIntent("/task !Ship it", now)).toEqual({ kind: "task", title: "Ship it", priority: "high", dueDate: null });
+  });
+  it("search with ? and /search", () => {
+    expect(detectIntent("?tax forms")).toEqual({ kind: "search", query: "tax forms" });
+    expect(detectIntent("/search tax")).toEqual({ kind: "search", query: "tax" });
+  });
+  it("notes by default and with /note", () => {
+    expect(detectIntent("Remember the milk")).toEqual({ kind: "note", body: "Remember the milk" });
+    expect(detectIntent("/note https://not-a-link.example is text")).toEqual({ kind: "note", body: "https://not-a-link.example is text" });
+  });
+});

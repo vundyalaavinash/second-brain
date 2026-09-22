@@ -195,6 +195,19 @@ export function listTagNames(db: DB): string[] {
   return db.select({ name: tags.name }).from(tags).orderBy(asc(tags.name)).all().map((r) => r.name);
 }
 
+/** Every tag with the number of items carrying it, most used first, then alphabetical. A
+ * tag no item uses any more still counts, at zero. */
+export function listTagsWithCounts(db: DB): { name: string; count: number }[] {
+  const used = count(itemTags.itemId);
+  return db
+    .select({ name: tags.name, count: used })
+    .from(tags)
+    .leftJoin(itemTags, eq(itemTags.tagId, tags.id))
+    .groupBy(tags.id)
+    .orderBy(desc(used), asc(tags.name))
+    .all();
+}
+
 function itemIdsWithTag(db: DB, name: string): number[] {
   return db
     .select({ itemId: itemTags.itemId })

@@ -142,7 +142,9 @@ describe("items api", () => {
     expect(results[0].item.title).toMatch(/Sourdough/);
     expect(results[0].snippet).toMatch(/feeding/);
     expect((await (await routes.search.GET(json("GET", "/api/search?q="))).json())).toEqual([]);
-    expect((await (await routes.tags.GET()).json()) as string[]).toContain("docs");
+    expect((await (await routes.tags.GET(json("GET", "/api/tags"))).json()) as string[]).toContain("docs");
+    const counted = (await (await routes.tags.GET(json("GET", "/api/tags?counts=1"))).json()) as { name: string; count: number }[];
+    expect(counted.find((t) => t.name === "docs")?.count).toBeGreaterThan(0);
   });
 
   it("retries failed jobs for an item", async () => {

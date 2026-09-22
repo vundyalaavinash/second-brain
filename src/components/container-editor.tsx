@@ -9,6 +9,7 @@ import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarD
 import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
+import { setCurrentContainer } from "@/lib/current-container";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
@@ -85,6 +86,12 @@ export function ContainerEditor({
   useEffect(() => {
     routerRef.current = router;
   }, [router]);
+
+  // Tells the prompt bar which container is open, so a capture from it lands here.
+  useEffect(() => {
+    setCurrentContainer(c.id);
+    return () => setCurrentContainer(null);
+  }, [c.id]);
 
   const persist = useCallback(
     (fromUnmount = false): Promise<void> => {
