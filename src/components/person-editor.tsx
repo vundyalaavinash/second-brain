@@ -13,7 +13,7 @@ import { Button, Chip, IconButton } from "./ui";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
-  loading: () => <div className="md rich-editor" aria-busy="true" />,
+  loading: () => <div className="doc rich-editor" aria-busy="true" />,
 });
 
 export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; onEditorReady?: (editor: Editor) => void }) {

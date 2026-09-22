@@ -1,8 +1,8 @@
-/* Editor chrome. Content typography comes from .md (or .doc) in globals.css. */
+/* Editor chrome. Content typography comes from .doc in globals.css. */
 /* The editor sits directly on the page now, with no chrome of its own; the left padding is
  * the block handles' gutter. */
 .rich-editor {
-  min-height: 260px;
+  min-height: 40vh;
   max-width: 80rem;
   outline: none;
   padding: 0 0 0 40px;

@@ -92,6 +92,24 @@ describe("ItemEditor with RichEditor", () => {
     vi.useRealTimers();
   });
 
+  // The rail portals into the shell's slot, so the test supplies one; without it Rail renders
+  // nothing, which is what every other case in this file relies on.
+  it("lists the body's headings in the rail's outline", () => {
+    const slot = document.createElement("div");
+    slot.id = "rail-slot";
+    document.body.appendChild(slot);
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(item), { status: 200 })));
+      render(<ItemEditor initial={{ ...item, body: "# Title\n\n## Part one\n" }} />);
+      expect(screen.getByRole("button", { name: "Part one" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Title" })).toBeTruthy();
+      vi.unstubAllGlobals();
+    } finally {
+      cleanup();
+      slot.remove();
+    }
+  });
+
   it("flushes a tag added through TagChips and saves exactly once on ⌘S", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const patches: unknown[] = [];

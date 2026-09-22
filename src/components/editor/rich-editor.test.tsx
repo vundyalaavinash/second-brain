@@ -18,9 +18,9 @@ function Boom(): never {
 const MOUNT_TIMEOUT_MS = 5000;
 const MOUNT_POLL_MS = 20;
 
-async function mount(value: string, onChange = vi.fn(), variant: "md" | "doc" = "md") {
+async function mount(value: string, onChange = vi.fn()) {
   let editor: Editor | undefined;
-  const utils = render(<RichEditor value={value} onChange={onChange} variant={variant} onReady={(e) => (editor = e)} />);
+  const utils = render(<RichEditor value={value} onChange={onChange} onReady={(e) => (editor = e)} />);
   const deadline = Date.now() + MOUNT_TIMEOUT_MS;
   while (!editor) {
     if (Date.now() >= deadline) throw new Error("editor did not mount within 5 s");
@@ -42,10 +42,11 @@ describe("RichEditor", () => {
     vi.useRealTimers();
   });
 
-  // The doc variant carries `.doc`, never `.md`: the two set different type scales, and
-  // `.doc` has to restore the list markers preflight strips on its own account (globals.css).
-  it("dresses the doc variant as a document, with no .md", async () => {
-    const { editor } = await mount("- one\n- two\n", vi.fn(), "doc");
+  // The editor is always a document: it carries `.doc`, never `.md`. The two set different
+  // type scales, and `.doc` has to restore the list markers preflight strips on its own
+  // account (globals.css). `.md` is left to the markdown preview pane.
+  it("dresses the editor as a document, with no .md", async () => {
+    const { editor } = await mount("- one\n- two\n");
     const classes = [...editor.view.dom.classList];
     expect(classes).toEqual(expect.arrayContaining(["doc", "rich-editor"]));
     expect(classes).not.toContain("md");

@@ -13,9 +13,11 @@ import { setCurrentContainer } from "@/lib/current-container";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
+import { Crumb } from "./shell/crumb";
 import { CompleteProjectDialog } from "./complete-project-dialog";
 import { ProgressRing } from "./tasks/progress-ring";
 import { TaskList } from "./tasks/task-list";
+import { ContainerRail } from "./containers/container-rail";
 import { LinksSection } from "./containers/links-section";
 import { NotesSection } from "./containers/notes-section";
 
@@ -27,7 +29,7 @@ const ABOUT_LABEL: Record<ContainerDTO["kind"], string> = {
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
-  loading: () => <div className="md rich-editor" aria-busy="true" />,
+  loading: () => <div className="doc rich-editor" aria-busy="true" />,
 });
 
 const SAVE_DEBOUNCE_MS = 2000;
@@ -271,6 +273,11 @@ export function ContainerEditor({
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
+      <Crumb title={c.name} parent={{ label: `${KIND_LABEL[c.kind]}s`, href: `/${c.kind}s` }} />
+      {/* The rail reads the live task progress, which TaskList owns, not the copy the
+        * container DTO was serialized with. */}
+      <ContainerRail container={{ ...c, progress }} taskCount={progress.total} itemCount={items.length} />
+
       <header className="flex items-center gap-2 h-10 mb-3">
         <Link href={`/${c.kind}s`} className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -307,7 +314,7 @@ export function ContainerEditor({
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
 
       {c.kind === "project" ? (
-        <section className="rounded-lg border border-hairline bg-layer-1 p-6 flex flex-col gap-4">
+        <section className="pane p-6 flex flex-col gap-4">
           {nameInput}
           <input
             value={goal}

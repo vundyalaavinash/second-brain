@@ -26,3 +26,14 @@ export function RailSection({ label, count, children }: { label: string; count?:
     </section>
   );
 }
+
+/** One label/value row of a rail's details list: the label sits in a fixed first column so
+ * every value in a section lines up. */
+export function RailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="w-[72px] shrink-0 text-fg-faint text-[12px]">{label}</span>
+      <span className="min-w-0 text-[13px]">{children}</span>
+    </div>
+  );
+}

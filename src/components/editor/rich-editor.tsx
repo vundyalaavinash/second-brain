@@ -18,7 +18,6 @@ export interface RichEditorProps {
   className?: string;
   itemId?: number;
   onReady?: (editor: Editor) => void;
-  variant?: "md" | "doc";
 }
 
 const EMIT_DEBOUNCE_MS = 300;
@@ -72,8 +71,7 @@ export function prepareMarkdown(md: string): string {
   return out.join("\n");
 }
 
-export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady, variant = "md" }: RichEditorProps) {
-  const variantClass = variant === "doc" ? "doc" : "md";
+export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady }: RichEditorProps) {
   const lastMarkdown = useRef(value);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onChangeRef = useRef(onChange);
@@ -107,7 +105,7 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     autofocus: autofocus ? "end" : false,
     immediatelyRender: false,
     editorProps: {
-      attributes: { class: `${variantClass} rich-editor ${className}`, spellcheck: "true" },
+      attributes: { class: `doc rich-editor ${className}`, spellcheck: "true" },
       handlePaste: (_view, event) => {
         const files = [...(event.clipboardData?.files ?? [])];
         if (files.length === 0) return false;
@@ -190,7 +188,7 @@ export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocu
     if (editor && files.length) handleFiles(editor, files, itemId);
   }
 
-  if (!editor) return <div className={`${variantClass} rich-editor ${className}`} aria-busy="true" />;
+  if (!editor) return <div className={`doc rich-editor ${className}`} aria-busy="true" />;
   return (
     <ItemIdProvider itemId={itemId}>
       <div ref={containerRef} className="relative group">

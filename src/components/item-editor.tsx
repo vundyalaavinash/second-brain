@@ -14,7 +14,8 @@ import { Button, Chip, IconButton } from "./ui";
 import { TypeIcon, StatusDot, TYPE_LABEL, KIND_ICON } from "./type-icon";
 import { ContainerPicker } from "./container-picker";
 import { PeoplePicker } from "./people-picker";
-import { DocumentSheet } from "./document/document-sheet";
+import { Crumb } from "./shell/crumb";
+import { ItemRail } from "./document/item-rail";
 import { MetadataStrip } from "./document/metadata-strip";
 import { TagChips } from "./document/tag-chips";
 
@@ -190,6 +191,18 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
     router.push("/library");
   }
 
+  /** Jumps the reading column to a heading the rail's outline names. The heading lives in
+   * the editor's DOM (or, in preview, in the rendered markdown), so it is found by text
+   * rather than by an id no markdown round trip would preserve. */
+  const scrollToHeading = useCallback((text: string) => {
+    const root = document.querySelector(".rich-editor") ?? document.querySelector(".doc.md");
+    if (!root) return;
+    const target = [...root.querySelectorAll("h1, h2, h3")].find((h) => h.textContent?.trim() === text);
+    if (!target) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    target.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+  }, []);
+
   const meta = item.meta as { site_name?: string; byline?: string; page_count?: number; kind?: string };
   const isImage = item.type === "file" && item.mimeType?.startsWith("image/");
   const isPdf = item.type === "file" && item.mimeType === "application/pdf";
@@ -203,6 +216,9 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
+      <Crumb title={title || "Untitled"} />
+      <ItemRail item={item} body={body} onScrollTo={scrollToHeading} onMove={() => setMovePicker(true)} />
+
       <header className="flex items-center gap-2 h-10 mb-3">
         <Link href="/library" className="focus-ring inline-flex items-center gap-1 text-[12.5px] text-fg-muted hover:text-fg">
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -232,7 +248,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
       {item.error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{item.error}</div>}
       {actionError && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{actionError}</div>}
 
-      <DocumentSheet>
+      <div className="max-w-[760px] mx-auto px-6 py-8">
         <input
           value={title}
           onChange={(e) => {
@@ -243,7 +259,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           onBlur={() => {
             if (save === "dirty") void persist();
           }}
-          className="focus-ring font-doc text-[40px] leading-[1.1] font-medium tracking-[-0.01em] bg-transparent outline-none w-full text-fg placeholder:text-fg-faint"
+          className="font-doc text-[40px] leading-[1.1] font-medium bg-transparent outline-none focus-ring w-full"
           placeholder="Untitled"
         />
 
@@ -252,11 +268,11 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
             <TypeIcon type={item.type} className="w-3.5 h-3.5 text-fg-muted shrink-0" />
             {TYPE_LABEL[item.type]}
           </span>
-          <span className="w-px h-3 bg-hairline" aria-hidden />
+          <span className="w-px h-3 bg-hairline-strong" aria-hidden />
           <Chip icon={item.container ? KIND_ICON[item.container.kind] : InboxIcon} onClick={() => setMovePicker(true)}>
             {item.container ? item.container.name : "Inbox"}
           </Chip>
-          <span className="w-px h-3 bg-hairline" aria-hidden />
+          <span className="w-px h-3 bg-hairline-strong" aria-hidden />
           <TagChips
             value={tags.split(",").map((t) => t.trim()).filter(Boolean)}
             onChange={(next) => {
@@ -266,7 +282,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
               markDirty();
             }}
           />
-          <span className="w-px h-3 bg-hairline" aria-hidden />
+          <span className="w-px h-3 bg-hairline-strong" aria-hidden />
           {item.people.map((p) => (
             <Chip key={p.id} href={`/people/${p.slug}`} icon={AtSign} className="font-mono">
               {p.slug}
@@ -275,7 +291,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           <Button variant="ghost" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
             Add person
           </Button>
-          <span className="w-px h-3 bg-hairline" aria-hidden />
+          <span className="w-px h-3 bg-hairline-strong" aria-hidden />
           <span>
             Created <span className="font-mono text-[12.5px]">{formatDate(item.createdAt)}</span>
           </span>
@@ -340,12 +356,11 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
             placeholder={item.type === "note" ? "Write, or press / for blocks" : "Your notes about this item"}
             className="min-h-[260px]"
             onReady={onEditorReady}
-            variant="doc"
           />
         )}
 
         {item.extractedText && (
-          <details className="rounded-md bg-layer-2 mt-6">
+          <details className="rounded-md bg-layer-1 mt-6">
             <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-fg-muted select-none">
               <FileText className="w-4 h-4" aria-hidden />
               Extracted text <span className="font-mono text-[11px] text-fg-muted">{item.extractedText.length.toLocaleString("en-GB")} characters</span>
@@ -355,7 +370,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
             </pre>
           </details>
         )}
-      </DocumentSheet>
+      </div>
 
       {movePicker && (
         <ContainerPicker
