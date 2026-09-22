@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { MeetingListDTO } from "@/lib/dto";
+import type { MeetingListDTO, MeetingSettingsDTO } from "@/lib/dto";
 import { formatDayHeading, todayLocal } from "../activity/format";
-import { Button, Input, List } from "../ui";
+import { Button, Chip, Input, List } from "../ui";
 import { MeetingRow } from "./meeting-row";
 import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
 
 const JSON_HEADERS = { "content-type": "application/json" };
+const SETTINGS_URL = "/api/settings/meetings";
 
 interface Props {
   today: string;
@@ -47,7 +48,26 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Null until the server has answered: a switch that renders before then would render a guess.
+  const [settings, setSettings] = useState<MeetingSettingsDTO | null>(null);
   const recorder = useRecorder();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(SETTINGS_URL, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const next = (await res.json()) as MeetingSettingsDTO;
+        if (!cancelled) setSettings(next);
+      } catch {
+        /* offline: the switches stay out of the way rather than lying about the setting */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const q = query.trim().toLowerCase();
   const shown = q ? meetings.filter((m) => matches(m, q)) : meetings;
@@ -76,6 +96,20 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
       }
       setError(null);
       onRefresh?.();
+    })();
+  }
+
+  /** Moves the switch under the hand straight away; the answer is what it settles on. */
+  function saveSetting(patch: Partial<MeetingSettingsDTO>) {
+    setSettings((current) => (current ? { ...current, ...patch } : current));
+    void (async () => {
+      const res = await fetch(SETTINGS_URL, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(patch) });
+      if (!res.ok) {
+        setError("Could not save that change");
+        return;
+      }
+      setSettings((await res.json()) as MeetingSettingsDTO);
+      setError(null);
     })();
   }
 
@@ -117,6 +151,29 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-[320px]"
         />
+        {settings && (
+          <div className="flex items-center gap-2">
+            <Chip
+              role="switch"
+              aria-checked={settings.autoRecord}
+              active={settings.autoRecord}
+              onClick={() => saveSetting({ autoRecord: !settings.autoRecord })}
+            >
+              Record meetings automatically
+            </Chip>
+            {settings.autoRecord && (
+              <Chip
+                role="switch"
+                aria-checked={settings.autoRecordNeedsCallLink}
+                active={settings.autoRecordNeedsCallLink}
+                onClick={() => saveSetting({ autoRecordNeedsCallLink: !settings.autoRecordNeedsCallLink })}
+                className="h-6 px-2 text-[11.5px]"
+              >
+                Only with a join link
+              </Chip>
+            )}
+          </div>
+        )}
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
         <span title={recorder.title ?? undefined} className="ml-auto">
           <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>

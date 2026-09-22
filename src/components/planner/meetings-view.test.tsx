@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { MeetingsView } from "./meetings-view";
-import type { MeetingListDTO, RecorderStatusDTO } from "@/lib/dto";
+import type { MeetingListDTO, MeetingSettingsDTO, RecorderStatusDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: () => {} }), usePathname: () => "/planner/meetings" }));
@@ -55,6 +55,23 @@ function stubRecorder(status: RecorderStatusDTO) {
       return Response.json({ ...status, state: "recording" });
     }
     if (String(input) === "/api/meetings/recorder") return Response.json(status);
+    return new Response("{}", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
+/** The settings the two switches read, kept across the PATCH the way the route keeps them. */
+function stubSettings(initial: MeetingSettingsDTO) {
+  let current = initial;
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/settings/meetings" && init?.method === "PATCH") {
+      current = { ...current, ...(JSON.parse(String(init.body)) as Partial<MeetingSettingsDTO>) };
+      return Response.json(current);
+    }
+    if (url === "/api/settings/meetings") return Response.json(current);
+    if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fn);
@@ -175,6 +192,35 @@ describe("MeetingsView", () => {
     const record = screen.getByRole("button", { name: "Record now" });
     await waitFor(() => expect(record.getAttribute("title")).toBe("Transcription needs: whisper-cli, the final transcript model"));
     expect(record.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps the switches off screen until the settings answer, rather than guessing at them", async () => {
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    mount();
+    expect(screen.queryByRole("switch", { name: "Record meetings automatically" })).toBeNull();
+
+    const auto = await screen.findByRole("switch", { name: "Record meetings automatically" });
+    expect(auto.getAttribute("aria-checked")).toBe("false");
+    // The join-link rule only means something once meetings record themselves.
+    expect(screen.queryByRole("switch", { name: "Only with a join link" })).toBeNull();
+  });
+
+  it("saves each switch as it is flipped", async () => {
+    const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    mount();
+    const auto = await screen.findByRole("switch", { name: "Record meetings automatically" });
+
+    fireEvent.click(auto);
+    await waitFor(() => expect(auto.getAttribute("aria-checked")).toBe("true"));
+    const patch = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/settings/meetings" && init?.method === "PATCH");
+    expect(JSON.parse(String(patch![1]?.body))).toEqual({ autoRecord: true });
+
+    const link = screen.getByRole("switch", { name: "Only with a join link" });
+    expect(link.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(link);
+    await waitFor(() => expect(link.getAttribute("aria-checked")).toBe("false"));
+    const last = fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH").at(-1);
+    expect(JSON.parse(String(last![1]?.body))).toEqual({ autoRecordNeedsCallLink: false });
   });
 
   it("keeps record out of reach while another meeting is recording", async () => {

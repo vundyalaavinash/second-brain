@@ -169,6 +169,12 @@ export interface RecorderStatusDTO {
   missing: string[];
 }
 
+/** The two auto-record switches, as `/api/settings/meetings` answers them. */
+export interface MeetingSettingsDTO {
+  autoRecord: boolean;
+  autoRecordNeedsCallLink: boolean;
+}
+
 /** What the Planner knows about the helper's calendar access, for the setup card. */
 export interface PlannerCalendarDTO {
   /** How many calendars the helper can see; null until it has reported at all. */

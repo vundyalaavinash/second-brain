@@ -6,13 +6,17 @@ import { createJobHandlers } from "@/jobs/handlers";
 import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
 import { backupFilePath } from "@/jobs/handlers/backup";
 import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
+import { autoStartTick } from "@/domain/meetings/auto-start";
 import { hasChatKey } from "@/providers/chat";
 import { getEmbedProvider } from "./providers";
 
-const g = globalThis as unknown as { __sbWorker?: JobWorker; __sbBackupInterval?: NodeJS.Timeout };
+const g = globalThis as unknown as { __sbWorker?: JobWorker; __sbBackupInterval?: NodeJS.Timeout; __sbAutoStartInterval?: NodeJS.Timeout };
 
 /** Every 6 hours we check whether today's backup exists yet; cheap enough to just poll. */
 const BACKUP_CHECK_MS = 6 * 60 * 60 * 1000;
+
+/** Half a minute: fine enough to catch a meeting's start inside the two-minute window. */
+const AUTO_START_CHECK_MS = 30 * 1000;
 
 function ensureTodayBackupQueued(db: DB): void {
   if (!fs.existsSync(backupFilePath())) enqueueJob(db, "backup", {});
@@ -47,6 +51,10 @@ export function boot(): JobWorker {
   ensureTodayBackupQueued(db);
   if (!g.__sbBackupInterval) {
     g.__sbBackupInterval = setInterval(() => ensureTodayBackupQueued(db), BACKUP_CHECK_MS);
+  }
+  if (!g.__sbAutoStartInterval) {
+    // The tick swallows its own errors; the setting it reads decides whether it does anything.
+    g.__sbAutoStartInterval = setInterval(() => void autoStartTick(db, { log: (m) => console.log(`[auto-record] ${m}`) }), AUTO_START_CHECK_MS);
   }
   console.log("[boot] job worker started");
   return worker;
