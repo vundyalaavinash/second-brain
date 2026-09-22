@@ -78,6 +78,20 @@ A set of exclusions ships pre-seeded (password managers, banking apps, and simil
 
 To uninstall the helper: `scripts/brain.sh stop`, then `launchctl bootout gui/$(id -u)/com.second-brain.activity`, then delete `~/Library/LaunchAgents/com.second-brain.activity.plist` and `DATA_DIR/bin/sb-activity`.
 
+## Meetings and recording
+
+Recording needs two Homebrew tools and a Swift helper:
+
+    brew install whisper-cpp ffmpeg
+
+`scripts/brain.sh setup` builds the recorder (`helper/recorder`, installed as `DATA_DIR/bin/sb-recorder`), downloads the whisper models into `DATA_DIR/models/whisper/` (`ggml-base.en.bin` for the live transcript, `ggml-medium.en.bin` for the final pass, linked instead of downloaded again when `whisper-cpp` already has it), and runs the recorder once so macOS raises its prompts. `npm run status` reports `recorder:`, `whisper:`, and `ffmpeg:`.
+
+Two permissions matter, both asked for on that first run: **Microphone**, and on macOS 14.2 and newer **System Audio Recording** — the recorder taps the default output device so the other side of a call is captured too. Refuse the second and recording still works, microphone only. Answer them in System Settings › Privacy & Security, then re-check with:
+
+    "$HOME/Library/Application Support/second-brain/bin/sb-recorder" --probe
+
+Recordings are written as 16 kHz mono WAV under `DATA_DIR/recordings/`, alongside their transcripts; nothing is uploaded, and both whisper models run locally.
+
 ## Planner
 
 `/planner` has three views: **Day**, a timeline of the day's meetings beside the plan for it, with what is due below; **Week**, seven columns of meetings and due tasks, drag a task to another day to change its due date, or pick a day from its "Plan for" menu to add it to that day's plan; and **Meetings**, every meeting in the next 60 days, searchable by title, organizer, or attendee. Plan a task for today from its row menu anywhere in the app; a plan left unfinished offers a one-click carry-over to move it to today.

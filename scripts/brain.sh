@@ -18,6 +18,10 @@ HELPER_SRC="$ROOT/helper/activity"
 HELPER_BIN="$DATA_DIR/bin/sb-activity"
 HELPER_LOG="$LOG_DIR/activity.log"
 TOKEN_FILE="$DATA_DIR/activity-token"
+RECORDER_SRC="$ROOT/helper/recorder"
+RECORDER_BIN="$DATA_DIR/bin/sb-recorder"
+WHISPER_DIR="$DATA_DIR/models/whisper"
+WHISPER_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -27,7 +31,7 @@ usage() {
   cat <<USAGE
 Usage: scripts/brain.sh <command>
 
-  setup            install deps, build, download the embedding model, install the launch agent and the activity helper, start
+  setup            install deps, build, download the embedding and whisper models, install the launch agent, the activity helper and the recorder, start
   start            start the launch agent and open the browser
   stop             stop the launch agent
   restart [--build] stop, optionally rebuild, start
@@ -112,6 +116,91 @@ PLIST
   ok "helper launch agent written to $HELPER_PLIST"
 }
 
+build_recorder() {
+  if ! command -v swift >/dev/null; then
+    say "swift not found; skipping the meeting recorder. Install the Xcode command line tools and rerun setup to enable it."
+    return 1
+  fi
+  say "building the meeting recorder"
+  if ! (cd "$RECORDER_SRC" && swift build -c release 2>&1 | tail -3); then
+    say "the meeting recorder did not build; skipping it"
+    return 1
+  fi
+  mkdir -p "$(dirname "$RECORDER_BIN")"
+  cp "$RECORDER_SRC/.build/release/sb-recorder" "$RECORDER_BIN" || return 1
+  ok "recorder built at $RECORDER_BIN"
+}
+
+# Download a model unless it is already there. An existing model is never touched,
+# and a download that fails leaves only its .part file behind, never a half model.
+fetch_model() {
+  local dest="$1" url="$2" label="$3"
+  if [ -s "$dest" ]; then
+    ok "$label already at $dest"
+    return 0
+  fi
+  say "downloading the $label model ($url)"
+  if curl -L --fail --progress-bar -o "$dest.part" "$url"; then
+    mv "$dest.part" "$dest"
+    ok "$label downloaded to $dest"
+  else
+    rm -f "$dest.part"
+    say "could not download the $label model; meetings will not transcribe until it is there"
+    return 1
+  fi
+}
+
+download_whisper_models() {
+  mkdir -p "$WHISPER_DIR"
+  local base="$WHISPER_DIR/ggml-base.en.bin"
+  local final="$WHISPER_DIR/ggml-medium.en.bin"
+  local brew_final="$HOME/.whisper-cpp/models/ggml-medium.en.bin"
+  fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" || true
+  if [ -s "$final" ]; then
+    ok "whisper medium.en already at $final"
+  elif [ -s "$brew_final" ]; then
+    # whisper-cpp from Homebrew already has it; link rather than fetch 1.5 GB again.
+    ln -sf "$brew_final" "$final"
+    final="$brew_final"
+    ok "using the medium.en model already at $brew_final"
+  else
+    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" || true
+  fi
+  write_model_settings "$base" "$final"
+}
+
+# The live and the final transcription models, as meetings.whisperBase and
+# meetings.whisperFinal. Before the first run of the app there is no database to
+# write to; the defaults in src/domain/meetings/tools.ts already name these paths.
+write_model_settings() {
+  (cd "$ROOT" && SB_DB="$DATA_DIR/brain.db" SB_BASE="$1" SB_FINAL="$2" node -e '
+    const fs = require("fs");
+    const file = process.env.SB_DB;
+    if (!fs.existsSync(file)) { console.log("  settings skipped until the app has created its database (defaults match)"); process.exit(0); }
+    const db = new (require("better-sqlite3"))(file);
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type = ? AND name = ?").get("table", "settings");
+    if (!table) { console.log("  settings skipped until the app has created its database (defaults match)"); process.exit(0); }
+    const set = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    set.run("meetings.whisperBase", process.env.SB_BASE);
+    set.run("meetings.whisperFinal", process.env.SB_FINAL);
+    console.log("  whisper models recorded in settings");
+  ')
+}
+
+# The first run raises the macOS prompts; nothing can be recorded before they are answered.
+probe_recorder() {
+  if [ ! -x "$RECORDER_BIN" ]; then
+    say "recorder not installed; skipping the permission check"
+    return 0
+  fi
+  say "checking recording permissions - macOS asks for Microphone and, on 14.2+, System Audio Recording. Allow both."
+  if "$RECORDER_BIN" --probe; then
+    ok "recorder captured audio"
+  else
+    say "the recorder captured nothing. Grant the prompts, then run: $RECORDER_BIN --probe"
+  fi
+}
+
 helper_start() {
   if [ ! -f "$HELPER_PLIST" ] || [ ! -x "$HELPER_BIN" ]; then
     say "activity helper not installed (run setup with swift available)"
@@ -150,6 +239,20 @@ helper_status() {
   else
     printf '  calendars: unknown\n'
   fi
+}
+
+# Homebrew prefixes are searched explicitly: launchd agents do not inherit them.
+tool_path() {
+  local name="$1" dir
+  if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+  for dir in /opt/homebrew/bin /usr/local/bin; do
+    if [ -x "$dir/$name" ]; then echo "$dir/$name"; return 0; fi
+  done
+  return 1
+}
+
+tool_line() {
+  if [ -n "${2:-}" ] && [ -x "${2:-}" ]; then ok "$1: ok"; else say "$1: missing"; fi
 }
 
 write_plist() {
@@ -217,6 +320,9 @@ cmd_setup() {
   helper_stop
   ensure_token
   if build_helper; then write_helper_plist; fi
+  build_recorder || true
+  download_whisper_models
+  probe_recorder
   if is_loaded; then
     say "stopping the running agent before reinstalling it"
     launchctl bootout "$DOMAIN/$LABEL" || true
@@ -289,6 +395,9 @@ cmd_status() {
   if is_up; then ok "server answering at $URL"; else say "server not answering at $URL"; fi
   say "data: $DATA_DIR"
   say "log:  $LOG_FILE"
+  tool_line "recorder" "$RECORDER_BIN"
+  tool_line "whisper" "$(tool_path whisper-cli || true)"
+  tool_line "ffmpeg" "$(tool_path ffmpeg || true)"
   helper_status
 }
 
