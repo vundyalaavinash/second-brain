@@ -58,11 +58,17 @@ function readNarrow(): boolean {
 
 const wideOnServer = () => false;
 
+/** Tells the dock whether a captured link is still being read, so its glow can breathe. */
+function announcePending(pending: boolean) {
+  window.dispatchEvent(new CustomEvent("sb:capture-pending", { detail: pending }));
+}
+
 /**
  * One line for everything: a note, a link, a task, or a search. The intent is read from what
- * is typed, so there are no modes to switch between.
+ * is typed, so there are no modes to switch between. It is the dock's expanded state: the
+ * dock opens it and takes it back once the line has been sent.
  */
-export function PromptBar() {
+export function PromptBar({ open, onClose }: { open: boolean; onClose(): void }) {
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -91,6 +97,7 @@ export function PromptBar() {
       router.push(`/search?q=${encodeURIComponent(current.query)}`);
       setText("");
       setError(null);
+      onClose();
       return;
     }
     if (current.kind === "task" && !current.title) {
@@ -144,19 +151,20 @@ export function PromptBar() {
         } else {
           toast.push({ text: container ? `Link captured to ${container.name}` : "Link captured", href: `/items/${item.id}` });
           setPendingItemId(item.id);
+          announcePending(true);
           window.dispatchEvent(new Event("sb:inbox-changed"));
         }
       }
       setText("");
       setMultiline(false);
       setMenuOpen(false);
-      fieldRef.current?.focus();
+      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [busy, text, container, containerId, router, toast, captureNote, captureLink]);
+  }, [busy, text, container, containerId, router, toast, captureNote, captureLink, onClose]);
 
   const sendFiles = useCallback(
     async (files: File[]) => {
@@ -211,13 +219,17 @@ export function PromptBar() {
         if (stopped) return;
         if (Date.now() - startedAt > POLL_LIMIT_MS) {
           setPendingItemId(null);
+          announcePending(false);
           return;
         }
         try {
           const res = await fetch(`/api/items/${pendingItemId}`);
           if (!res.ok || stopped) return;
           const item = (await res.json()) as ItemDTO;
-          if (!stopped && item.status !== "pending") setPendingItemId(null);
+          if (!stopped && item.status !== "pending") {
+            setPendingItemId(null);
+            announcePending(false);
+          }
         } catch {
           /* offline: keep waiting until the limit */
         }
@@ -229,7 +241,7 @@ export function PromptBar() {
     };
   }, [pendingItemId]);
 
-  if (pathname === "/capture") return null;
+  if (!open || pathname === "/capture") return null;
 
   const intent = detectIntent(text);
   const mode = MODE[intent.kind];
@@ -276,7 +288,9 @@ export function PromptBar() {
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      e.currentTarget.blur();
+      // With something typed, Escape only steps out of the field: the draft is still there.
+      if (text.trim().length === 0) onClose();
+      else e.currentTarget.blur();
       return;
     }
     if (e.key !== "Enter") return;
@@ -315,11 +329,6 @@ export function PromptBar() {
       }}
       className="relative"
     >
-      {/* The bloom is clipped to the bar's own bottom edge: the half that falls below it
-        * would otherwise lengthen the page by its own radius. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 -top-[480px] overflow-hidden" aria-hidden>
-        <div className={`glow -bottom-80 left-1/2 -translate-x-1/2 ${pendingItemId === null ? "" : "glow-breathing"}`} />
-      </div>
       {menuEntries.length > 0 && <PromptMenu entries={menuEntries} activeIndex={activeIndex} onChoose={choose} />}
       <div
         onDrop={onDropFiles}

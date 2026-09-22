@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, PanelRight } from "lucide-react";
+import { PanelRight } from "lucide-react";
 import { crumbsFor, type Crumb } from "@/lib/breadcrumb";
 import { IconButton } from "../ui";
 
@@ -9,14 +9,13 @@ function isParent(crumb: Crumb): crumb is Crumb & { href: string } {
   return crumb.href !== undefined;
 }
 
-export function TopBar({ onMenu, onRail, railOpen }: { onMenu(): void; onRail(): void; railOpen: boolean }) {
+export function TopBar({ onRail, railOpen }: { onRail(): void; railOpen: boolean }) {
   const pathname = usePathname();
   const crumbs = crumbsFor(pathname);
   const trail = crumbs.filter(isParent);
   const tail = crumbs.find((c) => !isParent(c));
   return (
     <div className="flex items-center gap-2 h-12 px-4 border-b border-hairline shrink-0">
-      <IconButton label="Menu" icon={Menu} onClick={onMenu} className="min-[900px]:hidden" />
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] min-w-0">
         <span className="crumb-trail flex items-center gap-2 min-w-0 empty:hidden">
           {trail.map((c, i) => (

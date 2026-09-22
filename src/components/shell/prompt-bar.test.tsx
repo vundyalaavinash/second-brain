@@ -6,12 +6,14 @@ import { ToastProvider } from "./toasts";
 import { setCurrentContainer } from "@/lib/current-container";
 
 const push = vi.fn();
+const onClose = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/inbox" }));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   setCurrentContainer(null);
   push.mockClear();
+  onClose.mockClear();
 });
 
 function mockFetch(body: unknown, status = 201) {
@@ -23,7 +25,7 @@ function mockFetch(body: unknown, status = 201) {
 function mount() {
   render(
     <ToastProvider>
-      <PromptBar />
+      <PromptBar open onClose={onClose} />
     </ToastProvider>,
   );
 }
@@ -57,6 +59,13 @@ describe("PromptBar", () => {
     await waitFor(() => expect(screen.getByText("Captured to Inbox")).toBeTruthy());
     expect((fetchFn.mock.calls[0] as unknown as [string])[0]).toBe("/api/items");
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/items/12");
+  });
+
+  it("hands the dock back its pill once the capture lands", async () => {
+    mockFetch({ id: 14, type: "note", title: "Remember" });
+    mount();
+    type("Remember the milk");
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it("captures a note into the open container and says where it went", async () => {

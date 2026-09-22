@@ -60,7 +60,7 @@ Projects, areas, and resources each have a Links section and a Notes section. Pa
 
 ### Design
 
-The interface is a carbon workspace: a sidebar that shows the whole brain, a breadcrumb bar, a context rail beside documents, and one prompt bar that captures, adds tasks, and searches from any page. One violet accent, serif titles, small mono labels. Motion is limited to state changes and respects reduced-motion settings.
+The interface is a carbon workspace: a floating dock, a breadcrumb bar, a context rail beside documents, and one prompt bar that captures, adds tasks, and searches from any page. One violet accent, serif titles, small mono labels. Motion is limited to state changes and respects reduced-motion settings.
 
 ### Writing
 

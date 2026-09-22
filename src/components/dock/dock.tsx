@@ -1,0 +1,291 @@
+"use client";
+
+import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { motion, useReducedMotion } from "motion/react";
+import {
+  Archive,
+  BookBookmark,
+  CalendarBlank,
+  DotsThree,
+  Flag,
+  ListBullets,
+  MagnifyingGlass,
+  Plus,
+  Pulse,
+  Stack,
+  Tray,
+  Users,
+  type Icon as Glyph,
+} from "@phosphor-icons/react";
+import { CAPTURE_ITEM, NAV_ITEMS, SEARCH_ITEM, type IconName, type NavItem } from "../nav";
+import { PromptBar } from "../shell/prompt-bar";
+import { DockItem, type DockItemProps } from "./dock-item";
+import { DockSheet } from "./dock-sheet";
+import { useMagnify } from "./use-magnify";
+import type { HelperStateDTO } from "@/lib/dto";
+
+const POLL_MS = 20_000;
+const ACTIVITY_POLL_MS = 60_000;
+const HELPER_STALE_MS = 120_000;
+/** A link the bar handed over settles, or gives up, within this long. */
+const PENDING_LIMIT_MS = 60_000;
+const DIM_THROTTLE_MS = 300;
+const NARROW = "(max-width: 719px)";
+
+const ICONS: Record<IconName, Glyph> = {
+  today: CalendarBlank,
+  inbox: Tray,
+  project: Flag,
+  area: Stack,
+  resource: BookBookmark,
+  people: Users,
+  activity: Pulse,
+  library: ListBullets,
+  archive: Archive,
+  search: MagnifyingGlass,
+  capture: Plus,
+};
+
+const BRAIN_ITEMS = NAV_ITEMS.filter((n) => n.section === "brain");
+const TOOLS_ITEMS = NAV_ITEMS.filter((n) => n.section === "tools");
+/** The two the narrow pill keeps; everything else moves into the sheet. */
+const NARROW_ITEMS = NAV_ITEMS.filter((n) => n.href === "/today" || n.href === "/inbox");
+const SHEET_ITEMS = NAV_ITEMS.filter((n) => !NARROW_ITEMS.includes(n));
+
+function subscribeNarrow(listener: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const mq = window.matchMedia(NARROW);
+  mq.addEventListener("change", listener);
+  return () => mq.removeEventListener("change", listener);
+}
+
+function readNarrow(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches;
+}
+
+const wideOnServer = () => false;
+
+/** True while the element belongs to whatever the user is writing in, outside the dock. */
+function isTypingTarget(el: Element | null, dock: HTMLElement | null): boolean {
+  if (!el || dock?.contains(el)) return false;
+  if (el.closest(".rich-editor")) return true;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA";
+}
+
+/**
+ * The one object at the bottom of every page: a pill of icons that magnifies under the
+ * cursor, and the prompt bar as its expanded state.
+ */
+export function Dock() {
+  const pathname = usePathname();
+  const reduce = useReducedMotion();
+  const [inboxCount, setInboxCount] = useState(0);
+  const [helperDown, setHelperDown] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [barOpen, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dimmed, setDimmed] = useState(false);
+  const [pending, setPending] = useState(false);
+  const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, wideOnServer);
+  // The capture page is the prompt bar writ large, so the bar stays away there and the pill
+  // keeps its place rather than leaving the page with nothing at the bottom.
+  const open = barOpen && pathname !== "/capture";
+  const shellRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLElement>(null);
+  const magnify = useMagnify({ max: 1.35, radius: 96 });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/inbox?limit=1", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { count: number };
+        if (!cancelled) setInboxCount(data.count);
+      } catch {
+        /* offline */
+      }
+    }
+    void load();
+    const id = setInterval(load, POLL_MS);
+    window.addEventListener("sb:inbox-changed", load);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("sb:inbox-changed", load);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/activity/status", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { helper: HelperStateDTO; paused: boolean };
+        if (cancelled) return;
+        setPaused(data.paused);
+        setHelperDown(!data.paused && (!data.helper.lastSeen || Date.now() - Date.parse(data.helper.lastSeen) > HELPER_STALE_MS));
+      } catch {
+        /* offline */
+      }
+    }
+    void load();
+    const id = setInterval(load, ACTIVITY_POLL_MS);
+    window.addEventListener("sb:activity-changed", load);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("sb:activity-changed", load);
+    };
+  }, [pathname]);
+
+  // `shortcuts.tsx` owns the `c` key; it asks for the bar, which is now the dock's open state.
+  useEffect(() => {
+    function onRequest() {
+      setOpen(true);
+    }
+    window.addEventListener("sb:prompt-focus", onRequest);
+    return () => window.removeEventListener("sb:prompt-focus", onRequest);
+  }, []);
+
+  // The one intentional autofocus in the app: the bar was asked for, so it takes the caret.
+  useEffect(() => {
+    if (!open) return;
+    shellRef.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+  }, [open]);
+
+  // The bar announces a link it is still reading; the glow breathes until it settles.
+  useEffect(() => {
+    function onPending(e: Event) {
+      setPending((e as CustomEvent<boolean>).detail);
+    }
+    window.addEventListener("sb:capture-pending", onPending);
+    return () => window.removeEventListener("sb:capture-pending", onPending);
+  }, []);
+
+  // Closing the bar unmounts its poll, so the dock stops breathing on its own timer too.
+  useEffect(() => {
+    if (!pending) return;
+    const id = setTimeout(() => setPending(false), PENDING_LIMIT_MS);
+    return () => clearTimeout(id);
+  }, [pending]);
+
+  // Typing anywhere else pushes the dock back; a glance (the pointer) or a focus into it
+  // brings it forward again.
+  useEffect(() => {
+    let lastMove = 0;
+    function onFocusIn(e: FocusEvent) {
+      setDimmed(isTypingTarget(e.target as Element | null, shellRef.current));
+    }
+    function onFocusOut() {
+      setDimmed(false);
+    }
+    function onMove() {
+      const now = Date.now();
+      if (now - lastMove < DIM_THROTTLE_MS) return;
+      lastMove = now;
+      setDimmed(false);
+    }
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("pointermove", onMove);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("pointermove", onMove);
+    };
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    moreRef.current?.focus();
+  }, []);
+
+  const closeBar = useCallback(() => setOpen(false), []);
+  const toggleBar = useCallback(() => setOpen((v) => !v), []);
+  const toggleSheet = useCallback(() => setSheetOpen((v) => !v), []);
+  const openPalette = useCallback(() => window.dispatchEvent(new Event("sb:palette")), []);
+
+  const status = paused ? "Paused" : helperDown ? "Not recording" : "Recording";
+
+  function isActive(href: string): boolean {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  function navSlot(item: NavItem): DockItemProps & { key: string } {
+    return {
+      key: item.href,
+      href: item.href,
+      label: item.label,
+      shortcut: item.shortcut,
+      icon: ICONS[item.icon],
+      active: isActive(item.href),
+      badge: item.badge === "inbox" && inboxCount > 0 ? inboxCount : undefined,
+      dot: item.badge === "activity" && helperDown,
+      title: item.badge === "activity" ? status : undefined,
+      onClick: sheetOpen ? () => setSheetOpen(false) : undefined,
+    };
+  }
+
+  // The row is built as one ordered list so that its indices, the document order, and the
+  // scales the magnify hook reads back out of the DOM all line up.
+  const slots: (DockItemProps & { key: string })[] = narrow
+    ? [
+        ...NARROW_ITEMS.map(navSlot),
+        { key: "search", label: SEARCH_ITEM.label, shortcut: SEARCH_ITEM.shortcut, icon: ICONS.search, onClick: openPalette },
+        { key: "capture", label: CAPTURE_ITEM.label, shortcut: CAPTURE_ITEM.shortcut, icon: ICONS.capture, raised: true, expanded: open, onClick: toggleBar },
+        { key: "more", label: "More", icon: DotsThree, expanded: sheetOpen, onClick: toggleSheet, ref: moreRef },
+      ]
+    : [
+        ...BRAIN_ITEMS.map(navSlot),
+        ...TOOLS_ITEMS.map(navSlot),
+        { key: "search", label: SEARCH_ITEM.label, shortcut: SEARCH_ITEM.shortcut, icon: ICONS.search, onClick: openPalette },
+        { key: "capture", label: CAPTURE_ITEM.label, shortcut: CAPTURE_ITEM.shortcut, icon: ICONS.capture, raised: true, expanded: open, onClick: toggleBar },
+      ];
+  // Hairlines after the brain group and after the tools group; the narrow pill has neither.
+  const dividers = narrow ? [] : [BRAIN_ITEMS.length - 1, BRAIN_ITEMS.length + TOOLS_ITEMS.length - 1];
+  // The pill and the bar are one shared element, so opening morphs one into the other. The
+  // morph is a layout animation rather than a CSS transition, so reduced motion has to drop
+  // the shared id by hand: without it the two just swap.
+  const morph = reduce ? {} : { layout: true, layoutId: "dock-shell" };
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+      <motion.div
+        ref={shellRef}
+        animate={{ opacity: dimmed ? 0.4 : 1 }}
+        transition={{ duration: reduce ? 0 : 0.2 }}
+        className="relative flex flex-col items-center"
+      >
+        <div className={`glow -bottom-72 left-1/2 -translate-x-1/2 ${pending ? "glow-breathing" : ""}`} aria-hidden />
+        {sheetOpen && !open && narrow && (
+          <DockSheet items={SHEET_ITEMS} icons={ICONS} pathname={pathname} onClose={closeSheet} />
+        )}
+        {open ? (
+          <motion.div {...morph} className="relative w-[calc(100vw-2rem)] max-w-[720px]">
+            <PromptBar open onClose={closeBar} />
+          </motion.div>
+        ) : (
+          <motion.nav
+            {...morph}
+            aria-label="Main"
+            onPointerMove={magnify.onPointerMove}
+            onPointerLeave={magnify.onPointerLeave}
+            className="panel relative rounded-full h-16 px-3 flex items-end gap-1"
+          >
+            {/* The lit top edge that makes the pill read as glass rather than a flat plate. */}
+            <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-b from-white/10 to-transparent" aria-hidden />
+            {slots.map(({ key, ...slot }, i) => (
+              <Fragment key={key}>
+                <DockItem {...slot} scale={magnify.scaleAt(i)} />
+                {dividers.includes(i) && <span className="w-px h-8 mb-2 shrink-0 bg-hairline-strong" aria-hidden />}
+              </Fragment>
+            ))}
+          </motion.nav>
+        )}
+      </motion.div>
+    </div>
+  );
+}
