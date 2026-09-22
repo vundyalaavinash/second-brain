@@ -19,7 +19,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {text.split(splitter).map((part, i) =>
         matcher.test(part) ? (
-          <mark key={i} className="bg-violet-dim text-fg rounded-sm px-0.5">
+          <mark key={i} className="bg-violet-dim text-fg rounded-[3px] px-0.5">
             {part}
           </mark>
         ) : (
@@ -30,10 +30,15 @@ function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function SearchPanel() {
-  const [q, setQ] = useState("");
+interface Props {
+  initialQuery?: string;
+  initialTag?: string;
+}
+
+export function SearchPanel({ initialQuery = "", initialTag = "" }: Props) {
+  const [q, setQ] = useState(initialQuery);
   const [type, setType] = useState("");
-  const [tag, setTag] = useState("");
+  const [tag, setTag] = useState(initialTag);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [container, setContainer] = useState("");
@@ -75,7 +80,7 @@ export function SearchPanel() {
   }, []);
 
   useEffect(() => {
-    if (!q.trim()) {
+    if (!q.trim() && !tag) {
       return;
     }
     const ctrl = new AbortController();
@@ -103,12 +108,13 @@ export function SearchPanel() {
     };
   }, [q, type, tag, from, to, container, archived]);
 
-  const visible = q.trim() ? results : [];
+  const active = q.trim().length > 0 || Boolean(tag);
+  const visible = active ? results : [];
   const status = useMemo(() => {
     if (loading) return "Searching";
-    if (!q.trim()) return "Type to search by keyword or meaning";
+    if (!active) return "Type to search by keyword or meaning";
     return `${visible.length} result${visible.length === 1 ? "" : "s"}`;
-  }, [loading, q, visible.length]);
+  }, [loading, active, visible.length]);
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
@@ -178,7 +184,7 @@ export function SearchPanel() {
           {visible.map((r) => (
             <li
               key={r.item.id}
-              className="rounded-lg border border-hairline bg-layer-1 px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
+              className="pane px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
             >
               <div className="flex items-center gap-3">
                 <TypeIcon type={r.item.type} />
@@ -209,7 +215,7 @@ export function SearchPanel() {
         </ul>
       )}
 
-      {q.trim() && !loading && visible.length === 0 && (
+      {active && !loading && visible.length === 0 && (
         <EmptyState icon={Search} text="No matches. Try fewer words or a different filter." />
       )}
     </div>

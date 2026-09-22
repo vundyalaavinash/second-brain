@@ -106,21 +106,23 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
         className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
       />
       {preview ? (
-        <div className="md min-h-[200px]">
+        <div className="pane p-6 md min-h-[200px]">
           <Markdown remarkPlugins={[remarkGfm]}>{profile || "*No profile yet.*"}</Markdown>
         </div>
       ) : (
-        <RichEditor
-          value={profile}
-          onChange={(md) => {
-            setProfile(md);
-            latest.current = { ...latest.current, profile: md };
-            setDirty(true);
-          }}
-          placeholder="Who they are, their role, how you work together, open threads."
-          className="min-h-[200px]"
-          onReady={onEditorReady}
-        />
+        <div className="pane p-6">
+          <RichEditor
+            value={profile}
+            onChange={(md) => {
+              setProfile(md);
+              latest.current = { ...latest.current, profile: md };
+              setDirty(true);
+            }}
+            placeholder="Who they are, their role, how you work together, open threads."
+            className="min-h-[200px]"
+            onReady={onEditorReady}
+          />
+        </div>
       )}
     </div>
   );

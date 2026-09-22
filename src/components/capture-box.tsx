@@ -81,7 +81,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
         setDuplicate(null);
       }}
-      className={`rounded-lg border bg-layer-1 transition-colors duration-150 focus-within:border-hairline-strong ${dragging ? "border-violet" : "border-hairline"}`}
+      className={`pane transition-colors duration-150 focus-within:border-hairline-strong ${dragging ? "border-violet" : ""}`}
     >
       <div className="flex items-center justify-between px-4 h-9 border-b border-hairline">
         <span className="flex items-center gap-1.5">

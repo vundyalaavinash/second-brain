@@ -237,7 +237,7 @@ export function InboxProcessor() {
       )}
 
       {mode === "focus" && current && (
-        <section className="rounded-lg border border-hairline bg-layer-1 overflow-hidden">
+        <section className="pane overflow-hidden">
           <div className="flex items-center gap-3 px-4 h-11 border-b border-hairline">
             <TypeIcon type={current.type} />
             <Link href={`/items/${current.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-violet-bright">
