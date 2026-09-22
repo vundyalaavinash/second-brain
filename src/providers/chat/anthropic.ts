@@ -25,10 +25,16 @@ export function createAnthropicChatProvider(apiKey: string): ChatProvider {
         max_tokens: MAX_TOKENS,
         thinking: { type: "adaptive" },
         system,
-        tools: [{ name, description, input_schema: input_schema as Anthropic.Tool["input_schema"] }],
+        // The generated schema already closes every object and lists what is required, which is
+        // what strict tool use needs to guarantee the input validates.
+        tools: [{ name, description, strict: true, input_schema: input_schema as Anthropic.Tool["input_schema"] }],
         tool_choice: { type: "tool", name },
         messages: [{ role: "user", content: user }],
       });
+      // Adaptive thinking spends from the same budget; a cut-off answer is a budget problem,
+      // not a misbehaving model, and the message should say so.
+      if (res.stop_reason === "max_tokens") throw new Error(`The answer did not fit in ${MAX_TOKENS} tokens`);
+      if (res.stop_reason === "refusal") throw new Error(`Claude declined: ${res.stop_details?.category ?? "unknown"}`);
       const block = res.content.find((b) => b.type === "tool_use" && b.name === name);
       if (!block || block.type !== "tool_use") throw new Error(`Claude answered without calling ${name}`);
       return schema.parse(block.input);

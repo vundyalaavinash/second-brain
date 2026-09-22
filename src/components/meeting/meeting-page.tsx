@@ -25,6 +25,8 @@ const RichEditor = dynamic(() => import("../editor/rich-editor").then((m) => m.R
 
 /** Ruling: three seconds while there is something to catch up with, and not a beat otherwise. */
 const POLL_MS = 3000;
+/** How long the page keeps looking for a summary after the transcript lands. */
+const SUMMARY_WAIT_MS = 5 * 60_000;
 const TICK_MS = 1000;
 
 /** Everything the meeting page reads out of `item.meta`. */
@@ -89,6 +91,9 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
   // Ruling: poll while the recorder runs or the final pass is still working, and stop the
   // moment the transcript lands or the item settles either way.
   const polling = !finalReady && (isRecording || item.status === "processing");
+  // The summary is written by a job that starts after the transcript lands, so the page keeps
+  // looking a little longer, when there is a key to write one with.
+  const summaryPending = hasKey && finalReady && !meta.summary && !meta.summaryError;
   // Dropped-in audio is transcribed the same way, and has no recording session of its own.
   const transcribing = !isRecording && !finalReady && item.status === "processing";
 
@@ -111,10 +116,17 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
   }, [refresh]);
 
   useEffect(() => {
-    if (!polling) return;
-    const timer = setInterval(() => void refresh(), POLL_MS);
+    if (!polling && !summaryPending) return;
+    const since = Date.now();
+    const timer = setInterval(() => {
+      if (!polling && Date.now() - since > SUMMARY_WAIT_MS) {
+        clearInterval(timer);
+        return;
+      }
+      void refresh();
+    }, POLL_MS);
     return () => clearInterval(timer);
-  }, [polling, refresh]);
+  }, [polling, summaryPending, refresh]);
 
   useEffect(() => {
     if (!isRecording) return;

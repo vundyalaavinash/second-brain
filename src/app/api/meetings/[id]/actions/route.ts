@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { getItem, parseMeta, updateItem } from "@/domain/items";
 import { MeetingError } from "@/domain/meetings/errors";
-import { createTask } from "@/domain/tasks";
+import { createTask, listTasks } from "@/domain/tasks";
 import { errorResponse, parseId, serializeTask } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,14 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     const meta = parseMeta<MeetingMeta>(item);
     const action = meta.summary?.proposed_actions?.[index];
     if (!action) throw new MeetingError(`Meeting ${id} has no proposed action ${index}`, 404);
+
+    // A second click, a stale tab or a retry must not grow a second task: an index already
+    // accepted answers with the task it made.
+    if (meta.acceptedActions?.includes(index)) {
+      const made = listTasks(db, { sourceItemId: item.id, status: "all" });
+      const existing = made.find((t) => t.title === action.title || t.title === title) ?? made[made.length - 1];
+      if (existing) return NextResponse.json({ task: serializeTask(existing) }, { status: 200 });
+    }
 
     const task = createTask(db, { title, notes: action.notes, containerId: item.containerId, sourceItemId: item.id });
     const accepted = [...new Set([...(meta.acceptedActions ?? []), index])].sort((a, b) => a - b);

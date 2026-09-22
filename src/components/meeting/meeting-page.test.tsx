@@ -223,4 +223,28 @@ describe("MeetingPage", () => {
     mount(item({}), { hasKey: false });
     expect(screen.getByText("Add an Anthropic key in Settings to get summaries")).toBeTruthy();
   });
+
+  it("keeps polling for the summary after the transcript lands while a key is set", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fn } = stubFetch();
+      mount(item({ final_transcript_ready: true, transcript: [] }), { hasKey: true });
+      await vi.advanceTimersByTimeAsync(3100);
+      expect(fn.mock.calls.some(([u]) => String(u) === "/api/items/7")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling once the summary is there", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fn } = stubFetch();
+      mount(item({ final_transcript_ready: true, transcript: [], summary: { summary: "s", decisions: [], proposed_actions: [] } }), { hasKey: true });
+      await vi.advanceTimersByTimeAsync(6500);
+      expect(fn.mock.calls.some(([u]) => String(u) === "/api/items/7")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
