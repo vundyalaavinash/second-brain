@@ -64,6 +64,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
         setError("Could not open that meeting");
         return;
       }
+      setError(null);
       router.push(`/items/${itemId}`);
     })();
   }
@@ -113,6 +114,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
                 onDrop={() => patch(task.id, { status: "dropped" })}
                 onDelete={() => remove(task.id)}
                 onPlanDate={(date) => planOn(task.id, date)}
+                planFrom={week.start}
                 compact
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData(TASK_MIME, String(task.id))}

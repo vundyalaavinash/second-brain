@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { PlannerShell } from "./planner-shell";
+import { usePlanDate } from "@/lib/plan-date";
 import type { PlannerDayDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
@@ -11,6 +12,16 @@ const CALENDAR = { calendarsSeen: 2, permission: true };
 
 function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
   return { date: "2026-09-22", plan: [], unfinishedYesterday: [], due: { overdue: [], today: [] }, meetings: [], calendar };
+}
+
+/** The prompt bar's view of the open plan, read through the same hook the bar uses. */
+function PlanDateProbe() {
+  return <span data-testid="plan-date">{usePlanDate() ?? "none"}</span>;
+}
+
+function readPlanDate(): string {
+  render(<PlanDateProbe />);
+  return screen.getByTestId("plan-date").textContent ?? "";
 }
 
 function tabs(): { label: string; selected: string | null }[] {
@@ -45,9 +56,31 @@ describe("PlannerShell", () => {
     expect(screen.getByRole("button", { name: "Open Internet Accounts" })).toBeTruthy();
   });
 
-  it("waits quietly while the helper has not reported yet", () => {
-    render(<PlannerShell view="day" today="2026-09-22" initial={day({ calendarsSeen: null, permission: false })} />);
+  it("waits quietly while a permitted helper has not reported yet", () => {
+    render(<PlannerShell view="day" today="2026-09-22" initial={day({ calendarsSeen: null, permission: true })} />);
     expect(screen.getByText("Waiting for the activity helper to report calendars")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Open Internet Accounts" })).toBeNull();
+  });
+
+  it("asks for calendar access rather than waiting when the helper was refused it", () => {
+    render(<PlannerShell view="day" today="2026-09-22" initial={day({ calendarsSeen: null, permission: false })} />);
+    expect(screen.queryByText("Waiting for the activity helper to report calendars")).toBeNull();
+    expect(screen.getByText(/no calendar access/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Internet Accounts" })).toBeTruthy();
+  });
+
+  it("points each tab at the panel the views are rendered in", () => {
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+    const panel = screen.getByRole("tabpanel");
+    expect(panel.getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Day" }).id);
+    for (const tab of screen.getAllByRole("tab")) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
+  });
+
+  it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {
+    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-09-21", days: [] }} />);
+    expect(readPlanDate()).toBe("2026-09-22");
+    cleanup();
+    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-10-05", days: [] }} />);
+    expect(readPlanDate()).toBe("2026-10-05");
   });
 });

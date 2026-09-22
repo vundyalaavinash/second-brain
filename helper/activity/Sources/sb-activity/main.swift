@@ -133,7 +133,9 @@ func tick() {
         flush()
         if !buffer.isEmpty { lastRetry = now }
     }
-    if calendarChanged || now.timeIntervalSince(lastCalendar) >= CALENDAR_INTERVAL {
+    // Without calendar access there is nothing to say about the window: an empty payload
+    // would tell the server every event in it had vanished, so nothing is posted at all.
+    if calendar.granted, calendarChanged || now.timeIntervalSince(lastCalendar) >= CALENDAR_INTERVAL {
         calendarChanged = false
         lastCalendar = now
         let body = CalendarBody(events: calendar.upcoming(now: now), window: calendar.window(now: now), calendarsSeen: calendar.calendarsSeen)

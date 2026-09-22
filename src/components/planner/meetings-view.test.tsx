@@ -93,6 +93,22 @@ describe("MeetingsView", () => {
     expect(nav.push).not.toHaveBeenCalled();
   });
 
+  it("says it once when there is nothing to list, rather than group by empty group", () => {
+    render(<MeetingsView today={TODAY} meetings={[]} />);
+    expect(screen.getByText("No meetings in the next 60 days")).toBeTruthy();
+    expect(screen.queryByText("No meetings today")).toBeNull();
+    expect(screen.queryByText("Past 30 days")).toBeNull();
+    // The search box stays, so a filter that matches nothing can still be cleared.
+    expect(screen.getByRole("searchbox", { name: "Search meetings" })).toBeTruthy();
+  });
+
+  it("says a search matched nothing and keeps the box that can clear it", () => {
+    mount();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search meetings" }), { target: { value: "nothing matches this" } });
+    expect(screen.getByText("No meetings match that search")).toBeTruthy();
+    expect(screen.queryByTestId("meeting-title")).toBeNull();
+  });
+
   it("keeps a row's record button out of reach until recording arrives", () => {
     mount();
     const row = screen.getByText("Standup").closest("li") as HTMLElement;

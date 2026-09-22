@@ -17,6 +17,8 @@ const task: TaskDTO = {
 interface ExtraProps {
   onPlan?: () => void;
   onPlanDate?: (date: string) => void;
+  planFrom?: string;
+  planLabel?: string;
   planned?: boolean;
   compact?: boolean;
 }
@@ -113,6 +115,27 @@ describe("TaskRow planning", () => {
     expect(onPlanDate).toHaveBeenCalledWith("2026-09-18");
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("offers the week on screen, not this one, when the days start elsewhere", () => {
+    const onPlanDate = vi.fn();
+    renderRow({ onPlanDate, planFrom: "2026-10-05" });
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plan for" }));
+    const days = screen.getByRole("menu", { name: "Plan for" });
+    // No "Today": today is three weeks behind the week being shown.
+    expect(Array.from(days.querySelectorAll('[role="menuitem"]')).map((el) => el.textContent)).toEqual([
+      "Monday 5", "Tuesday 6", "Wednesday 7", "Thursday 8", "Friday 9", "Saturday 10", "Sunday 11",
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Wednesday 7" }));
+    expect(onPlanDate).toHaveBeenCalledWith("2026-10-07");
+  });
+
+  it("names the single plan item after the day the view is showing", () => {
+    renderRow({ onPlan: vi.fn(), planLabel: "Plan for this day" });
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: "Plan for this day" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Plan for today" })).toBeNull();
   });
 
   it("escape closes the day list first and leaves the menu open", () => {

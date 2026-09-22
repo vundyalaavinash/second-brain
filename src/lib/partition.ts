@@ -1,4 +1,4 @@
-import type { TaskDTO } from "@/lib/dto";
+import type { TaskDTO } from "./dto";
 
 /** Open dated tasks split into what is late and what is due today; future and undated drop out. */
 export function partitionDue(tasks: TaskDTO[], today: string): { overdue: TaskDTO[]; today: TaskDTO[] } {

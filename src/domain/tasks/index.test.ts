@@ -36,6 +36,14 @@ describe("tasks domain", () => {
     expect(listTasks(t.db, {}).length).toBe(2);
   });
 
+  it("lists only the tasks due by a date, undated ones included nowhere", () => {
+    const late = createTask(t.db, { title: "Late", dueDate: "2026-09-20" });
+    const today = createTask(t.db, { title: "Today", dueDate: "2026-09-22" });
+    createTask(t.db, { title: "Next month", dueDate: "2026-10-20" });
+    createTask(t.db, { title: "Someday" });
+    expect(listTasks(t.db, { status: "open", dueOnOrBefore: "2026-09-22" }).map((x) => x.id).sort()).toEqual([late.id, today.id].sort());
+  });
+
   it("complete sets and reopen clears completedAt; drop is excluded from progress", () => {
     const a = createTask(t.db, { title: "A", containerId: projectId });
     const b = createTask(t.db, { title: "B", containerId: projectId });

@@ -78,6 +78,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
         onPlan={() => (planned ? unplan(task.id) : plan(task.id))}
+        planLabel={day.date === today ? undefined : "Plan for this day"}
         planned={planned}
         draggable={planned}
         onDragStart={planned ? () => setDragId(task.id) : undefined}

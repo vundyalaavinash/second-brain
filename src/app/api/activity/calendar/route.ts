@@ -50,7 +50,9 @@ export async function POST(req: Request): Promise<Response> {
     const db = getDb();
     const { events, window, calendarsSeen } = parsed.data;
     if (calendarsSeen !== undefined) recordHelperSeen(db, new Date().toISOString(), { calendarsSeen });
-    return NextResponse.json(replaceCalendarEvents(db, events, window));
+    // `calendarsSeen` doubles as proof the helper could read the calendar at all: without it an
+    // empty payload speaks for no days rather than emptying the whole window.
+    return NextResponse.json(replaceCalendarEvents(db, events, window, { calendarsSeen }));
   } catch (err) {
     return errorResponse(err);
   }

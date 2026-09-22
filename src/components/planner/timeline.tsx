@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ActivityMeetingDTO } from "@/lib/dto";
+import type { ActivityMeetingDTO, MeetingItemDTO, MeetingListDTO } from "@/lib/dto";
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
 import { layoutBlocks } from "./timeline-layout";
@@ -30,7 +30,15 @@ function label(m: ActivityMeetingDTO): string {
   return `${m.title}, ${formatClock(m.startsAt)} to ${formatClock(m.endsAt)}, ${count(m.attendees, "attendee")}`;
 }
 
-export function Timeline({ date, meetings }: { date: string; meetings: ActivityMeetingDTO[] }) {
+/** What a captured meeting's note already holds, one dot each. A block is too small for the
+ * word, so the dot carries it in a title; it takes pointer events back so the title shows. */
+const BADGES: { key: keyof Omit<MeetingItemDTO, "id">; label: string; dot: string }[] = [
+  { key: "hasNotes", label: "Notes", dot: "bg-violet" },
+  { key: "hasTranscript", label: "Transcript", dot: "bg-violet-bright" },
+  { key: "hasSummary", label: "Summary", dot: "bg-success" },
+];
+
+export function Timeline({ date, meetings }: { date: string; meetings: MeetingListDTO[] }) {
   const router = useRouter();
   const [now, setNow] = useState<number | null>(null);
 
@@ -114,7 +122,9 @@ export function Timeline({ date, meetings }: { date: string; meetings: ActivityM
               <div className="relative pointer-events-none p-2 flex flex-col gap-0.5 h-full">
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="truncate text-[13px]">{m.title}</span>
-                  {m.itemId !== null && <span className="w-1.5 h-1.5 rounded-full bg-violet shrink-0" title="Has a note" aria-hidden />}
+                  {BADGES.filter((badge) => m.item?.[badge.key]).map((badge) => (
+                    <span key={badge.label} className={`w-1.5 h-1.5 rounded-full shrink-0 pointer-events-auto ${badge.dot}`} title={badge.label} />
+                  ))}
                 </span>
                 <span className="font-mono text-[11px] text-fg-faint">
                   {formatClock(m.startsAt)}–{formatClock(m.endsAt)}

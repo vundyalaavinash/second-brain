@@ -21,13 +21,14 @@ function formatShortDate(day: string): string {
 
 const PLAN_DAYS = 7;
 
-/** The next seven days from `today`, today first. Hand-rolled names, like the rest of the app:
- * `toLocale*` would follow the machine's locale instead of the one the UI is written in. */
-function planDays(today: string): { date: string; label: string }[] {
+/** Seven days from `from`, that day first, named "Today" only when it really is today. Hand-rolled
+ * names, like the rest of the app: `toLocale*` would follow the machine's locale instead of the
+ * one the UI is written in. */
+function planDays(from: string, today: string): { date: string; label: string }[] {
   return Array.from({ length: PLAN_DAYS }, (_, i) => {
-    const date = addDaysLocal(today, i);
+    const date = addDaysLocal(from, i);
     const [y, m, d] = date.split("-").map(Number);
-    return { date, label: `${i === 0 ? "Today" : WEEKDAYS[new Date(y, m - 1, d).getDay()]} ${d}` };
+    return { date, label: `${date === today ? "Today" : WEEKDAYS[new Date(y, m - 1, d).getDay()]} ${d}` };
   });
 }
 
@@ -50,6 +51,10 @@ interface Props {
   onPlan?: () => void;
   /** Offered instead of `onPlan` when the day is the caller's to choose. */
   onPlanDate?: (date: string) => void;
+  /** The first of the seven days the "Plan for" list offers. Defaults to today. */
+  planFrom?: string;
+  /** What the single plan item is called, for a view whose day is not today. */
+  planLabel?: string;
   planned?: boolean;
   /** The week column's row: stacked, two-line title, no grip or priority chip. */
   compact?: boolean;
@@ -60,7 +65,8 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planned, compact, draggable, onDragStart, onDragOver, onRowDrop,
+  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
+  planLabel = "Plan for today", planned, compact, draggable, onDragStart, onDragOver, onRowDrop,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -305,7 +311,7 @@ export function TaskRow({
                     </button>
                     {planOpen && (
                       <div role="menu" aria-label="Plan for" className="panel absolute right-full top-0 mr-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-32 z-50">
-                        {planDays(today).map((day) => (
+                        {planDays(planFrom, today).map((day) => (
                           <button
                             key={day.date}
                             type="button"
@@ -333,7 +339,7 @@ export function TaskRow({
                       onPlan();
                     }}
                   >
-                    {planned ? "Remove from plan" : "Plan for today"}
+                    {planned ? "Remove from plan" : planLabel}
                   </button>
                 )}
                 <div role="group" aria-label="Priority" className="flex items-center gap-1 px-2 py-1">

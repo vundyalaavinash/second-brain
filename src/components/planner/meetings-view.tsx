@@ -117,27 +117,31 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
         </span>
       </div>
 
-      {group("Today", todays, "No meetings today")}
-      {upcoming.map((g) => group(g.label, g.meetings))}
-
-      <details className="pane p-2">
-        <summary className="micro px-1 cursor-pointer focus-ring rounded-sm">Past 30 days</summary>
-        <div className="flex flex-col gap-2 pt-2">
-          {past.length === 0 ? (
-            <p className="text-[13px] text-fg-faint m-0 px-1">Nothing in the past 30 days</p>
-          ) : (
-            past.map((g) => (
-              <div key={g.key} className="flex flex-col gap-1">
-                <span className="micro px-1">{g.label}</span>
-                {rows(g.meetings)}
-              </div>
-            ))
-          )}
-        </div>
-      </details>
-
-      {shown.length === 0 && (
+      {/* With nothing to group, the groups are all empty lines saying the same thing: one line
+        * says it once. The setup card above the tabs carries the fix when there is one. */}
+      {shown.length === 0 ? (
         <p className="text-[13px] text-fg-faint m-0">{q ? "No meetings match that search" : "No meetings in the next 60 days"}</p>
+      ) : (
+        <>
+          {group("Today", todays, "No meetings today")}
+          {upcoming.map((g) => group(g.label, g.meetings))}
+
+          <details className="pane p-2">
+            <summary className="micro px-1 cursor-pointer focus-ring rounded-sm">Past 30 days</summary>
+            <div className="flex flex-col gap-2 pt-2">
+              {past.length === 0 ? (
+                <p className="text-[13px] text-fg-faint m-0 px-1">Nothing in the past 30 days</p>
+              ) : (
+                past.map((g) => (
+                  <div key={g.key} className="flex flex-col gap-1">
+                    <span className="micro px-1">{g.label}</span>
+                    {rows(g.meetings)}
+                  </div>
+                ))
+              )}
+            </div>
+          </details>
+        </>
       )}
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
     </div>

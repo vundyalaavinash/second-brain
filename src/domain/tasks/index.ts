@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { containers, items, tasks, type Task } from "@/db/schema";
 import type { TaskPriority, TaskStatus } from "@/db/enums";
@@ -111,11 +111,16 @@ export function getTask(db: DB, id: number): Task | undefined {
 
 const STATUS_RANK = sql`case ${tasks.status} when 'open' then 0 when 'done' then 1 else 2 end`;
 
-export function listTasks(db: DB, filter: { containerId?: number | null; status?: TaskStatus | "all" } = {}): Task[] {
+export function listTasks(
+  db: DB,
+  /** `dueOnOrBefore` also drops the undated: a SQL comparison against null is never true. */
+  filter: { containerId?: number | null; status?: TaskStatus | "all"; dueOnOrBefore?: string } = {},
+): Task[] {
   const conds = [];
   if (filter.containerId !== undefined) conds.push(containerWhere(filter.containerId));
   const status = filter.status ?? "open";
   if (status !== "all") conds.push(eq(tasks.status, status));
+  if (filter.dueOnOrBefore !== undefined) conds.push(lte(tasks.dueDate, filter.dueOnOrBefore));
   return db
     .select()
     .from(tasks)

@@ -16,6 +16,7 @@ let r: {
   pause: typeof import("./activity/pause/route");
   capture: typeof import("./activity/meetings/[id]/capture/route");
   status: typeof import("./activity/status/route");
+  openSettings: typeof import("./activity/open-settings/route");
   label: typeof import("./activity/sessions/[id]/label/route");
 };
 const TOKEN = "abc123";
@@ -46,6 +47,7 @@ beforeAll(async () => {
     pause: await import("./activity/pause/route"),
     capture: await import("./activity/meetings/[id]/capture/route"),
     status: await import("./activity/status/route"),
+    openSettings: await import("./activity/open-settings/route"),
     label: await import("./activity/sessions/[id]/label/route"),
   };
 });
@@ -196,6 +198,24 @@ describe("activity api", () => {
     const { calendarEvents } = await import("@/db/schema");
     const row = getDb().select().from(calendarEvents).all()[0];
     expect(row.notes.length).toBe(4000);
+  });
+
+  it("keeps the window when an unauthorised helper posts an empty payload", async () => {
+    const before = (await getDay()).meetings.length;
+    expect(before).toBeGreaterThan(0);
+    const res = await r.calendar.POST(
+      json("POST", "/api/activity/calendar", { events: [], window: { from: "2026-09-01", to: "2026-10-01" } }, TOKEN),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ removed: 0 });
+    expect((await getDay()).meetings).toHaveLength(before);
+  });
+
+  it("refuses to open System Settings for a page on another site", async () => {
+    // No `open` runs, so the assertion is the status alone: a same-origin call would launch it.
+    const req = new Request("http://127.0.0.1:3141/api/activity/open-settings", { method: "POST", headers: { origin: "https://evil.example" } });
+    const res = await r.openSettings.POST(req);
+    expect(res.status).toBe(403);
   });
 
   it("manages rules, reorders, and recategorises", async () => {

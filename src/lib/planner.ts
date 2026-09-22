@@ -5,8 +5,8 @@ import { addDays, getHelperState, listMeetings, localDay } from "@/domain/activi
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { parseMeta } from "@/domain/items";
-import { partitionDue } from "@/components/planner/partition";
 import { serializeMeeting, serializePlanTask, serializeTask } from "./api";
+import { partitionDue } from "./partition";
 import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerWeekDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
@@ -22,7 +22,9 @@ export function plannerCalendar(db: DB): PlannerCalendarDTO {
 export function plannerDay(db: DB, date: string): PlannerDayDTO {
   const plan = listPlan(db, date).map(serializePlanTask);
   const planned = new Set(plan.map((t) => t.id));
-  const open = listTasks(db, { status: "open" })
+  // Only what the day can show: `partitionDue` keeps the late and the due-today, so a task
+  // due next month never needs loading.
+  const open = listTasks(db, { status: "open", dueOnOrBefore: date })
     .filter((t) => !planned.has(t.id))
     .map(serializeTask);
   return {
@@ -30,7 +32,8 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
     plan,
     unfinishedYesterday: unfinished(db, addDays(date, -1)).map(serializeTask),
     due: partitionDue(open, date),
-    meetings: listMeetings(db, { from: date, to: addDays(date, 1) }).map(serializeMeeting),
+    // The same flagged meetings the list view shows, so the timeline can badge them too.
+    meetings: plannerMeetings(db, { from: date, to: addDays(date, 1) }),
     calendar: plannerCalendar(db),
   };
 }
@@ -45,7 +48,8 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
     if (list) list.push(serializeMeeting(ev));
     else byDay.set(day, [serializeMeeting(ev)]);
   }
-  const open = listTasks(db, { status: "open" }).map(serializeTask);
+  // The week's last day is the latest one a column can hold; anything later is not shown.
+  const open = listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }).map(serializeTask);
   return {
     start,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => ({

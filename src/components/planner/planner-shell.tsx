@@ -34,6 +34,10 @@ const TAB = "focus-ring relative rounded-full h-7 px-3 flex items-center text-[1
 
 const CRUMB: Record<PlannerView, string> = { day: "Planner", week: "Week", meetings: "Meetings" };
 
+/** The one panel the tabs speak for: each view is a route, so only the open one is ever rendered. */
+const PANEL_ID = "planner-panel";
+const tabId = (view: PlannerView) => `planner-tab-${view}`;
+
 function Tabs({ view }: { view: PlannerView }) {
   const reduce = useReducedMotion();
   return (
@@ -44,8 +48,10 @@ function Tabs({ view }: { view: PlannerView }) {
           <Link
             key={tab.href}
             href={tab.href}
+            id={tabId(tab.view)}
             role="tab"
             aria-selected={selected}
+            aria-controls={PANEL_ID}
             className={`${TAB} ${selected ? "text-fg" : "text-fg-muted hover:text-fg"}`}
           >
             {/* The indicator slides between the tabs; under reduced motion it is drawn plainly
@@ -74,7 +80,10 @@ export function PlannerShell(props: Props) {
   // the listeners the panes hang off them.
   const dayDate = day?.date ?? null;
   const weekStart = week?.start ?? null;
-  const selectedDate = dayDate ?? weekStart;
+  // A week is seven days, not one: a task typed while it is open lands on today when today is
+  // in the week on screen, and on that week's first day when it is not.
+  const weekPlanDate = weekStart === null ? null : today >= weekStart && today < addDaysLocal(weekStart, 7) ? today : weekStart;
+  const selectedDate = dayDate ?? weekPlanDate;
 
   // A task typed into the prompt bar while the Planner is open lands on the day being shown.
   useEffect(() => {
@@ -148,9 +157,11 @@ export function PlannerShell(props: Props) {
 
       {calendar && <SetupCard calendar={calendar} />}
 
-      {day && <DayView day={day} today={today} onRefresh={refreshDay} />}
-      {week && <WeekView week={week} today={today} onRefresh={refreshWeek} />}
-      {meetings && <MeetingsView today={today} meetings={meetings.meetings} onRefresh={refreshMeetings} />}
+      <div id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(view)}>
+        {day && <DayView day={day} today={today} onRefresh={refreshDay} />}
+        {week && <WeekView week={week} today={today} onRefresh={refreshWeek} />}
+        {meetings && <MeetingsView today={today} meetings={meetings.meetings} onRefresh={refreshMeetings} />}
+      </div>
     </div>
   );
 }

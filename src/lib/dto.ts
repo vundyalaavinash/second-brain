@@ -168,7 +168,7 @@ export interface PlannerDayDTO {
   unfinishedYesterday: TaskDTO[];
   /** Open tasks due on or before the date that are not already on the plan. */
   due: { overdue: TaskDTO[]; today: TaskDTO[] };
-  meetings: ActivityMeetingDTO[];
+  meetings: MeetingListDTO[];
   calendar: PlannerCalendarDTO;
 }
 

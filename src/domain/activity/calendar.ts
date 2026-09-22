@@ -58,11 +58,16 @@ export interface CalendarWindow {
  * Upserts the payload by `externalId` and drops the events that vanished from the window.
  * Rows keep their `id` (sessions reference it), `item_id`, and `no_record`; a payload without a
  * window speaks only for the days it carries, which is what older helpers mean by a post.
+ *
+ * A window is only believed when the payload proves the helper could read the calendar: it
+ * carries events, or it reports how many calendars it saw. An empty payload from a helper
+ * that was refused calendar access must not purge two months of meetings.
  */
 export function replaceCalendarEvents(
   db: DB,
   events: CalendarEventInput[],
   window?: CalendarWindow,
+  proof: { calendarsSeen?: number } = {},
 ): { days: string[]; inserted: number; removed: number } {
   const days = [...new Set(events.map((e) => localDay(e.startsAt)))];
   const externalIds = events.map((e) => e.externalId);
@@ -93,11 +98,13 @@ export function replaceCalendarEvents(
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();
       inserted++;
     }
-    const inWindow = window
-      ? and(gte(calendarEvents.day, window.from), lt(calendarEvents.day, window.to))
-      : days.length
-        ? inArray(calendarEvents.day, days)
-        : undefined;
+    const hasAccess = events.length > 0 || proof.calendarsSeen !== undefined;
+    const inWindow =
+      window && hasAccess
+        ? and(gte(calendarEvents.day, window.from), lt(calendarEvents.day, window.to))
+        : days.length
+          ? inArray(calendarEvents.day, days)
+          : undefined;
     if (inWindow) {
       const stale = externalIds.length ? and(inWindow, notInArray(calendarEvents.externalId, externalIds)) : inWindow;
       removed = tx.delete(calendarEvents).where(stale).run().changes;

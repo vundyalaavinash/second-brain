@@ -141,6 +141,23 @@ describe("calendar", () => {
     expect(rows.find((e) => e.externalId === "in")!.id).toBe(keptId);
   });
 
+  it("keeps the window when an empty payload cannot prove the helper read the calendar", () => {
+    const inside = { externalId: "in", title: "Inside", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 1, hasCallLink: false };
+    const window = { from: "2026-09-20", to: "2026-09-30" };
+    replaceCalendarEvents(t.db, [inside], window);
+
+    // A helper refused calendar access sees no events and reports no calendars: believing its
+    // window would empty two months of meetings.
+    const r = replaceCalendarEvents(t.db, [], window);
+    expect(r.removed).toBe(0);
+    expect(t.db.select().from(calendarEvents).all().map((e) => e.externalId)).toEqual(["in"]);
+
+    // The same empty payload with the calendars-seen signal is a genuinely empty window.
+    const cleared = replaceCalendarEvents(t.db, [], window, { calendarsSeen: 2 });
+    expect(cleared.removed).toBe(1);
+    expect(t.db.select().from(calendarEvents).all()).toHaveLength(0);
+  });
+
   it("without a window a payload speaks only for the days it carries", () => {
     const monday = { externalId: "m", title: "Monday", startsAt: "2026-09-21T09:00:00.000Z", endsAt: "2026-09-21T10:00:00.000Z", attendees: 1, hasCallLink: false };
     const tuesday = { externalId: "t1", title: "Tuesday", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 1, hasCallLink: false };
