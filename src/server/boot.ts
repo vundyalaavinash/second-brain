@@ -32,6 +32,11 @@ function ensureTodayBackupQueued(db: DB): void {
  * Ask the recorder to stop before the process goes, so `sb-recorder` flushes its WAV header
  * and next boot's sweep finds a playable file. Once per process: HMR re-runs `boot`, and a
  * stack of handlers would each try to stop the same helper.
+ *
+ * Under `next start` Next registers its own signal cleanup first and exits on its own once
+ * the HTTP server has closed, so the 3 s budget is best effort, not a guarantee: launchd
+ * signals the whole process group and `sb-recorder` handles SIGTERM itself, which is what
+ * actually keeps the WAV whole when this handler is cut short.
  */
 function hookShutdown(): void {
   if (g.__sbShutdownHooked) return;
@@ -39,7 +44,8 @@ function hookShutdown(): void {
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
       void stopForShutdown({ log: (m) => console.log(`[shutdown] ${m}`) }).finally(() => {
-        // The handler is gone with `once`, so this re-raise hits Node's default: exit.
+        // This handler is gone with `once`; the re-raise reaches Next's own cleanup (already
+        // running, so a no-op) or, without it, Node's default exit.
         process.kill(process.pid, signal);
       });
     });
