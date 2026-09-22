@@ -156,6 +156,10 @@ describe("MeetingPage", () => {
     expect(screen.getByText("Let us start with the recorder")).toBeTruthy();
     expect(screen.getByText("Listening")).toBeTruthy();
     expect(screen.getByRole("button", { name: /stop recording/i })).toBeTruthy();
+    // The live region carries the stable word only: the clock beside it ticks every second.
+    const live = screen.getByRole("status");
+    expect(live.textContent).toBe("Recording");
+    expect(live.querySelector(".font-mono")).toBeNull();
   });
 
   it("shows final segments with mm:ss and filters them", () => {

@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { RecorderStatusDTO } from "@/lib/dto";
 
 const POLL_MS = 5000;
+/** Slow enough to cost nothing, quick enough that an auto-started meeting shows up while it matters. */
+const IDLE_POLL_MS = 30_000;
 const TICK_MS = 1000;
 
 const IDLE: RecorderStatusDTO = { state: "idle", missing: [] };
@@ -18,9 +20,11 @@ function clock(ms: number): string {
 
 /**
  * The one thing on screen that says a recording is running, beside the dock pill. It asks the
- * recorder where it stands on mount, whenever something says the session changed, and every
- * five seconds while a session is alive; an idle recorder is nothing to show, so it renders
- * nothing and stops asking.
+ * recorder where it stands on mount, whenever something says the session changed, every five
+ * seconds while a session is alive, and every thirty seconds while it is not: the auto-record
+ * rule starts sessions on the server, and no server tick can dispatch a browser event, so the
+ * slow poll is the only way an auto-started meeting ever reaches this chip. An idle recorder
+ * is nothing to show, so it renders nothing while it waits.
  */
 export function RecordingChip() {
   const [status, setStatus] = useState<RecorderStatusDTO>(IDLE);
@@ -49,16 +53,17 @@ export function RecordingChip() {
     })();
   }, []);
 
-  // Idle is the resting state, and it costs nothing: no poll, no clock, no markup.
+  // Idle is the resting state: no clock and no markup, and only the slow poll left running.
   const idle = status.state === "idle";
 
   useEffect(() => {
     let cancelled = false;
     /**
-     * `announce` is true only for the poll. A session can end without anyone clicking (the
-     * helper exits, or Task 4 stops it), and the Record buttons elsewhere would go on showing
-     * it as running; the poll that notices tells them. Only the poll announces, so the event
-     * the buttons dispatch themselves can never come back round as another announcement.
+     * `announce` is true only for the poll. A session can start or end without anyone clicking
+     * (the rule starts one, the helper exits, the auto-stop stops one), and the Record buttons
+     * elsewhere would go on showing the stale answer; the poll that notices tells them. Only
+     * the poll announces, so the event the buttons dispatch themselves can never come back
+     * round as another announcement.
      */
     async function load(announce: boolean) {
       try {
@@ -78,11 +83,11 @@ export function RecordingChip() {
     void load(false);
     const onChanged = () => void load(false);
     window.addEventListener("sb:recording-changed", onChanged);
-    // A live session is worth asking after; an idle recorder only changes on the event above.
-    const timer = idle ? null : setInterval(() => void load(true), POLL_MS);
+    // A live session is worth asking after often; an idle one still has to be discovered.
+    const timer = setInterval(() => void load(true), idle ? IDLE_POLL_MS : POLL_MS);
     return () => {
       cancelled = true;
-      if (timer) clearInterval(timer);
+      clearInterval(timer);
       window.removeEventListener("sb:recording-changed", onChanged);
     };
   }, [idle]);
@@ -105,12 +110,13 @@ export function RecordingChip() {
         className={`w-2 h-2 rounded-full shrink-0 ${failed ? "bg-fg-faint" : "bg-danger motion-safe:animate-pulse"}`}
         aria-hidden
       />
+      {/* Outside the live region and hidden from it: a clock that ticks inside one is announced every second. */}
+      {!failed && elapsed && <span className="font-mono text-[12px] text-fg-muted tabular-nums" aria-hidden>{elapsed}</span>}
       <span role="status" aria-live="polite" className="flex items-center gap-2 min-w-0">
         {failed ? (
           <span className="text-[12.5px] text-danger truncate max-w-[28ch]">{status.error ?? "Recording failed"}</span>
         ) : (
           <>
-            {elapsed && <span className="font-mono text-[12px] text-fg-muted tabular-nums">{elapsed}</span>}
             {status.itemId ? (
               <Link href={`/items/${status.itemId}`} className="focus-ring rounded-sm text-[12.5px] truncate max-w-[22ch] hover:underline">
                 {status.title ?? "Recording"}

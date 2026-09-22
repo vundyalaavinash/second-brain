@@ -36,6 +36,23 @@ export interface RecordingMeta {
   autoStarted: boolean;
 }
 
+/**
+ * Writes the end of a session onto the item. Shared with `reconcileRecordings`, which has to
+ * close the same `meta.recording` for a session whose process died with the server.
+ */
+export function finishRecordingItem(db: DB, itemId: number, state: RecordingMeta["state"], endedAt: string = new Date().toISOString()): void {
+  const item = getItem(db, itemId);
+  if (!item) return;
+  const meta = parseMeta<{ recording?: RecordingMeta }>(item);
+  if (!meta.recording) return;
+  updateItem(db, itemId, { meta: { ...meta, recording: { ...meta.recording, state, endedAt } } });
+}
+
+/** The one place the final pass is queued, so a reconciled session queues exactly what a live one does. */
+export function queueFinalTranscript(db: DB, itemId: number): void {
+  enqueueJob(db, "transcribe_final", { itemId, source: "recording" }, itemId);
+}
+
 export interface RecorderDeps {
   db: DB;
   recorderBin: string;
@@ -168,23 +185,18 @@ export class Recorder extends EventEmitter {
     if (itemId === undefined) return;
 
     // An exit nobody asked for is a failure, including a null code: that is a signal, and
-    // the only signals this helper gets are the ones `stop` sends.
-    const failed = !wasStopping && code !== 0;
+    // the only signals this helper gets are the ones `stop` sends. Inside the stopping window
+    // a clean end is code 0 or a null code (the SIGINT we sent); any other code still failed.
+    const failed = wasStopping ? code !== 0 && code !== null : code !== 0;
     this.finishItem(itemId, failed ? "error" : "done");
     // Whatever happened, the WAV on disk is a recording: it always gets a final pass.
-    enqueueJob(this.deps.db, "transcribe_final", { itemId, source: "recording" }, itemId);
+    queueFinalTranscript(this.deps.db, itemId);
     this.current = failed ? { state: "error", itemId, error: `recorder exited with ${code ?? signal}` } : { state: "idle" };
     this.emit("change", this.status());
   }
 
   private finishItem(itemId: number, state: RecordingMeta["state"]): void {
-    const item = getItem(this.deps.db, itemId);
-    if (!item) return;
-    const meta = parseMeta<{ recording?: RecordingMeta }>(item);
-    if (!meta.recording) return;
-    updateItem(this.deps.db, itemId, {
-      meta: { ...meta, recording: { ...meta.recording, state, endedAt: new Date().toISOString() } },
-    });
+    finishRecordingItem(this.deps.db, itemId, state);
   }
 
   /**

@@ -180,6 +180,26 @@ export function serializePerson(p: Person & { itemCount?: number }, itemCount?: 
   };
 }
 
+/**
+ * Whether the request came from a page that is not this app. Routes that run a local command
+ * or drive the recording helper gate on it, so a page on any other site cannot reach them
+ * through the browser: a POST with no body takes no preflight, so a cross-origin `no-cors`
+ * fetch or form post would otherwise land. A request with no `Origin` header is not a
+ * cross-site form post and is let through.
+ */
+export function crossSite(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+  const { port } = new URL(req.url);
+  const suffix = port ? `:${port}` : "";
+  return origin !== `http://127.0.0.1${suffix}` && origin !== `http://localhost${suffix}`;
+}
+
+/** The one answer every origin-gated route gives, so they are indistinguishable from outside. */
+export function forbidden(): NextResponse {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
 export function errorResponse(err: unknown): NextResponse {
   if (err instanceof DuplicateError) {
     return NextResponse.json({ error: err.message, existingId: err.existingId }, { status: err.status });

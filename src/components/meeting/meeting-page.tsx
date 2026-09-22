@@ -214,10 +214,15 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
         )}
         <span className="flex-1" />
         {isRecording ? (
-          <span role="status" aria-live="polite" className="inline-flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-danger motion-safe:animate-pulse" aria-hidden />
-            <span className="text-[12.5px]">Recording</span>
-            <span className="font-mono text-[12px] tabular-nums">{elapsed}</span>
+          <span className="inline-flex items-center gap-2">
+            {/* Only the stable half is live: a clock inside a live region is announced every second. */}
+            <span role="status" aria-live="polite" className="inline-flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-danger motion-safe:animate-pulse" aria-hidden />
+              <span className="text-[12.5px]">Recording</span>
+            </span>
+            <span className="font-mono text-[12px] tabular-nums" aria-hidden>
+              {elapsed}
+            </span>
             <Button size="sm" variant="danger" icon={Square} aria-label="Stop recording" onClick={stop}>
               Stop
             </Button>

@@ -1,3 +1,5 @@
+// `[id]` here is a calendar event id (`calendarEvents.id`), not an item id.
+// Its `actions` child takes the meeting item's id instead: two id spaces, one path prefix.
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { setMeetingNoRecord } from "@/domain/activity";

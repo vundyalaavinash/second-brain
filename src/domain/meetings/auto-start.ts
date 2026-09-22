@@ -12,6 +12,8 @@ const LATE_MS = 2 * 60_000;
 const EARLY_MS = 60_000;
 /** The tail a meeting gets before an auto-started session is stopped. */
 export const AUTO_STOP_GRACE_MS = 5 * 60_000;
+/** The ceiling an auto-started session gets when its calendar row has gone and there is no end time left to read. */
+export const MAX_AUTO_MS = 3 * 60 * 60_000;
 
 const AUTO_RECORD_KEY = "meetings.autoRecord";
 const NEEDS_CALL_LINK_KEY = "meetings.autoRecordNeedsCallLink";
@@ -80,24 +82,52 @@ export function autoStopDue(status: RecorderStatus, db: DB, now: Date): boolean 
   if (status.state !== "recording" || !status.autoStarted || status.keep) return false;
   if (status.itemId === undefined) return false;
   const ev = db.select().from(calendarEvents).where(eq(calendarEvents.itemId, status.itemId)).get();
-  if (!ev) return false;
+  if (!ev) {
+    // The row can be purged mid-recording — the meeting was cancelled, or a sync dropped it —
+    // and with it the end time this rule measures against. A session the rule started must
+    // still end by itself, so it gets a ceiling instead of running until the machine sleeps.
+    if (!status.startedAt) return false;
+    return now.getTime() > Date.parse(status.startedAt) + MAX_AUTO_MS;
+  }
   return now.getTime() > Date.parse(ev.endsAt) + AUTO_STOP_GRACE_MS;
 }
 
 /**
- * One pass of the scheduler: stop a session that has outstayed its meeting, or start the one
- * that is beginning. A live session is the only thing that matters while it runs, so nothing
- * else is considered until it ends. Nothing here throws: an interval has nobody to catch it.
+ * Whether the running session is recording `ev` already. `pickAutoStart` skips a meeting that
+ * has been recorded, so it normally never returns the live one; this is the belt to that
+ * brace, and it looks the item up the way capture does, through meta.calendarEventId too.
+ */
+function isRecording(db: DB, status: RecorderStatus, ev: CalendarEvent): boolean {
+  return findCapturedMeetingItem(db, ev.id)?.id === status.itemId;
+}
+
+/**
+ * One pass of the scheduler: stop a session that has outstayed its meeting, hand the machine
+ * over to the meeting that is starting, or start that meeting. Nothing here throws: an
+ * interval has nobody to catch it.
  */
 export async function autoStartTick(db: DB, deps: { now?: () => Date; log?: (message: string) => void } = {}): Promise<void> {
   const now = deps.now?.() ?? new Date();
   try {
-    const status = recorderStatus();
+    let status = recorderStatus();
     if (status.state === "recording" || status.state === "stopping") {
       if (autoStopDue(status, db, now)) {
         deps.log?.(`stopping "${status.title ?? "recording"}": the meeting ended more than five minutes ago`);
         await stopRecording();
+        return;
       }
+      // Ruling: back to back meetings: the five-minute grace tail yields to the next meeting,
+      // which would otherwise miss its whole window. Only a session the rule started is taken
+      // over — never one a person started, and never one they have asked to keep.
+      if (status.state !== "recording" || !status.autoStarted || status.keep) return;
+      const next = pickAutoStart(db, now, getAutoRecordSettings(db));
+      if (!next || isRecording(db, status, next)) return;
+      deps.log?.(`stopping "${status.title ?? "recording"}": "${next.title}" is starting`);
+      await stopRecording();
+      status = recorderStatus();
+      if (status.state === "error") await stopRecording();
+      startRecording(db, { calendarEventId: next.id }, { autoStarted: true });
+      deps.log?.(`recording "${next.title}"`);
       return;
     }
     const ev = pickAutoStart(db, now, getAutoRecordSettings(db));

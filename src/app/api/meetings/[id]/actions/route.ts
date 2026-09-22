@@ -1,3 +1,5 @@
+// `[id]` here is a meeting item id (`items.id`), not a calendar event id.
+// The parent `/api/meetings/[id]` takes a calendar event id instead: two id spaces, one path prefix.
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";

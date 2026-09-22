@@ -9,7 +9,7 @@ import { replaceCalendarEvents, setMeetingNoRecord, type CalendarEventInput } fr
 import { setSetting } from "@/domain/settings";
 import { Recorder, type RecordingMeta } from "./recorder";
 import { recorderStatus, keepRecording, setRecorder, startRecording } from "./index";
-import { autoStartTick, autoStopDue, getAutoRecordSettings, pickAutoStart, setAutoRecordSettings } from "./auto-start";
+import { autoStartTick, autoStopDue, getAutoRecordSettings, MAX_AUTO_MS, pickAutoStart, setAutoRecordSettings } from "./auto-start";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FAKE_RECORDER = path.join(here, "..", "..", "test", "fake-recorder.js");
@@ -134,6 +134,56 @@ describe("the auto-record tick", () => {
     expect(recorderStatus().state).toBe("recording");
 
     await autoStartTick(t.db, { now: () => new Date(end + 6 * 60_000) });
+    expect(recorderStatus().state).toBe("idle");
+  });
+
+  it("hands the machine to the next meeting rather than spending its window on the grace tail", async () => {
+    // 10:00-10:30 then 10:30-11:00: the first session's five-minute tail outlasts the second
+    // meeting's start window, so without this the 10:30 meeting is never recorded.
+    replaceCalendarEvents(t.db, [event({ externalId: "a", title: "First", startsAt: at(-30) }), event({ externalId: "b", title: "Second", startsAt: at(0) })]);
+    const first = byTitle(t, "First");
+    startRecording(t.db, { calendarEventId: first.id }, { autoStarted: true });
+    const firstItem = recorderStatus().itemId!;
+
+    await autoStartTick(t.db, { now: () => new Date(NOW.getTime() + 30_000) });
+
+    const status = recorderStatus();
+    expect(status.state).toBe("recording");
+    expect(status.title).toBe("Second");
+    expect(status.autoStarted).toBe(true);
+    expect(status.itemId).not.toBe(firstItem);
+    expect(parseMeta<{ recording?: RecordingMeta }>(getItem(t.db, firstItem)!).recording?.state).toBe("done");
+  });
+
+  it("never takes the machine off a session a person started, or one they asked to keep", async () => {
+    replaceCalendarEvents(t.db, [event({ externalId: "a", title: "First", startsAt: at(-30) }), event({ externalId: "b", title: "Second", startsAt: at(0) })]);
+    const first = byTitle(t, "First");
+    startRecording(t.db, { calendarEventId: first.id });
+    const soon = () => new Date(NOW.getTime() + 30_000);
+
+    await autoStartTick(t.db, { now: soon });
+    expect(recorderStatus().title).toBe("First");
+
+    await recorder.stop();
+    startRecording(t.db, { calendarEventId: first.id }, { autoStarted: true });
+    keepRecording();
+    await autoStartTick(t.db, { now: soon });
+    expect(recorderStatus().title).toBe("First");
+  });
+
+  it("stops an auto-started session after three hours once its calendar row has gone", async () => {
+    replaceCalendarEvents(t.db, [event({ externalId: "m", title: "Weekly sync", startsAt: at(0) })]);
+    const ev = byTitle(t, "Weekly sync");
+    startRecording(t.db, { calendarEventId: ev.id }, { autoStarted: true });
+    const status = recorderStatus();
+    // The meeting is cancelled mid-recording and the row goes with the next sync.
+    t.db.delete(calendarEvents).where(eq(calendarEvents.id, ev.id)).run();
+    const started = Date.parse(status.startedAt!);
+
+    expect(autoStopDue(status, t.db, new Date(started + 2 * 60 * 60_000))).toBe(false);
+    expect(autoStopDue(status, t.db, new Date(started + MAX_AUTO_MS + 1000))).toBe(true);
+
+    await autoStartTick(t.db, { now: () => new Date(started + MAX_AUTO_MS + 1000) });
     expect(recorderStatus().state).toBe("idle");
   });
 

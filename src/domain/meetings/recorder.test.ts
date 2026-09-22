@@ -67,6 +67,7 @@ describe("Recorder", () => {
     delete process.env.SB_FAKE_RECORDER_EXIT_MS;
     delete process.env.SB_FAKE_RECORDER_STALL_MS;
     delete process.env.SB_FAKE_RECORDER_KILL_MS;
+    delete process.env.SB_FAKE_RECORDER_STOP_CODE;
     t.cleanup();
   });
 
@@ -151,6 +152,21 @@ describe("Recorder", () => {
 
     expect(recorder.status().error).toBe("recorder exited with SIGKILL");
     expect(meta(t, item.id).recording!.state).toBe("error");
+    expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
+  });
+
+  it("treats a helper that dies badly while stopping as a failure", async () => {
+    // The stop was asked for, but the helper still went down with an error: the session failed.
+    process.env.SB_FAKE_RECORDER_STOP_CODE = "3";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => fs.existsSync(path.join(filesDir, meta(t, item.id).recording!.wavPath)));
+    await recorder.stop();
+
+    expect(recorder.status().state).toBe("error");
+    expect(recorder.status().error).toBe("recorder exited with 3");
+    expect(meta(t, item.id).recording!.state).toBe("error");
+    // The WAV is still on disk, so it still gets its final pass.
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
   });
 

@@ -50,7 +50,11 @@ describe("RecordingChip", () => {
     const link = screen.getByRole("link", { name: "Product sync" });
     expect(link.getAttribute("href")).toBe("/items/7");
     expect(screen.getByTestId("recording-dot")).toBeTruthy();
-    expect(screen.getByRole("status")).toBeTruthy();
+    // The clock sits beside the live region, not inside it: a ticking one is read out every second.
+    const live = screen.getByRole("status");
+    expect(live.textContent).toBe("Product sync");
+    expect(live.contains(screen.getByText("00:12"))).toBe(false);
+    expect(screen.getByText("00:12").getAttribute("aria-hidden")).toBe("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Stop recording" }));
     await waitFor(() => {
@@ -101,6 +105,33 @@ describe("RecordingChip", () => {
     });
 
     expect(screen.queryByText("Product sync")).toBeNull();
+    expect(announced).toHaveBeenCalledTimes(1);
+    window.removeEventListener("sb:recording-changed", announced);
+  });
+
+  it("finds a session the rule started on the server while the chip sat idle", async () => {
+    // Nothing in the browser knows: no click, and no server tick can dispatch a page event.
+    let current = status({ state: "idle", itemId: undefined, title: undefined, startedAt: undefined });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(current)),
+    );
+    const announced = vi.fn();
+    window.addEventListener("sb:recording-changed", announced);
+
+    vi.useFakeTimers();
+    const { container } = render(<RecordingChip />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).toBe("");
+
+    current = status();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_100);
+    });
+
+    expect(screen.getByText("Product sync")).toBeTruthy();
     expect(announced).toHaveBeenCalledTimes(1);
     window.removeEventListener("sb:recording-changed", announced);
   });

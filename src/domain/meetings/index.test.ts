@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { calendarEvents } from "@/db/schema";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { createItem, getItem, parseMeta } from "@/domain/items";
@@ -87,6 +87,20 @@ describe("recording sessions", () => {
     startRecording(t.db, { adhoc: true }, { autoStarted: true });
     expect(keepRecording().keep).toBe(true);
     expect((await stopRecording()).state).toBe("idle");
+    expect(recorderStatus()).toEqual({ state: "idle" });
+  });
+
+  it("keeps the controller on globalThis, so a second copy of the module sees the same session", async () => {
+    // Next bundles instrumentation and the route handlers separately, so the module runs twice
+    // in one process. `vi.resetModules()` is the closest a test gets to that second graph.
+    const started = startRecording(t.db, { adhoc: true });
+    vi.resetModules();
+    const second = (await import("./index")) as typeof import("./index");
+
+    expect(second.recorderStatus().state).toBe("recording");
+    expect(second.recorderStatus().itemId).toBe(started.itemId);
+    // And the other way round: a stop through the second copy ends the session the first sees.
+    expect((await second.stopRecording()).state).toBe("idle");
     expect(recorderStatus()).toEqual({ state: "idle" });
   });
 
