@@ -56,6 +56,28 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   };
 }
 
+/** The seed line `captureMeeting` leaves under Actions for the first action to be typed on. */
+const EMPTY_ACTION = /^[-*]\s*\[\s*\]\s*$/;
+const NOTES_HEADING = /^##\s+Notes\s*$/;
+const ACTIONS_HEADING = /^##\s+Actions\s*$/;
+
+/**
+ * Whether a meeting note holds anything a person wrote. `captureMeeting` seeds every meeting
+ * item with a when/who preamble, an empty Notes heading, and one empty `- [ ]`, so a non-empty
+ * body says nothing on its own: only text under Notes, or an action beyond the seed, counts.
+ * A body that is not that template at all is judged by whether it has any text.
+ */
+export function hasUserNotes(body: string): boolean {
+  const lines = body.split("\n");
+  const notesAt = lines.findIndex((l) => NOTES_HEADING.test(l));
+  const actionsAt = lines.findIndex((l) => ACTIONS_HEADING.test(l));
+  if (notesAt === -1 && actionsAt === -1) return body.trim().length > 0;
+  const notesEnd = actionsAt === -1 ? lines.length : actionsAt;
+  if (notesAt !== -1 && lines.slice(notesAt + 1, notesEnd).some((l) => l.trim().length > 0)) return true;
+  if (actionsAt === -1) return false;
+  return lines.slice(actionsAt + 1).some((l) => l.trim().length > 0 && !EMPTY_ACTION.test(l.trim()));
+}
+
 /** What each linked meeting item already holds, so rows can badge without loading items. */
 function itemFlags(db: DB, ids: number[]): Map<number, MeetingItemDTO> {
   const flags = new Map<number, MeetingItemDTO>();
@@ -64,7 +86,7 @@ function itemFlags(db: DB, ids: number[]): Map<number, MeetingItemDTO> {
     const meta = parseMeta(row);
     flags.set(row.id, {
       id: row.id,
-      hasNotes: row.body.trim().length > 0,
+      hasNotes: hasUserNotes(row.body),
       hasTranscript: !!meta.transcript,
       hasSummary: !!meta.summary,
     });

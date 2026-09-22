@@ -58,9 +58,11 @@ export function MeetingRow({ meeting, onOpen, onNoRecord }: Props) {
       >
         Don&apos;t record
       </Chip>
-      <Button size="sm" variant="ghost" disabled title={RECORDING_SOON} aria-label={`Record ${meeting.title}`} className="shrink-0">
-        Record
-      </Button>
+      <span title={RECORDING_SOON} className="shrink-0">
+        <Button size="sm" disabled title={RECORDING_SOON} aria-label={`Record ${meeting.title}`}>
+          Record
+        </Button>
+      </span>
     </li>
   );
 }

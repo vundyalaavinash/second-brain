@@ -51,6 +51,8 @@ interface Props {
   /** Offered instead of `onPlan` when the day is the caller's to choose. */
   onPlanDate?: (date: string) => void;
   planned?: boolean;
+  /** The week column's row: stacked, two-line title, no grip or priority chip. */
+  compact?: boolean;
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
@@ -58,7 +60,7 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planned, draggable, onDragStart, onDragOver, onRowDrop,
+  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planned, compact, draggable, onDragStart, onDragOver, onRowDrop,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -161,92 +163,85 @@ export function TaskRow({
     if (next !== task.dueDate) onDue(next);
   }
 
-  return (
-    <li
-      role="listitem"
-      className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors"
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onRowDrop}
+  const checkbox = (
+    <input
+      type="checkbox"
+      className={`focus-ring accent-violet w-4 h-4 shrink-0 ${compact ? "mt-1" : ""}`}
+      checked={done}
+      aria-label={task.title}
+      onChange={onToggle}
+    />
+  );
+
+  const titleNode = editingTitle ? (
+    <Input
+      size="sm"
+      autoFocus
+      value={titleDraft}
+      onChange={(e) => setTitleDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commitTitle();
+        } else if (e.key === "Escape") {
+          setTitleDraft(task.title);
+          setEditingTitle(false);
+        }
+      }}
+      onBlur={commitTitle}
+      className={compact ? "w-full min-w-0" : "flex-1 min-w-0"}
+    />
+  ) : (
+    <button
+      type="button"
+      className={`focus-ring text-left min-w-0 text-[13.5px] ${compact ? "w-full line-clamp-2" : "flex-1 truncate"} ${
+        done ? "line-through text-fg-faint" : ""
+      }`}
+      onClick={startEditTitle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          startEditTitle();
+        }
+      }}
     >
-      <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
-        <GripVertical className="w-3.5 h-3.5" />
-      </span>
-      <input type="checkbox" className="focus-ring accent-violet w-4 h-4 shrink-0" checked={done} aria-label={task.title} onChange={onToggle} />
-      {editingTitle ? (
-        <Input
-          size="sm"
-          autoFocus
-          value={titleDraft}
-          onChange={(e) => setTitleDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commitTitle();
-            } else if (e.key === "Escape") {
-              setTitleDraft(task.title);
-              setEditingTitle(false);
-            }
-          }}
-          onBlur={commitTitle}
-          className="flex-1 min-w-0"
-        />
-      ) : (
-        <button
-          type="button"
-          className={`focus-ring text-left flex-1 min-w-0 truncate text-[13.5px] ${done ? "line-through text-fg-faint" : ""}`}
-          onClick={startEditTitle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              startEditTitle();
-            }
-          }}
-        >
-          {task.title}
-        </button>
-      )}
-      {task.priority === "high" && (
-        <Chip as="span" className="text-warn border-warn/40 shrink-0">
-          High
-        </Chip>
-      )}
-      {task.priority === "low" && (
-        <Chip as="span" className="text-fg-faint shrink-0">
-          Low
-        </Chip>
-      )}
-      {dueOpen ? (
-        <Input
-          type="date"
-          size="sm"
-          autoFocus
-          value={dueDraft}
-          onChange={(e) => {
-            setDueDraft(e.target.value);
-            commitDue(e.target.value);
-          }}
-          onBlur={() => {
-            commitDue(dueDraft);
-            setDueOpen(false);
-          }}
-          className="font-mono w-36 shrink-0"
-        />
-      ) : (
-        due && (
-          <button
-            type="button"
-            className={`focus-ring font-mono text-[11px] shrink-0 ${TONE_CLASS[due.tone]}`}
-            onClick={() => {
-              setDueDraft(task.dueDate ?? "");
-              setDueOpen(true);
-            }}
-          >
-            {formatShortDate(task.dueDate!)}
-          </button>
-        )
-      )}
+      {task.title}
+    </button>
+  );
+
+  const dueNode = dueOpen ? (
+    <Input
+      type="date"
+      size="sm"
+      autoFocus
+      value={dueDraft}
+      onChange={(e) => {
+        setDueDraft(e.target.value);
+        commitDue(e.target.value);
+      }}
+      onBlur={() => {
+        commitDue(dueDraft);
+        setDueOpen(false);
+      }}
+      className={`font-mono shrink-0 ${compact ? "w-full min-w-0" : "w-36"}`}
+    />
+  ) : (
+    due && (
+      <button
+        type="button"
+        className={`focus-ring font-mono text-[11px] shrink-0 ${compact ? "self-start" : ""} ${TONE_CLASS[due.tone]}`}
+        onClick={() => {
+          setDueDraft(task.dueDate ?? "");
+          setDueOpen(true);
+        }}
+      >
+        {formatShortDate(task.dueDate!)}
+      </button>
+    )
+  );
+
+  const actions = (
+    <>
       {done ? (
         <Button variant="ghost" size="sm" onClick={onToggle} className="shrink-0">
           Reopen
@@ -407,6 +402,45 @@ export function TaskRow({
             )}
         </>
       )}
+    </>
+  );
+
+  const rowProps = { role: "listitem" as const, draggable, onDragStart, onDragOver, onDrop: onRowDrop };
+
+  // A column of the week is a seventh of the page: the compact row stacks the due date under
+  // a two-line title and drops the grip and the priority chip, so the menu still has its place.
+  if (compact) {
+    return (
+      <li {...rowProps} className="hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors">
+        {checkbox}
+        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+          {titleNode}
+          {dueNode}
+        </span>
+        {actions}
+      </li>
+    );
+  }
+
+  return (
+    <li {...rowProps} className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors">
+      <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
+        <GripVertical className="w-3.5 h-3.5" />
+      </span>
+      {checkbox}
+      {titleNode}
+      {task.priority === "high" && (
+        <Chip as="span" className="text-warn border-warn/40 shrink-0">
+          High
+        </Chip>
+      )}
+      {task.priority === "low" && (
+        <Chip as="span" className="text-fg-faint shrink-0">
+          Low
+        </Chip>
+      )}
+      {dueNode}
+      {actions}
     </li>
   );
 }

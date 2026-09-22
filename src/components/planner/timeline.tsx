@@ -89,7 +89,7 @@ export function Timeline({ date, meetings }: { date: string; meetings: ActivityM
       <div className="relative pl-14" style={{ height: minutes * PX_PER_MIN }}>
         {hours.map((hour) => (
           <div key={hour} className="absolute left-0 right-0 flex items-start gap-2" style={{ top: (hour - dayStart) * 60 * PX_PER_MIN }}>
-            <span className="font-mono text-[11px] text-fg-faint w-12 shrink-0 -translate-y-1.5 text-right">{String(hour).padStart(2, "0")}:00</span>
+            <span className="font-mono text-[11px] text-fg-faint w-12 shrink-0 -translate-y-1.5 text-right">{String(hour % 24).padStart(2, "0")}:00</span>
             <span className="flex-1 border-t border-hairline" aria-hidden />
           </div>
         ))}
@@ -98,12 +98,9 @@ export function Timeline({ date, meetings }: { date: string; meetings: ActivityM
           const m = byId.get(b.id);
           if (!m) return null;
           return (
-            <button
+            <div
               key={b.id}
-              type="button"
-              aria-label={label(m)}
-              onClick={() => open(b.id)}
-              className="pane focus-ring absolute p-2 flex flex-col gap-0.5 overflow-hidden text-left hover:bg-layer-2 transition-colors"
+              className="pane absolute overflow-hidden hover:bg-layer-2 transition-colors"
               style={{
                 top: b.top * PX_PER_MIN,
                 height: b.height * PX_PER_MIN,
@@ -111,31 +108,35 @@ export function Timeline({ date, meetings }: { date: string; meetings: ActivityM
                 width: `calc((100% - 3.5rem) / ${b.cols} - 4px)`,
               }}
             >
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span className="truncate text-[13px]">{m.title}</span>
-                {m.itemId !== null && <span className="w-1.5 h-1.5 rounded-full bg-violet shrink-0" title="Has a note" aria-hidden />}
-              </span>
-              <span className="font-mono text-[11px] text-fg-faint">
-                {formatClock(m.startsAt)}–{formatClock(m.endsAt)}
-              </span>
-              {b.height >= 48 && (
-                <span className="flex items-center gap-2 text-[11.5px] text-fg-faint">
-                  <span>{count(m.attendees, "attendee")}</span>
-                  {m.joinUrl && (
-                    <a
-                      href={m.joinUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Join ${m.title}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="focus-ring rounded-sm text-violet-bright hover:underline"
-                    >
-                      Join
-                    </a>
-                  )}
+              {/* The block's own click target sits behind its text, so the Join link beside it
+                * is a sibling rather than a link nested inside a button. */}
+              <button type="button" aria-label={label(m)} onClick={() => open(b.id)} className="absolute inset-0 focus-ring rounded-md" />
+              <div className="relative pointer-events-none p-2 flex flex-col gap-0.5 h-full">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="truncate text-[13px]">{m.title}</span>
+                  {m.itemId !== null && <span className="w-1.5 h-1.5 rounded-full bg-violet shrink-0" aria-hidden />}
                 </span>
-              )}
-            </button>
+                <span className="font-mono text-[11px] text-fg-faint">
+                  {formatClock(m.startsAt)}–{formatClock(m.endsAt)}
+                </span>
+                {b.height >= 48 && (
+                  <span className="flex items-center gap-2 text-[11.5px] text-fg-faint">
+                    <span>{count(m.attendees, "attendee")}</span>
+                    {m.joinUrl && (
+                      <a
+                        href={m.joinUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Join ${m.title}`}
+                        className="focus-ring rounded-sm text-violet-bright hover:underline pointer-events-auto"
+                      >
+                        Join
+                      </a>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
           );
         })}
 

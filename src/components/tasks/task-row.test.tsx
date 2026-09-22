@@ -14,13 +14,14 @@ const task: TaskDTO = {
   completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
-interface PlanProps {
+interface ExtraProps {
   onPlan?: () => void;
   onPlanDate?: (date: string) => void;
   planned?: boolean;
+  compact?: boolean;
 }
 
-function renderRow(extra: PlanProps = {}) {
+function renderRow(extra: ExtraProps = {}, row: TaskDTO = task) {
   const handlers = {
     onToggle: vi.fn(),
     onRename: vi.fn(),
@@ -32,7 +33,7 @@ function renderRow(extra: PlanProps = {}) {
   };
   render(
     <ul role="list">
-      <TaskRow task={task} today="2026-09-16" {...handlers} {...extra} />
+      <TaskRow task={row} today="2026-09-16" {...handlers} {...extra} />
     </ul>,
   );
   return handlers;
@@ -123,5 +124,17 @@ describe("TaskRow planning", () => {
     expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+});
+
+describe("TaskRow compact", () => {
+  it("keeps the title and the menu in a week column's width", () => {
+    renderRow({ compact: true }, { ...task, dueDate: "2026-09-18" });
+    const title = screen.getByRole("button", { name: "Draft email" });
+    expect(title.className).toContain("line-clamp-2");
+    expect(screen.getByRole("button", { name: "Task actions" })).toBeTruthy();
+    // The due date moves under the title, still in mono; the priority chip is dropped.
+    expect(screen.getByRole("button", { name: "Fri 18" }).className).toContain("font-mono");
+    expect(screen.queryByText("High")).toBeNull();
   });
 });

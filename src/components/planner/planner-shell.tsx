@@ -9,7 +9,7 @@ import { Crumb } from "../shell/crumb";
 import { addDaysLocal } from "../activity/format";
 import { DateHeader } from "./date-header";
 import { DayView } from "./day-view";
-import { MeetingsView } from "./meetings-view";
+import { MeetingsView, dayOf } from "./meetings-view";
 import { SetupCard } from "./setup-card";
 import { WeekView } from "./week-view";
 import { count } from "./open-meeting";
@@ -111,6 +111,11 @@ export function PlannerShell(props: Props) {
   }, [meetingWindow]);
 
   const calendar: PlannerCalendarDTO | null = day?.calendar ?? meetings?.calendar ?? null;
+  // Meetings is not navigated by date, so it keeps the header's numeral and drops the arrows.
+  const meetingCounts = meetings && {
+    today: meetings.meetings.filter((m) => dayOf(m.startsAt) === today).length,
+    upcoming: meetings.meetings.filter((m) => dayOf(m.startsAt) > today).length,
+  };
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-6">
@@ -136,6 +141,8 @@ export function PlannerShell(props: Props) {
           todayHref="/planner/week"
         />
       )}
+
+      {meetingCounts && <DateHeader date={today} unit="day" summary={`${meetingCounts.today} today, ${meetingCounts.upcoming} upcoming`} />}
 
       <Tabs view={view} />
 

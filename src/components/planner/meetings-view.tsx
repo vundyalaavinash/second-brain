@@ -19,7 +19,7 @@ interface Props {
 
 /** The local calendar day a meeting starts on. The domain has the same function, but it
  * lives beside the database and would drag drizzle into the client bundle. */
-const dayOf = (iso: string) => todayLocal(new Date(iso));
+export const dayOf = (iso: string) => todayLocal(new Date(iso));
 
 interface Group {
   key: string;
@@ -108,9 +108,13 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-[320px]"
         />
-        <Button size="sm" variant="ghost" disabled title={RECORDING_SOON} className="ml-auto">
-          Record now
-        </Button>
+        {/* The title is the point of the stub, so it hangs on a wrapper: a disabled button
+          * takes no pointer events and would never show it. */}
+        <span title={RECORDING_SOON} className="ml-auto">
+          <Button size="sm" disabled>
+            Record now
+          </Button>
+        </span>
       </div>
 
       {group("Today", todays, "No meetings today")}

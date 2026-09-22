@@ -22,6 +22,12 @@ function minutesOfDay(iso: string): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** Where a meeting ends, counted from its own start, so one running past midnight lands past
+ * the end of the column and is clipped there rather than wrapping back to a stub at the top. */
+function endMinutes(m: TimelineMeeting): number {
+  return minutesOfDay(m.startsAt) + (Date.parse(m.endsAt) - Date.parse(m.startsAt)) / 60_000;
+}
+
 /**
  * Places meetings on the day's column. Meetings that overlap in time share the width: each
  * takes the first column free at its start, and everything in the same run of overlaps is
@@ -34,7 +40,7 @@ export function layoutBlocks(meetings: TimelineMeeting[], { dayStart, dayEnd }: 
   const spans = meetings
     .map((m) => {
       const from = Math.max(startMin, Math.min(endMin, minutesOfDay(m.startsAt)));
-      const to = Math.max(from, Math.min(endMin, minutesOfDay(m.endsAt)));
+      const to = Math.max(from, Math.min(endMin, endMinutes(m)));
       return { id: m.id, from, to };
     })
     .sort((a, b) => a.from - b.from || a.to - b.to || a.id - b.id);

@@ -7,9 +7,10 @@ interface Props {
   date: string;
   /** The mono line under the arrows, e.g. "3 planned, 2 due, 4 meetings". */
   summary: string;
-  prevHref: string;
-  nextHref: string;
-  todayHref: string;
+  /** The three navigation links. Left out on a view that is not navigated by date. */
+  prevHref?: string;
+  nextHref?: string;
+  todayHref?: string;
   unit: "day" | "week";
 }
 
@@ -31,13 +32,15 @@ export function DateHeader({ date, summary, prevHref, nextHref, todayHref, unit 
         <span className="text-fg-muted">{parts.date}</span>
       </span>
       <span className="ml-auto flex flex-col items-end gap-2 pb-2">
-        <span className="flex items-center gap-1">
-          <Button href={prevHref} size="sm" variant="ghost" icon={ChevronLeft} aria-label={`Previous ${noun}`} />
-          <Button href={todayHref} size="sm" variant="ghost">
-            {unit === "day" ? "Today" : "This week"}
-          </Button>
-          <Button href={nextHref} size="sm" variant="ghost" icon={ChevronRight} aria-label={`Next ${noun}`} />
-        </span>
+        {prevHref && nextHref && todayHref && (
+          <span className="flex items-center gap-1">
+            <Button href={prevHref} size="sm" variant="ghost" icon={ChevronLeft} aria-label={`Previous ${noun}`} />
+            <Button href={todayHref} size="sm" variant="ghost">
+              {unit === "day" ? "Today" : "This week"}
+            </Button>
+            <Button href={nextHref} size="sm" variant="ghost" icon={ChevronRight} aria-label={`Next ${noun}`} />
+          </span>
+        )}
         <span className="font-mono text-[12px] text-fg-muted">{summary}</span>
       </span>
     </header>

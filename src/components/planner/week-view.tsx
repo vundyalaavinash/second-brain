@@ -51,9 +51,9 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
   const planOn = (taskId: number, date: string) => void send("/api/plan", "POST", { date, taskId }, "sb:plan-changed");
 
   function onDropOnDay(e: DragEvent<HTMLDivElement>, date: string) {
+    e.preventDefault();
     const raw = e.dataTransfer.getData(TASK_MIME);
     if (!raw) return;
-    e.preventDefault();
     patch(Number(raw), { dueDate: date });
   }
 
@@ -113,6 +113,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
                 onDrop={() => patch(task.id, { status: "dropped" })}
                 onDelete={() => remove(task.id)}
                 onPlanDate={(date) => planOn(task.id, date)}
+                compact
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData(TASK_MIME, String(task.id))}
               />

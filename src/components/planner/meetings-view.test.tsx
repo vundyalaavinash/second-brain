@@ -93,10 +93,18 @@ describe("MeetingsView", () => {
     expect(nav.push).not.toHaveBeenCalled();
   });
 
-  it("keeps the record buttons out of reach until recording arrives", () => {
+  it("keeps a row's record button out of reach until recording arrives", () => {
     mount();
-    const record = screen.getAllByRole("button", { name: /^Record/ })[0];
+    const row = screen.getByText("Standup").closest("li") as HTMLElement;
+    const record = within(row).getByRole("button", { name: "Record Standup" });
     expect(record.hasAttribute("disabled")).toBe(true);
     expect(record.getAttribute("title")).toBe("Recording arrives in the next update");
+  });
+
+  it("keeps the header's record button out of reach too", () => {
+    mount();
+    const record = screen.getByRole("button", { name: "Record now" });
+    expect(record.hasAttribute("disabled")).toBe(true);
+    expect(record.closest("[title]")?.getAttribute("title")).toBe("Recording arrives in the next update");
   });
 });

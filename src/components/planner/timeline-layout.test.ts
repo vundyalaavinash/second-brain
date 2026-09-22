@@ -26,6 +26,12 @@ describe("layoutBlocks", () => {
     expect(block.height).toBe(60);
   });
 
+  it("clips a meeting that runs past midnight at the end of the column", () => {
+    const [block] = layoutBlocks([{ id: 1, startsAt: "2026-09-22T23:00:00", endsAt: "2026-09-23T00:30:00" }], { dayStart: 7, dayEnd: 24 });
+    expect(block.top).toBe(960);
+    expect(block.height).toBe(60);
+  });
+
   it("clamps a meeting that runs past the day to the last hour", () => {
     const [block] = layoutBlocks([at(1, "20:00", "23:00")], RANGE);
     expect(block.top).toBe(780);
