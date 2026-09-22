@@ -10,7 +10,7 @@ import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
-import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PinnedLinkDTO } from "./dto";
+import type { ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -131,6 +131,11 @@ export function serializeTask(t: Task): TaskDTO {
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   };
+}
+
+/** The plan entry's order wins over the task's own: on a plan, position means the day's order. */
+export function serializePlanTask(t: Task & { planId: number; sortOrder: number }): PlanTaskDTO {
+  return { ...serializeTask(t), sortOrder: t.sortOrder, planId: t.planId };
 }
 
 export function serializePerson(p: Person & { itemCount?: number }, itemCount?: number): PersonDTO {

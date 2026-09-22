@@ -4,6 +4,8 @@ import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/re
 import { PromptBar } from "./prompt-bar";
 import { ToastProvider } from "./toasts";
 import { setCurrentContainer } from "@/lib/current-container";
+import { setPlanDate } from "@/lib/plan-date";
+import { todayLocal } from "@/components/activity/format";
 
 const push = vi.fn();
 const onClose = vi.fn();
@@ -12,6 +14,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   setCurrentContainer(null);
+  setPlanDate(null);
   push.mockClear();
   onClose.mockClear();
 });
@@ -50,6 +53,50 @@ describe("PromptBar", () => {
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/tasks");
     expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4 });
+  });
+
+  it("plans the new task for the day the planner is showing", async () => {
+    const fetchFn = mockFetch({ id: 9, title: "Call the bank" });
+    const changed = vi.fn();
+    window.addEventListener("sb:plan-changed", changed);
+    setPlanDate("2026-09-22");
+    mount();
+    type("+ Call the bank");
+    await waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+    const [url, init] = fetchFn.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/plan");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ date: "2026-09-22", taskId: 9 });
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener("sb:plan-changed", changed);
+  });
+
+  it("names today's plan in the toast, or just says the task was planned", async () => {
+    mockFetch({ id: 9, title: "Call the bank" });
+    setPlanDate(todayLocal());
+    mount();
+    type("+ Call the bank");
+    await waitFor(() => expect(screen.getByText("Task added to today's plan")).toBeTruthy());
+    cleanup();
+    setPlanDate("2027-03-04");
+    mount();
+    type("+ Call the vet");
+    await waitFor(() => expect(screen.getByText("Task added and planned")).toBeTruthy());
+  });
+
+  it("keeps the task and shows the error when the plan write fails", async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url === "/api/plan"
+        ? new Response(JSON.stringify({ error: "Could not plan that" }), { status: 400, headers: { "content-type": "application/json" } })
+        : new Response(JSON.stringify({ id: 9, title: "Call the bank" }), { status: 201, headers: { "content-type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchFn);
+    setPlanDate("2027-03-04");
+    mount();
+    type("+ Call the bank");
+    await waitFor(() => expect(screen.getByText("Could not plan that")).toBeTruthy());
+    expect(screen.getByText("Task added")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("captures a note to the inbox", async () => {

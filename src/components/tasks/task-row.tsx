@@ -8,6 +8,7 @@ import type { TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { titleCase } from "@/lib/format";
+import { addDaysLocal, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -16,6 +17,18 @@ function formatShortDate(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
   const date = new Date(y, m - 1, d);
   return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()}`;
+}
+
+const PLAN_DAYS = 7;
+
+/** The next seven days from `today`, today first. Hand-rolled names, like the rest of the app:
+ * `toLocale*` would follow the machine's locale instead of the one the UI is written in. */
+function planDays(today: string): { date: string; label: string }[] {
+  return Array.from({ length: PLAN_DAYS }, (_, i) => {
+    const date = addDaysLocal(today, i);
+    const [y, m, d] = date.split("-").map(Number);
+    return { date, label: `${i === 0 ? "Today" : WEEKDAYS[new Date(y, m - 1, d).getDay()]} ${d}` };
+  });
 }
 
 const MENU_ITEM_FOCUSABLE = '[role="menuitem"], [role="menuitemradio"]';
@@ -33,26 +46,36 @@ interface Props {
   onDrop: () => void;
   onDelete: () => void;
   onMove?: (dir: "up" | "down") => void;
+  /** Puts the task on a plan, or takes it off again when `planned`. The caller decides which. */
+  onPlan?: () => void;
+  /** Offered instead of `onPlan` when the day is the caller's to choose. */
+  onPlanDate?: (date: string) => void;
+  planned?: boolean;
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
   onRowDrop?: (e: DragEvent<HTMLLIElement>) => void;
 }
 
-export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, draggable, onDragStart, onDragOver, onRowDrop }: Props) {
+export function TaskRow({
+  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planned, draggable, onDragStart, onDragOver, onRowDrop,
+}: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [dueOpen, setDueOpen] = useState(false);
   const [dueDraft, setDueDraft] = useState(task.dueDate ?? "");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const planButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuPanelRef = useRef<HTMLDivElement | null>(null);
   const done = task.status === "done";
   const due = task.dueDate ? deadlineLabel(task.dueDate, today) : null;
 
   function closeMenu() {
     setMenuOpen(false);
+    setPlanOpen(false);
     menuButtonRef.current?.focus();
   }
 
@@ -82,6 +105,12 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
     if (!menuOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // The day list is a step inside the menu, so Escape backs out of it first.
+        if (planOpen) {
+          setPlanOpen(false);
+          planButtonRef.current?.focus();
+          return;
+        }
         closeMenu();
         return;
       }
@@ -113,7 +142,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onPointerDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, planOpen]);
 
   function startEditTitle() {
     setTitleDraft(task.title);
@@ -266,6 +295,52 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
                 >
                   Set due date
                 </button>
+                {onPlanDate && !planned && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      ref={planButtonRef}
+                      className={MENU_ITEM}
+                      aria-haspopup="menu"
+                      aria-expanded={planOpen}
+                      onClick={() => setPlanOpen((v) => !v)}
+                    >
+                      Plan for
+                    </button>
+                    {planOpen && (
+                      <div role="menu" aria-label="Plan for" className="panel absolute right-full top-0 mr-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-32 z-50">
+                        {planDays(today).map((day) => (
+                          <button
+                            key={day.date}
+                            type="button"
+                            role="menuitem"
+                            className={MENU_ITEM}
+                            onClick={() => {
+                              closeMenu();
+                              onPlanDate(day.date);
+                            }}
+                          >
+                            {day.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {onPlan && (!onPlanDate || planned) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      closeMenu();
+                      onPlan();
+                    }}
+                  >
+                    {planned ? "Remove from plan" : "Plan for today"}
+                  </button>
+                )}
                 <div role="group" aria-label="Priority" className="flex items-center gap-1 px-2 py-1">
                   <span className="text-[11px] text-fg-faint mr-0.5">Priority</span>
                   {(["low", "normal", "high"] as const).map((p) => (

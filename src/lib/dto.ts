@@ -74,6 +74,18 @@ export interface TaskDTO {
   updatedAt: string;
 }
 
+/** A task as it sits on one day's plan: `sortOrder` is the plan's order, not the task's order
+ * inside its container, and `planId` is the plan entry itself. */
+export interface PlanTaskDTO extends TaskDTO {
+  planId: number;
+}
+
+export interface PlanDTO {
+  date: string;
+  tasks: PlanTaskDTO[];
+  unfinishedYesterday: TaskDTO[];
+}
+
 export interface ContainerDTO {
   id: number;
   kind: ContainerKind;

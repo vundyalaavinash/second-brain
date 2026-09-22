@@ -27,3 +27,7 @@ export const TaskBody = z.object({
 });
 export const PatchTaskBody = TaskBody.partial().omit({ sourceItemId: true }).extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
 export const ReorderTasksBody = z.object({ containerId: z.number().int().positive().nullable(), ids: z.array(z.number().int().positive()) });
+
+export const PlanBody = z.object({ date: DateString, taskId: z.number().int().positive() }).strict();
+export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.number().int().positive()) }).strict();
+export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();

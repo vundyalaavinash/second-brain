@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TaskDTO, ProgressDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { quickParse } from "@/domain/tasks/quick-parse";
+import { todayLocal } from "../activity/format";
 import { Button, Input, List } from "../ui";
 import { TaskRow } from "./task-row";
 
@@ -121,6 +122,20 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
     } finally {
       submittingRef.current = false;
     }
+  }
+
+  /** Puts the task on today's plan. Nothing here shows the plan, so the row keeps its own state
+   * and the Planner hears about it through the event. */
+  function planToday(id: number) {
+    void (async () => {
+      const res = await fetch("/api/plan", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ date: todayLocal(), taskId: id }) });
+      if (!res.ok) {
+        setError(SAVE_ERROR);
+        return;
+      }
+      setError(null);
+      window.dispatchEvent(new Event("sb:plan-changed"));
+    })();
   }
 
   function toggle(task: TaskDTO) {
@@ -241,6 +256,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
               onDrop={() => drop(task.id)}
               onDelete={() => remove(task.id)}
               onMove={(dir) => move(task.id, dir)}
+              onPlan={() => planToday(task.id)}
               draggable
               onDragStart={() => setDragId(task.id)}
               onDragOver={(e) => e.preventDefault()}

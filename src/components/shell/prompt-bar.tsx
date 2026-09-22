@@ -16,6 +16,8 @@ import { ArrowUp, FileText, Link2, Search, Square } from "lucide-react";
 import { detectIntent, type Intent } from "@/lib/intent";
 import { useCapture } from "@/lib/use-capture";
 import { useCurrentContainer } from "@/lib/current-container";
+import { usePlanDate } from "@/lib/plan-date";
+import { todayLocal } from "../activity/format";
 import type { TaskDTO } from "@/lib/dto";
 import { Kbd } from "../ui";
 import { useToast } from "./toasts";
@@ -81,6 +83,7 @@ export function PromptBar({
   const pathname = usePathname();
   const toast = useToast();
   const container = useCurrentContainer();
+  const planDate = usePlanDate();
   const { captureNote, captureLink, uploadFiles } = useCapture();
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, wideOnServer);
   const [text, setText] = useState(initialValue);
@@ -142,19 +145,39 @@ export function PromptBar({
           throw new Error(data?.error ?? res.statusText);
         }
         const task = (await res.json()) as TaskDTO;
+        // With a plan open the task belongs on it too. A refused plan write is reported, but the
+        // task itself already landed, so it stays and the toast still says so.
+        let planError: string | null = null;
+        if (planDate !== null) {
+          const planned = await fetch("/api/plan", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ date: planDate, taskId: task.id }) });
+          if (planned.ok) window.dispatchEvent(new Event("sb:plan-changed"));
+          else {
+            const data = (await planned.json().catch(() => null)) as { error?: string } | null;
+            planError = data?.error ?? planned.statusText;
+          }
+        }
+        const addedText = planDate === null || planError ? "Task added" : planDate === todayLocal() ? "Task added to today's plan" : "Task added and planned";
         toast.push({
-          text: "Task added",
+          text: addedText,
           action: {
             label: "Undo",
             onClick: () => {
               void (async () => {
                 const undone = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
-                if (undone.ok) window.dispatchEvent(new Event("sb:tasks-changed"));
+                if (undone.ok) {
+                  window.dispatchEvent(new Event("sb:tasks-changed"));
+                  if (planDate !== null) window.dispatchEvent(new Event("sb:plan-changed"));
+                }
               })();
             },
           },
         });
         window.dispatchEvent(new Event("sb:tasks-changed"));
+        if (planError) {
+          // The line stays on screen with what was typed, the same as a refused capture.
+          setError(planError);
+          return;
+        }
       } else if (current.kind === "note") {
         const item = await captureNote(current.body, { containerId });
         toast.push({ text: container ? `Captured to ${container.name}` : "Captured to Inbox", href: `/items/${item.id}` });
@@ -179,7 +202,7 @@ export function PromptBar({
     } finally {
       setBusy(false);
     }
-  }, [busy, text, container, containerId, router, toast, captureNote, captureLink, onClose, write]);
+  }, [busy, text, container, containerId, planDate, router, toast, captureNote, captureLink, onClose, write]);
 
   const sendFiles = useCallback(
     async (files: File[]) => {

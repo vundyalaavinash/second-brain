@@ -17,7 +17,7 @@ export function fractionOfDay(iso: string, day: string): number {
   return Math.min(1, Math.max(0, (Date.parse(iso) - start) / 86_400_000));
 }
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = [
   "January",
   "February",

@@ -14,7 +14,13 @@ const task: TaskDTO = {
   completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
-function renderRow() {
+interface PlanProps {
+  onPlan?: () => void;
+  onPlanDate?: (date: string) => void;
+  planned?: boolean;
+}
+
+function renderRow(extra: PlanProps = {}) {
   const handlers = {
     onToggle: vi.fn(),
     onRename: vi.fn(),
@@ -26,10 +32,16 @@ function renderRow() {
   };
   render(
     <ul role="list">
-      <TaskRow task={task} today="2026-09-16" {...handlers} />
+      <TaskRow task={task} today="2026-09-16" {...handlers} {...extra} />
     </ul>,
   );
   return handlers;
+}
+
+function openMenu(): HTMLElement {
+  const trigger = screen.getByRole("button", { name: "Task actions" });
+  fireEvent.click(trigger);
+  return trigger;
 }
 
 describe("TaskRow actions menu", () => {
@@ -55,5 +67,61 @@ describe("TaskRow actions menu", () => {
     expect(handlers.onMove).toHaveBeenCalledWith("up");
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe("TaskRow planning", () => {
+  it("plans for today and closes the menu", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan });
+    const trigger = openMenu();
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
+      "Rename", "Set due date", "Plan for today", "Move up", "Move down", "Drop", "Delete",
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plan for today" }));
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("offers to take an already planned task back off the plan", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan, planned: true });
+    openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Plan for today" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove from plan" }));
+    expect(onPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the next seven days when a date can be chosen", () => {
+    const onPlanDate = vi.fn();
+    renderRow({ onPlanDate });
+    const trigger = openMenu();
+    const planFor = screen.getByRole("menuitem", { name: "Plan for" });
+    expect(planFor.getAttribute("aria-haspopup")).toBe("menu");
+    expect(planFor.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(planFor);
+    expect(planFor.getAttribute("aria-expanded")).toBe("true");
+    const days = screen.getByRole("menu", { name: "Plan for" });
+    expect(Array.from(days.querySelectorAll('[role="menuitem"]')).map((el) => el.textContent)).toEqual([
+      "Today 16", "Thursday 17", "Friday 18", "Saturday 19", "Sunday 20", "Monday 21", "Tuesday 22",
+    ]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Friday 18" }));
+    expect(onPlanDate).toHaveBeenCalledWith("2026-09-18");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("escape closes the day list first and leaves the menu open", () => {
+    renderRow({ onPlanDate: vi.fn() });
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plan for" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Plan for" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });
