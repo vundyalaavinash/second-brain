@@ -101,10 +101,13 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
 
   /** Moves the switch under the hand straight away; the answer is what it settles on. */
   function saveSetting(patch: Partial<MeetingSettingsDTO>) {
+    const before = settings;
     setSettings((current) => (current ? { ...current, ...patch } : current));
     void (async () => {
-      const res = await fetch(SETTINGS_URL, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(patch) });
-      if (!res.ok) {
+      const res = await fetch(SETTINGS_URL, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(patch) }).catch(() => null);
+      if (!res || !res.ok) {
+        // The switch goes back to what is actually saved, so the next click patches from the truth.
+        setSettings(before);
         setError("Could not save that change");
         return;
       }

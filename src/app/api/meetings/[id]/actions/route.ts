@@ -41,7 +41,8 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
     // accepted answers with the task it made.
     if (meta.acceptedActions?.includes(index)) {
       const made = listTasks(db, { sourceItemId: item.id, status: "all" });
-      const existing = made.find((t) => t.title === action.title || t.title === title) ?? made[made.length - 1];
+      const newest = made.reduce<(typeof made)[number] | undefined>((a, b) => (a && a.id > b.id ? a : b), undefined);
+      const existing = made.find((t) => t.title === action.title || t.title === title) ?? newest;
       if (existing) return NextResponse.json({ task: serializeTask(existing) }, { status: 200 });
     }
 

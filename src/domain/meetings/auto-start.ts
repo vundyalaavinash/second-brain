@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { calendarEvents, type CalendarEvent } from "@/db/schema";
-import { listMeetings, localDay } from "@/domain/activity/calendar";
-import { getItem, parseMeta } from "@/domain/items";
+import { findCapturedMeetingItem, listMeetings, localDay } from "@/domain/activity/calendar";
+import { parseMeta } from "@/domain/items";
 import { getSetting, setSetting } from "@/domain/settings";
 import type { RecorderStatus, RecordingMeta } from "./recorder";
 import { recorderStatus, startRecording, stopRecording } from "./index";
@@ -12,7 +12,6 @@ const LATE_MS = 2 * 60_000;
 const EARLY_MS = 60_000;
 /** The tail a meeting gets before an auto-started session is stopped. */
 export const AUTO_STOP_GRACE_MS = 5 * 60_000;
-const DAY_MS = 24 * 60 * 60_000;
 
 const AUTO_RECORD_KEY = "meetings.autoRecord";
 const NEEDS_CALL_LINK_KEY = "meetings.autoRecordNeedsCallLink";
@@ -40,8 +39,8 @@ export function setAutoRecordSettings(db: DB, patch: Partial<AutoRecordSettings>
 
 /** True once a session has been hung on the event's item: a meeting is recorded once. */
 function alreadyRecorded(db: DB, ev: CalendarEvent): boolean {
-  if (!ev.itemId) return false;
-  const item = getItem(db, ev.itemId);
+  // The same lookup capture uses, so an item found through meta.calendarEventId counts too.
+  const item = findCapturedMeetingItem(db, ev.id);
   if (!item) return false;
   return !!parseMeta<{ recording?: RecordingMeta }>(item).recording;
 }
@@ -58,7 +57,9 @@ export function pickAutoStart(db: DB, now: Date, settings: AutoRecordSettings): 
   const latest = now.getTime() + EARLY_MS;
   // The window can straddle local midnight, so ask for both days; `to` is exclusive.
   const from = localDay(new Date(earliest).toISOString());
-  const to = localDay(new Date(latest + DAY_MS).toISOString());
+  // The next calendar day, not 24 h later: on the fall-back day 24 h stays on the same day.
+  const last = new Date(latest);
+  const to = localDay(new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1).toISOString());
   for (const ev of listMeetings(db, { from, to })) {
     const start = Date.parse(ev.startsAt);
     if (start < earliest || start > latest) continue;
