@@ -125,7 +125,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
           aria-label="Add block"
           title="Add block"
           onClick={addBlock}
-          className="focus-ring inline-flex items-center justify-center w-6 h-6 rounded-sm text-fg-faint hover:text-fg hover:bg-slate-2 transition-colors duration-150"
+          className="focus-ring inline-flex items-center justify-center w-6 h-6 rounded-sm text-fg-faint hover:text-fg hover:bg-layer-2 transition-colors duration-150"
         >
           <Plus className="w-4 h-4" aria-hidden />
         </button>
@@ -140,7 +140,7 @@ export function BlockHandles({ editor, containerRef }: { editor: Editor; contain
           onDragStart={onDragStart}
           onDragEnd={() => endBlockDrag(editor)}
           onClick={(event) => setMenuAnchor(menuAnchor ? null : event.currentTarget)}
-          className="focus-ring inline-flex items-center justify-center w-6 h-6 rounded-sm text-fg-faint hover:text-fg hover:bg-slate-2 cursor-grab transition-colors duration-150"
+          className="focus-ring inline-flex items-center justify-center w-6 h-6 rounded-sm text-fg-faint hover:text-fg hover:bg-layer-2 cursor-grab transition-colors duration-150"
         >
           <GripVertical className="w-4 h-4" aria-hidden />
         </button>

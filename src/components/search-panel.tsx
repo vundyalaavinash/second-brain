@@ -19,7 +19,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {text.split(splitter).map((part, i) =>
         matcher.test(part) ? (
-          <mark key={i} className="bg-brass-dim text-fg rounded-sm px-0.5">
+          <mark key={i} className="bg-violet-dim text-fg rounded-sm px-0.5">
             {part}
           </mark>
         ) : (
@@ -114,7 +114,7 @@ export function SearchPanel() {
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
       <PageHeader title="Search" meta={status} />
 
-      <div className="flex items-center gap-3 h-12 px-4 rounded-lg border border-hairline bg-slate focus-within:border-hairline-strong transition-colors duration-150">
+      <div className="flex items-center gap-3 h-12 px-4 rounded-lg border border-hairline bg-layer-1 focus-within:border-hairline-strong transition-colors duration-150">
         <Search className="w-4 h-4 text-fg-faint" />
         <input
           ref={inputRef}
@@ -125,7 +125,7 @@ export function SearchPanel() {
           placeholder="Search everything, by keyword or meaning"
           className="flex-1 bg-transparent outline-none text-[15px]"
         />
-        {loading && <span className="w-1.5 h-1.5 rounded-full bg-brass live-dot" />}
+        {loading && <span className="w-1.5 h-1.5 rounded-full bg-violet live-dot" />}
         <Kbd>/</Kbd>
       </div>
 
@@ -178,11 +178,11 @@ export function SearchPanel() {
           {visible.map((r) => (
             <li
               key={r.item.id}
-              className="rounded-lg border border-hairline bg-slate px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
+              className="rounded-lg border border-hairline bg-layer-1 px-4 py-3 hover:border-hairline-strong transition-colors duration-150"
             >
               <div className="flex items-center gap-3">
                 <TypeIcon type={r.item.type} />
-                <Link href={`/items/${r.item.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-brass">
+                <Link href={`/items/${r.item.id}`} className="flex-1 truncate text-[13.5px] font-medium hover:text-violet-bright">
                   {r.item.title}
                 </Link>
                 <StatusDot status={r.item.status} error={r.item.error} />

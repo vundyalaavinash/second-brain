@@ -42,7 +42,7 @@ export function RecentCaptures({ refreshKey }: { refreshKey: number }) {
         {items.map((item) => (
           <Row key={item.id}>
             <TypeIcon type={item.type} />
-            <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+            <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
               {item.title}
             </Link>
             <StatusDot status={item.status} error={item.error} />

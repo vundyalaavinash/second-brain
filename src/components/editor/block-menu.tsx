@@ -157,7 +157,7 @@ function MenuItem({ icon: Icon, label, danger = false, onSelect }: { icon: Lucid
       data-menu-item
       onClick={onSelect}
       className={`focus-ring w-full flex items-center gap-2.5 px-2 h-9 rounded-sm text-left text-[13px] transition-colors duration-100 ${
-        danger ? "text-danger hover:bg-danger/10" : "text-fg-muted hover:text-fg hover:bg-slate-2"
+        danger ? "text-danger hover:bg-danger/10" : "text-fg-muted hover:text-fg hover:bg-layer-2"
       }`}
     >
       <Icon className="w-4 h-4 shrink-0" aria-hidden />

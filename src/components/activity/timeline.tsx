@@ -53,7 +53,7 @@ export function Timeline({ day, sessions, categories, meetings, onRelabel }: Pro
 
   return (
     <div ref={containerRef} className="relative flex flex-col gap-1.5">
-      <div className="relative h-10 rounded-md bg-slate border border-hairline overflow-hidden">
+      <div className="relative h-10 rounded-md bg-layer-1 border border-hairline overflow-hidden">
         {sessions.map((s) => {
           const startFrac = fractionOfDay(s.startedAt, day);
           const endFrac = fractionOfDay(s.endedAt, day);

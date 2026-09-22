@@ -113,7 +113,7 @@ export function SlashMenu({ items, selectedIndex, onHover, onSelect }: SlashMenu
                   onMouseEnter={() => onHover(index)}
                   onClick={() => onSelect(item)}
                   className={`w-full flex items-center gap-2.5 px-2 h-9 rounded-sm text-left transition-colors duration-100 ${
-                    index === selectedIndex ? "bg-slate-2 text-fg" : "text-fg-muted"
+                    index === selectedIndex ? "bg-layer-2 text-fg" : "text-fg-muted"
                   }`}
                 >
                   <item.icon className="w-4 h-4 shrink-0" aria-hidden />

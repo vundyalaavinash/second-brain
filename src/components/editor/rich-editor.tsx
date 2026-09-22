@@ -18,7 +18,7 @@ export interface RichEditorProps {
   className?: string;
   itemId?: number;
   onReady?: (editor: Editor) => void;
-  variant?: "ink" | "paper";
+  variant?: "md" | "doc";
 }
 
 const EMIT_DEBOUNCE_MS = 300;
@@ -72,8 +72,8 @@ export function prepareMarkdown(md: string): string {
   return out.join("\n");
 }
 
-export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady, variant = "ink" }: RichEditorProps) {
-  const variantClass = variant === "paper" ? "doc on-paper-editor" : "md";
+export function RichEditorInner({ value, onChange, onBlur, placeholder, autofocus, className = "", itemId, onReady, variant = "md" }: RichEditorProps) {
+  const variantClass = variant === "doc" ? "doc" : "md";
   const lastMarkdown = useRef(value);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onChangeRef = useRef(onChange);
@@ -215,12 +215,11 @@ export class RichEditorFallback extends Component<RichEditorProps & { children: 
   }
   render() {
     if (!this.state.failed) return this.props.children;
-    const { value, onChange, onBlur, placeholder, className = "", variant = "ink" } = this.props;
-    const variantClassName = variant === "paper" ? `${className} !bg-transparent !text-paper-fg` : className;
+    const { value, onChange, onBlur, placeholder, className = "" } = this.props;
     return (
       <div className="flex flex-col gap-2">
         <p className="text-[12.5px] text-warn">Rich editor unavailable, using plain text.</p>
-        <Textarea value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className={variantClassName} />
+        <Textarea value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className={className} />
       </div>
     );
   }

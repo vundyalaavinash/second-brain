@@ -74,14 +74,14 @@ export function TagChips({ value, onChange, readOnly = false }: TagChipsProps) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {value.map((tag, i) => (
-        <span key={tag} className="inline-flex items-center gap-1 h-6 px-2 rounded-full border border-paper-rule text-[12.5px] text-paper-fg">
+        <span key={tag} className="inline-flex items-center gap-1 h-6 px-2 rounded-full border border-hairline text-[12.5px] text-fg">
           {tag}
           {!readOnly && (
             <button
               type="button"
               onClick={() => removeAt(i)}
               aria-label={`Remove tag ${tag}`}
-              className="focus-ring rounded-full text-paper-muted hover:text-paper-fg"
+              className="focus-ring rounded-full text-fg-muted hover:text-fg"
             >
               <X className="w-3 h-3" aria-hidden />
             </button>
@@ -97,10 +97,10 @@ export function TagChips({ value, onChange, readOnly = false }: TagChipsProps) {
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
             placeholder="Tag"
-            className="focus-ring bg-transparent outline-none border-b border-paper-rule focus:border-brass text-[12.5px] w-24"
+            className="focus-ring bg-transparent outline-none border-b border-hairline focus:border-violet text-[12.5px] w-24"
           />
         ) : (
-          <button type="button" onClick={() => setAdding(true)} className="focus-ring text-paper-muted hover:text-paper-fg text-[12.5px]">
+          <button type="button" onClick={() => setAdding(true)} className="focus-ring text-fg-muted hover:text-fg text-[12.5px]">
             Add tag
           </button>
         ))}

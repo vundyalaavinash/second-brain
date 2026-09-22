@@ -11,7 +11,7 @@ export function ProjectCard({ project, today }: { project: ContainerDTO; today: 
   return (
     <Link
       href={`/c/${project.slug}`}
-      className="focus-ring flex flex-col gap-3 rounded-lg border border-hairline bg-slate p-5 transition-all duration-150 hover:border-hairline-strong motion-safe:hover:-translate-y-0.5"
+      className="focus-ring flex flex-col gap-3 rounded-lg border border-hairline bg-layer-1 p-5 transition-all duration-150 hover:border-hairline-strong motion-safe:hover:-translate-y-0.5"
     >
       <div className="flex items-center gap-3">
         <ProgressRing percent={p.percent} />

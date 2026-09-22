@@ -1,6 +1,6 @@
 import type { ActivityCategoryDTO } from "@/lib/dto";
 
-export const AFK_COLOR = "var(--color-slate-2)";
+export const AFK_COLOR = "var(--color-layer-3)";
 
 interface Props {
   categories: ActivityCategoryDTO[];

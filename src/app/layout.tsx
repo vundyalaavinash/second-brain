@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Newsreader, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Dock } from "@/components/dock/dock";
+import { AppShell } from "@/components/shell/app-shell";
 import { CommandPalette } from "@/components/command-palette";
 import { Shortcuts } from "@/components/shortcuts";
 
@@ -17,9 +17,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${ui.variable} ${doc.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-ink text-fg font-ui">
-        <main className="min-h-screen pb-28">{children}</main>
-        <Dock />
+      <body className="min-h-screen bg-carbon text-fg font-ui">
+        <AppShell>{children}</AppShell>
         <CommandPalette />
         <Shortcuts />
       </body>

@@ -15,10 +15,10 @@ function isHelperStale(lastSeen: string, now: number = Date.now()): boolean {
   return now - Date.parse(lastSeen) > HELPER_STALE_MS;
 }
 
-function Strip({ tone, text, action }: { tone: "neutral" | "warn"; text: string; action?: ReactNode }) {
+function Strip({ level, text, action }: { level: "neutral" | "warn"; text: string; action?: ReactNode }) {
   const cls =
-    tone === "neutral"
-      ? "rounded-md border border-hairline bg-slate px-3 py-2 text-[13px] flex items-center gap-3"
+    level === "neutral"
+      ? "rounded-md border border-hairline bg-layer-1 px-3 py-2 text-[13px] flex items-center gap-3"
       : "rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] flex items-center gap-3";
   return (
     <div className={cls}>
@@ -30,15 +30,15 @@ function Strip({ tone, text, action }: { tone: "neutral" | "warn"; text: string;
 
 export function StatusStrip({ helper, paused }: { helper: HelperStateDTO; paused: boolean }) {
   if (paused) {
-    return <Strip tone="neutral" text="Recording is paused." />;
+    return <Strip level="neutral" text="Recording is paused." />;
   }
 
   if (helper.lastSeen === null) {
-    return <Strip tone="warn" text="The activity helper has not connected yet. Run scripts/brain.sh setup to install it." />;
+    return <Strip level="warn" text="The activity helper has not connected yet. Run scripts/brain.sh setup to install it." />;
   }
 
   if (isHelperStale(helper.lastSeen)) {
-    return <Strip tone="warn" text={`Not recording since ${formatClock(helper.lastSeen)}. The helper is not running.`} />;
+    return <Strip level="warn" text={`Not recording since ${formatClock(helper.lastSeen)}. The helper is not running.`} />;
   }
 
   const rows: ReactNode[] = [];
@@ -48,7 +48,7 @@ export function StatusStrip({ helper, paused }: { helper: HelperStateDTO; paused
       rows.push(
         <Strip
           key="accessibility"
-          tone="warn"
+          level="warn"
           text="Window titles need the Accessibility permission."
           action={
             <Button variant="secondary" size="sm" onClick={() => window.open(SETTINGS_URL.accessibility)}>
@@ -62,7 +62,7 @@ export function StatusStrip({ helper, paused }: { helper: HelperStateDTO; paused
       rows.push(
         <Strip
           key="calendar"
-          tone="warn"
+          level="warn"
           text="Meeting names need the Calendars permission."
           action={
             <Button variant="secondary" size="sm" onClick={() => window.open(SETTINGS_URL.calendar)}>
@@ -77,7 +77,7 @@ export function StatusStrip({ helper, paused }: { helper: HelperStateDTO; paused
       rows.push(
         <Strip
           key={`automation-${appName}`}
-          tone="warn"
+          level="warn"
           text={`Browser URLs need Automation permission for ${appName}.`}
           action={
             <Button

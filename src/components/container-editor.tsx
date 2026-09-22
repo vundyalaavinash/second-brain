@@ -300,7 +300,7 @@ export function ContainerEditor({
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
 
       {c.kind === "project" ? (
-        <section className="rounded-lg border border-hairline bg-slate p-6 flex flex-col gap-4">
+        <section className="rounded-lg border border-hairline bg-layer-1 p-6 flex flex-col gap-4">
           {nameInput}
           <input
             value={goal}
@@ -409,7 +409,7 @@ export function ContainerEditor({
             {others.map((item) => (
               <Row key={item.id}>
                 <TypeIcon type={item.type} />
-                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
                   {item.title}
                 </Link>
                 <StatusDot status={item.status} error={item.error} />

@@ -95,7 +95,7 @@ export function NotesSection({
           {sorted.map((item) => (
             <Row key={item.id}>
               <FileText className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />
-              <Link href={`/items/${item.id}`} className="focus-ring shrink-0 max-w-[45%] truncate text-[13.5px] hover:text-brass">
+              <Link href={`/items/${item.id}`} className="focus-ring shrink-0 max-w-[45%] truncate text-[13.5px] hover:text-violet-bright">
                 {item.title}
               </Link>
               <span className="flex-1 truncate text-[12px] text-fg-faint">{previewOf(item.body, item.title)}</span>

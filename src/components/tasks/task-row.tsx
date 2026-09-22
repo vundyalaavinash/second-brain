@@ -20,7 +20,7 @@ function formatShortDate(day: string): string {
 
 const MENU_ITEM_FOCUSABLE = '[role="menuitem"], [role="menuitemradio"]';
 
-const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-slate-2 transition-colors duration-100";
+const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-layer-2 transition-colors duration-100";
 const MENU_ITEM_DANGER = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-danger hover:bg-danger/10 transition-colors duration-100";
 
 interface Props {
@@ -135,7 +135,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
   return (
     <li
       role="listitem"
-      className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-slate-2 transition-colors"
+      className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors"
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -144,7 +144,7 @@ export function TaskRow({ task, today, onToggle, onRename, onDue, onPriority, on
       <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
         <GripVertical className="w-3.5 h-3.5" />
       </span>
-      <input type="checkbox" className="focus-ring accent-brass w-4 h-4 shrink-0" checked={done} aria-label={task.title} onChange={onToggle} />
+      <input type="checkbox" className="focus-ring accent-violet w-4 h-4 shrink-0" checked={done} aria-label={task.title} onChange={onToggle} />
       {editingTitle ? (
         <Input
           size="sm"

@@ -106,7 +106,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           <Input type="date" name="to" defaultValue={to ?? ""} size="sm" className="w-full" />
         </div>
         <label className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-hairline text-[12px] text-fg-muted hover:text-fg cursor-pointer">
-          <input type="checkbox" name="archived" value="1" defaultChecked={archived} className="accent-brass" />
+          <input type="checkbox" name="archived" value="1" defaultChecked={archived} className="accent-violet" />
           Include archived
         </label>
         <Button variant="secondary" size="sm" type="submit">
@@ -130,7 +130,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             <Row key={item.id}>
               <span className="font-mono text-[11px] text-fg-faint w-8">#{item.id}</span>
               <TypeIcon type={item.type} />
-              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
                 {item.title}
               </Link>
               <StatusDot status={item.status} error={item.error} />

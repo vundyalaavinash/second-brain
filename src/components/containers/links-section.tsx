@@ -119,7 +119,7 @@ export function LinksSection({
       {duplicateId !== null && (
         <p className="text-[12.5px] text-fg-muted">
           Already captured.{" "}
-          <Link href={`/items/${duplicateId}`} className="focus-ring text-brass hover:underline">
+          <Link href={`/items/${duplicateId}`} className="focus-ring text-violet-bright hover:underline">
             View it
           </Link>
         </p>
@@ -132,7 +132,7 @@ export function LinksSection({
           {sorted.map((item) => (
             <Row key={item.id}>
               <Link2 className="w-4 h-4 text-fg-muted shrink-0" aria-hidden />
-              <Link href={`/items/${item.id}`} className="focus-ring flex-1 truncate text-[13.5px] hover:text-brass">
+              <Link href={`/items/${item.id}`} className="focus-ring flex-1 truncate text-[13.5px] hover:text-violet-bright">
                 {item.title}
               </Link>
               <span className="font-mono text-[11px] text-fg-faint shrink-0">{domainOf(item.sourceUrl ?? "")}</span>

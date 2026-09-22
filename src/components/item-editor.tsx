@@ -20,7 +20,7 @@ import { TagChips } from "./document/tag-chips";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
-  loading: () => <div className="doc on-paper-editor rich-editor" aria-busy="true" />,
+  loading: () => <div className="doc rich-editor" aria-busy="true" />,
 });
 
 const SAVE_DEBOUNCE_MS = 5000;
@@ -243,20 +243,20 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
           onBlur={() => {
             if (save === "dirty") void persist();
           }}
-          className="focus-ring font-doc text-[40px] leading-[1.1] font-medium tracking-[-0.01em] bg-transparent outline-none w-full text-paper-fg placeholder:text-paper-muted/60"
+          className="focus-ring font-doc text-[40px] leading-[1.1] font-medium tracking-[-0.01em] bg-transparent outline-none w-full text-fg placeholder:text-fg-faint"
           placeholder="Untitled"
         />
 
         <MetadataStrip>
           <span className="inline-flex items-center gap-1.5">
-            <TypeIcon type={item.type} className="w-3.5 h-3.5 text-paper-muted shrink-0" />
+            <TypeIcon type={item.type} className="w-3.5 h-3.5 text-fg-muted shrink-0" />
             {TYPE_LABEL[item.type]}
           </span>
-          <span className="w-px h-3 bg-paper-rule" aria-hidden />
-          <Chip tone="paper" icon={item.container ? KIND_ICON[item.container.kind] : InboxIcon} onClick={() => setMovePicker(true)}>
+          <span className="w-px h-3 bg-hairline" aria-hidden />
+          <Chip icon={item.container ? KIND_ICON[item.container.kind] : InboxIcon} onClick={() => setMovePicker(true)}>
             {item.container ? item.container.name : "Inbox"}
           </Chip>
-          <span className="w-px h-3 bg-paper-rule" aria-hidden />
+          <span className="w-px h-3 bg-hairline" aria-hidden />
           <TagChips
             value={tags.split(",").map((t) => t.trim()).filter(Boolean)}
             onChange={(next) => {
@@ -266,31 +266,31 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
               markDirty();
             }}
           />
-          <span className="w-px h-3 bg-paper-rule" aria-hidden />
+          <span className="w-px h-3 bg-hairline" aria-hidden />
           {item.people.map((p) => (
-            <Chip key={p.id} tone="paper" href={`/people/${p.slug}`} icon={AtSign} className="font-mono">
+            <Chip key={p.id} href={`/people/${p.slug}`} icon={AtSign} className="font-mono">
               {p.slug}
             </Chip>
           ))}
-          <Button variant="ghost" tone="paper" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
+          <Button variant="ghost" size="sm" icon={Plus} onClick={() => setPeoplePicker(true)}>
             Add person
           </Button>
-          <span className="w-px h-3 bg-paper-rule" aria-hidden />
+          <span className="w-px h-3 bg-hairline" aria-hidden />
           <span>
             Created <span className="font-mono text-[12.5px]">{formatDate(item.createdAt)}</span>
           </span>
         </MetadataStrip>
 
-        <hr className="border-paper-rule my-4" />
+        <hr className="border-hairline my-4" />
 
         {(item.sourceUrl || item.filePath || meta.site_name || meta.byline || meta.page_count !== undefined) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-paper-muted mb-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-muted mb-6">
             {item.sourceUrl && (
               <a
                 href={item.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-paper-link underline underline-offset-[3px] hover:opacity-80 truncate max-w-full"
+                className="inline-flex items-center gap-1 text-violet-bright underline underline-offset-[3px] hover:opacity-80 truncate max-w-full"
               >
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden />
                 {item.sourceUrl}
@@ -304,7 +304,7 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
                 href={`/api/items/${item.id}/file`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-paper-link underline underline-offset-[3px] hover:opacity-80"
+                className="inline-flex items-center gap-1 text-violet-bright underline underline-offset-[3px] hover:opacity-80"
               >
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden />
                 Open file
@@ -315,10 +315,10 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
 
         {isImage && (
           // eslint-disable-next-line @next/next/no-img-element -- same-origin API route, next/image cannot proxy it
-          <img src={`/api/items/${item.id}/file`} alt={item.title} className="max-h-96 rounded-md border border-paper-rule object-contain self-start mb-6" />
+          <img src={`/api/items/${item.id}/file`} alt={item.title} className="max-h-96 rounded-md border border-hairline object-contain self-start mb-6" />
         )}
         {isPdf && (
-          <iframe src={`/api/items/${item.id}/file`} title={item.title} className="w-full h-[480px] rounded-md border border-paper-rule bg-paper-2 mb-6" />
+          <iframe src={`/api/items/${item.id}/file`} title={item.title} className="w-full h-[480px] rounded-md border border-hairline bg-layer-2 mb-6" />
         )}
 
         {preview ? (
@@ -340,17 +340,17 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
             placeholder={item.type === "note" ? "Write, or press / for blocks" : "Your notes about this item"}
             className="min-h-[260px]"
             onReady={onEditorReady}
-            variant="paper"
+            variant="doc"
           />
         )}
 
         {item.extractedText && (
-          <details className="rounded-md bg-paper-2 mt-6">
-            <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-paper-muted select-none">
+          <details className="rounded-md bg-layer-2 mt-6">
+            <summary className="px-4 h-10 flex items-center gap-2 cursor-pointer text-[13px] text-fg-muted select-none">
               <FileText className="w-4 h-4" aria-hidden />
-              Extracted text <span className="font-mono text-[11px] text-paper-muted">{item.extractedText.length.toLocaleString("en-GB")} characters</span>
+              Extracted text <span className="font-mono text-[11px] text-fg-muted">{item.extractedText.length.toLocaleString("en-GB")} characters</span>
             </summary>
-            <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-paper-fg font-ui max-h-[480px] overflow-y-auto border-t border-paper-rule">
+            <pre className="px-4 py-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-fg font-ui max-h-[480px] overflow-y-auto border-t border-hairline">
               {item.extractedText}
             </pre>
           </details>

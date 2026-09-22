@@ -18,7 +18,7 @@ function Boom(): never {
 const MOUNT_TIMEOUT_MS = 5000;
 const MOUNT_POLL_MS = 20;
 
-async function mount(value: string, onChange = vi.fn(), variant: "ink" | "paper" = "ink") {
+async function mount(value: string, onChange = vi.fn(), variant: "md" | "doc" = "md") {
   let editor: Editor | undefined;
   const utils = render(<RichEditor value={value} onChange={onChange} variant={variant} onReady={(e) => (editor = e)} />);
   const deadline = Date.now() + MOUNT_TIMEOUT_MS;
@@ -42,12 +42,12 @@ describe("RichEditor", () => {
     vi.useRealTimers();
   });
 
-  // The paper variant carries `.doc`, never `.md`: `.md` paints ink colours, and `.doc` has
-  // to restore the list markers preflight strips on its own account (globals.css).
-  it("dresses the paper variant as a document, with no .md", async () => {
-    const { editor } = await mount("- one\n- two\n", vi.fn(), "paper");
+  // The doc variant carries `.doc`, never `.md`: the two set different type scales, and
+  // `.doc` has to restore the list markers preflight strips on its own account (globals.css).
+  it("dresses the doc variant as a document, with no .md", async () => {
+    const { editor } = await mount("- one\n- two\n", vi.fn(), "doc");
     const classes = [...editor.view.dom.classList];
-    expect(classes).toEqual(expect.arrayContaining(["doc", "on-paper-editor", "rich-editor"]));
+    expect(classes).toEqual(expect.arrayContaining(["doc", "rich-editor"]));
     expect(classes).not.toContain("md");
   });
 

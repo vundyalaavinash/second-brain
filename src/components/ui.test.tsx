@@ -36,17 +36,10 @@ describe("List and Row", () => {
 });
 
 describe("Button", () => {
-  it("uses paper-legible classes for the ghost variant when tone is paper", () => {
-    render(
-      <Button variant="ghost" tone="paper">
-        Add person
-      </Button>,
-    );
-    const button = screen.getByRole("button", { name: "Add person" });
-    expect(button.className).toContain("text-paper-muted");
-    expect(button.className).toContain("hover:text-paper-fg");
-    expect(button.className).toContain("hover:bg-paper-2");
-    expect(button.className).not.toContain("text-fg-muted");
-    expect(button.className).not.toContain("hover:bg-slate-2");
+  it("paints the primary variant with the violet accent and its on-violet foreground", () => {
+    render(<Button variant="primary">Save</Button>);
+    const button = screen.getByRole("button", { name: "Save" });
+    expect(button.className).toContain("bg-violet");
+    expect(button.className).toContain("text-on-violet");
   });
 });

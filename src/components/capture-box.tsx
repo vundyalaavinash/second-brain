@@ -104,7 +104,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
         setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
         setDuplicate(null);
       }}
-      className={`rounded-lg border bg-slate transition-colors duration-150 focus-within:border-hairline-strong ${dragging ? "border-brass" : "border-hairline"}`}
+      className={`rounded-lg border bg-layer-1 transition-colors duration-150 focus-within:border-hairline-strong ${dragging ? "border-violet" : "border-hairline"}`}
     >
       <div className="flex items-center justify-between px-4 h-9 border-b border-hairline">
         <span className="flex items-center gap-1.5">
@@ -153,7 +153,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       {files.length > 0 && (
         <ul className="px-4 pb-2 flex flex-wrap gap-2">
           {files.map((f, i) => (
-            <li key={`${f.name}-${i}`} className="rounded-full border border-hairline bg-slate px-2.5 h-7 text-[12px] flex items-center gap-2">
+            <li key={`${f.name}-${i}`} className="rounded-full border border-hairline bg-layer-1 px-2.5 h-7 text-[12px] flex items-center gap-2">
               {f.name}
               <button
                 type="button"
@@ -208,7 +208,7 @@ export function CaptureBox({ onCaptured, defaultContainer }: Props) {
       {duplicate && (
         <div className="px-4 py-2.5 border-t border-hairline flex items-center gap-3 text-[12.5px]">
           <span className="text-warn">Already saved.</span>
-          <Link href={`/items/${duplicate.existingId}`} className="text-brass hover:underline">Open it</Link>
+          <Link href={`/items/${duplicate.existingId}`} className="text-violet-bright hover:underline">Open it</Link>
           <button type="button" onClick={() => void submit(true)} className="text-fg-muted hover:text-fg">Save anyway</button>
         </div>
       )}

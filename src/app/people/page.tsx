@@ -27,10 +27,10 @@ export default function PeoplePage() {
         <List>
           {people.map((p) => (
             <Row key={p.id}>
-              <span className="w-6 h-6 rounded-full bg-slate-2 text-[11px] flex items-center justify-center shrink-0">
+              <span className="w-6 h-6 rounded-full bg-layer-2 text-[11px] flex items-center justify-center shrink-0">
                 {p.name.charAt(0).toUpperCase()}
               </span>
-              <Link href={`/people/${p.slug}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+              <Link href={`/people/${p.slug}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
                 {p.name}
               </Link>
               <span className="font-mono text-[11px] text-fg-faint">@{p.slug}</span>

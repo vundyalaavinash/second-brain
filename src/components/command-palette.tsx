@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { NAV_ITEMS, CAPTURE_ITEM, type IconName } from "./nav";
+import { NAV_ITEMS, SEARCH_ITEM, CAPTURE_ITEM, type IconName } from "./nav";
 import { Icon } from "./icons";
 import { Kbd } from "./ui";
 
@@ -24,7 +24,7 @@ export function CommandPalette() {
 
   const commands = useMemo<Command[]>(
     () =>
-      [...NAV_ITEMS, CAPTURE_ITEM].map((n) => ({
+      [...NAV_ITEMS, SEARCH_ITEM, CAPTURE_ITEM].map((n) => ({
         id: n.href,
         label: n.label,
         hint: n.shortcut,
@@ -110,7 +110,7 @@ export function CommandPalette() {
               key={c.id}
               onMouseEnter={() => setIndex(i)}
               onClick={() => choose(c)}
-              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-slate-2 text-fg" : "text-fg-muted"}`}
+              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-layer-2 text-fg" : "text-fg-muted"}`}
             >
               {c.iconName && <Icon name={c.iconName} className="w-4 h-4" />}
               <span className="flex-1">{c.label}</span>

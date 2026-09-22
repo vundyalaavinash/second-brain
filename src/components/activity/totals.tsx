@@ -25,7 +25,7 @@ function Column({ heading, entries }: { heading: string; entries: Entry[] }) {
               <span className="w-16 h-1 rounded-full bg-hairline shrink-0 overflow-hidden">
                 <span
                   className="block h-full rounded-full"
-                  style={{ width: `${(e.ms / max) * 100}%`, backgroundColor: e.color ?? "var(--color-brass-dim)" }}
+                  style={{ width: `${(e.ms / max) * 100}%`, backgroundColor: e.color ?? "var(--color-violet-dim)" }}
                 />
               </span>
               <span className="font-mono text-[11px] text-fg-faint shrink-0">{formatDuration(e.ms)}</span>

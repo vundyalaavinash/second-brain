@@ -1,7 +1,8 @@
-import { Inbox, Flag, Layers, BookMarked, Users, Activity, LayoutList, Archive, Search, Plus, type LucideIcon } from "lucide-react";
+import { CalendarDays, Inbox, Flag, Layers, BookMarked, Users, Activity, LayoutList, Archive, Search, Plus, type LucideIcon } from "lucide-react";
 import type { IconName } from "./nav";
 
 const ICONS: Record<IconName, LucideIcon> = {
+  today: CalendarDays,
   inbox: Inbox,
   project: Flag,
   area: Layers,

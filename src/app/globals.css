@@ -2,26 +2,22 @@
 @import "../components/editor/editor.css";
 
 @theme {
-  --color-ink: #0f1218;
-  --color-slate: #171b23;
-  --color-slate-2: #1e232d;
-  --color-hairline: rgba(255, 255, 255, 0.08);
-  --color-hairline-strong: rgba(255, 255, 255, 0.14);
-  --color-fg: #edebe4;
-  --color-fg-muted: #a3a8b4;
-  --color-fg-faint: #6b7080;
-  --color-paper: #f4f0e8;
-  --color-paper-2: #ece7dd;
-  --color-paper-rule: rgba(15, 18, 24, 0.1);
-  --color-paper-fg: #1b1f27;
-  --color-paper-muted: #5b6070;
-  --color-paper-link: #7a5a12;
-  --color-brass: #e0a93c;
-  --color-brass-dim: rgba(224, 169, 60, 0.16);
-  --color-brass-ink: #2a1f07;
-  --color-success: #7fb88a;
-  --color-warn: #d9a441;
-  --color-danger: #d66a5c;
+  --color-carbon: #0b0b0f;
+  --color-layer-1: #121218;
+  --color-layer-2: #17171f;
+  --color-layer-3: #1d1d26;
+  --color-hairline: rgba(255, 255, 255, 0.06);
+  --color-hairline-strong: rgba(255, 255, 255, 0.1);
+  --color-fg: #eceaf4;
+  --color-fg-muted: #9a98a8;
+  --color-fg-faint: #5f5e6c;
+  --color-violet: #7c5cff;
+  --color-violet-bright: #b7a6ff;
+  --color-violet-dim: rgba(124, 92, 255, 0.18);
+  --color-on-violet: #ffffff;
+  --color-success: #6fcf97;
+  --color-warn: #f2b441;
+  --color-danger: #ef6461;
 
   --font-ui: var(--font-ui-src), ui-sans-serif, system-ui, sans-serif;
   --font-doc: var(--font-doc-src), Georgia, "Times New Roman", serif;
@@ -29,10 +25,9 @@
 
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
 
-  --shadow-dock: 0 20px 50px -20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-paper: 0 30px 80px -40px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-pop: 0 24px 60px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 @layer base {
@@ -41,7 +36,7 @@
   }
 
   body {
-    background: var(--color-ink);
+    background: var(--color-carbon);
     color: var(--color-fg);
     font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
@@ -54,7 +49,7 @@
   }
 
   ::selection {
-    background: var(--color-brass-dim);
+    background: var(--color-violet-dim);
   }
 
   input,
@@ -71,27 +66,30 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brass);
+    outline: 2px solid var(--color-violet);
     outline-offset: 2px;
   }
-}
-
-/* Solid floating chrome for menus, drawers, and the dock: opaque so content underneath
- * stays legible. */
-.panel {
-  background: var(--color-slate);
-  border: 1px solid var(--color-hairline-strong);
-  box-shadow: var(--shadow-dock);
 }
 
 /* Focus ring used by every interactive primitive; overrides the global outline fallback. */
 .focus-ring:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-ink), 0 0 0 4px var(--color-brass);
+  box-shadow: 0 0 0 2px var(--color-carbon), 0 0 0 4px var(--color-violet);
 }
 
-.on-paper .focus-ring:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-brass);
+/* Solid floating chrome for menus, drawers, and toasts: opaque so content underneath
+ * stays legible. */
+.panel {
+  background: var(--color-layer-2);
+  border: 1px solid var(--color-hairline-strong);
+  box-shadow: var(--shadow-pop);
+}
+
+/* A flat in-page surface: cards, status blocks, rail sections. */
+.pane {
+  background: var(--color-layer-1);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
 }
 
 .hairline-row {
@@ -101,19 +99,36 @@
   border-bottom: 0;
 }
 
-.on-paper {
-  background: var(--color-paper);
-  color: var(--color-paper-fg);
+/* The only uppercase text in the app: section labels and rail headings. */
+.micro {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
 }
-.on-paper ::selection {
-  background: var(--color-brass-dim);
+
+.glow {
+  position: absolute;
+  width: 640px;
+  height: 640px;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, var(--color-violet), transparent);
+  opacity: 0.14;
+  pointer-events: none;
+  filter: blur(40px);
 }
-/* Scoped to document bodies: a blanket `.on-paper a` is unlayered, so it would beat the
- * utility classes on paper chips and the source/file links regardless of specificity. */
-.on-paper :is(.doc, .md) a {
-  color: var(--color-paper-link);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.glow-breathing {
+  animation: glow-breathe 2.4s ease-in-out infinite;
+}
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.18;
+  }
 }
 
 @keyframes pulse-accent {
@@ -147,11 +162,25 @@
   border-radius: 5px;
   padding: 1px 5px;
   line-height: 1.4;
-  background: var(--color-slate-2);
+  background: var(--color-layer-2);
+}
+
+/* The top bar renders the route's own label only when the page has not filled the slot. */
+#crumb-slot:not(:empty) + .crumb-fallback {
+  display: none;
+}
+
+/* The rail column and its toggle exist only while a page has portalled something in. */
+#rail-slot:empty {
+  display: none;
+}
+body:not(:has(#rail-slot > *)) .rail-toggle {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-dot {
+  .live-dot,
+  .glow-breathing {
     animation: none;
   }
   * {
@@ -196,19 +225,19 @@
   list-style: decimal;
 }
 .md a {
-  color: var(--color-brass);
+  color: var(--color-violet-bright);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .md code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  background: var(--color-slate-2);
+  background: var(--color-layer-3);
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
 .md pre {
-  background: var(--color-slate-2);
+  background: var(--color-layer-3);
   border: 1px solid var(--color-hairline);
   border-radius: 6px;
   padding: 0.75em 1em;
@@ -229,7 +258,7 @@
   margin: 1.2em 0;
 }
 
-/* Document typography, used inside `.on-paper` (Task 2: document sheet). */
+/* Document typography: the serif reading column an item's body sits in. */
 .doc {
   font-family: var(--font-doc);
   font-size: 17px;
@@ -258,8 +287,8 @@
 .doc blockquote {
   margin: 0.7em 0;
 }
-/* Preflight removes list markers and indent; `.md` restores them for the ink variant, and
- * the paper variant (`doc on-paper-editor`, no `.md`) needs its own copy.
+/* Preflight removes list markers and indent; `.md` restores them for the preview pane, and
+ * the editor variant (`.doc`, no `.md`) needs its own copy.
  * `.rich-editor ul[data-type="taskList"]` is more specific, so checklists stay unmarked. */
 .doc ul,
 .doc ol {
@@ -275,7 +304,7 @@
 .doc pre {
   font-family: var(--font-mono);
   font-size: 15px;
-  background: var(--color-paper-2);
+  background: var(--color-layer-3);
 }
 .doc code {
   padding: 0.1em 0.35em;
@@ -285,31 +314,27 @@
   padding: 0.75em 1em;
   border-radius: 6px;
   overflow-x: auto;
+  border: 1px solid var(--color-hairline);
 }
 .doc pre code {
   background: none;
   padding: 0;
 }
 .doc blockquote {
-  border-left: 2px solid var(--color-paper-rule);
+  border-left: 2px solid var(--color-hairline-strong);
   padding-left: 0.9em;
-  color: var(--color-paper-muted);
+  color: var(--color-fg-muted);
 }
 .doc hr {
   border: 0;
-  border-top: 1px solid var(--color-paper-rule);
+  border-top: 1px solid var(--color-hairline);
   margin: 1.2em 0;
 }
-/* Paper overrides for `.md`. These sit after the `.md` block on purpose: `.md a` and
- * `.md pre` are unlayered and equal in specificity to `.doc a` / `.doc pre`, so only source
- * order decides which wins on the preview pane, which renders `doc md` together. */
-.doc a,
-.on-paper .md a {
-  color: var(--color-paper-link);
+/* These sit after the `.md` block on purpose: `.md a` and `.md pre` are unlayered and equal
+ * in specificity to `.doc a` / `.doc pre`, so only source order decides which wins on the
+ * preview pane, which renders `doc md` together. */
+.doc a {
+  color: var(--color-violet-bright);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-.doc pre,
-.on-paper .md pre {
-  border-color: var(--color-paper-rule);
 }

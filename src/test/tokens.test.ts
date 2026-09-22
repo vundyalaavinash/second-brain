@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-const OLD = [/\bbg-bg\b/, /\bbg-surface-[123]\b/, /\bborder-line\b/, /\bborder-line-strong\b/, /\bdivide-line\b/, /\btext-accent\b/, /\bbg-accent\b/, /\bbg-accent-dim\b/, /\bborder-accent\b/, /\baccent-accent\b/, /\btext-bg\b/, /\bfrost\b/, /--font-geist-sans/, /#4cc9ff/i];
+const OLD = [/\bbg-bg\b/, /\bbg-surface-[123]\b/, /\bborder-line\b/, /\bborder-line-strong\b/, /\bdivide-line\b/, /\btext-accent\b/, /\bbg-accent\b/, /\bbg-accent-dim\b/, /\bborder-accent\b/, /\baccent-accent\b/, /\btext-bg\b/, /\bfrost\b/, /--font-geist-sans/, /#4cc9ff/i, /\bbg-ink\b/, /\bbg-slate(-2)?\b/, /\bhover:bg-slate(-2)?\b/, /\b(text|bg|border|accent)-brass(-dim|-ink)?\b/, /\b(bg|text|border)-paper(-2|-rule|-fg|-muted|-link)?\b/, /\bon-paper\b/, /\bshadow-(dock|paper)\b/, /\btone=/];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of fs.readdirSync(dir)) {

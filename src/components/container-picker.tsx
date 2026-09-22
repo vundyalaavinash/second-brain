@@ -113,7 +113,7 @@ export function ContainerPicker({ kind, allowInbox = false, title, onPick, onClo
               key={r.key}
               onMouseEnter={() => setIndex(i)}
               onClick={r.run}
-              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-slate-2 text-fg" : "text-fg-muted"}`}
+              className={`mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer ${i === index ? "bg-layer-2 text-fg" : "text-fg-muted"}`}
             >
               {r.icon}
               <span className="flex-1 truncate">{r.label}</span>

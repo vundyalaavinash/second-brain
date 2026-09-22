@@ -88,19 +88,19 @@ export function PeoplePicker({ selected, onChange, onClose }: Props) {
               <li
                 key={p.id}
                 onClick={() => toggle(p.id)}
-                className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer hover:bg-slate-2"
+                className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-3 cursor-pointer hover:bg-layer-2"
               >
-                <span className="w-6 h-6 rounded-full bg-slate border border-hairline flex items-center justify-center text-[11px] text-fg-muted shrink-0">
+                <span className="w-6 h-6 rounded-full bg-layer-1 border border-hairline flex items-center justify-center text-[11px] text-fg-muted shrink-0">
                   {p.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className={`flex-1 truncate text-[13.5px] ${linked ? "text-fg" : "text-fg-muted"}`}>{p.name}</span>
                 <span className="font-mono text-[11px] text-fg-faint">{p.slug}</span>
-                {linked && <Check className="w-3.5 h-3.5 text-brass shrink-0" aria-hidden />}
+                {linked && <Check className="w-3.5 h-3.5 text-violet-bright shrink-0" aria-hidden />}
               </li>
             );
           })}
           {q && !exact && (
-            <li onClick={() => void create()} className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-2 cursor-pointer text-brass hover:bg-slate-2">
+            <li onClick={() => void create()} className="mx-1.5 px-2.5 h-10 rounded-md flex items-center gap-2 cursor-pointer text-violet-bright hover:bg-layer-2">
               <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden />
               Create “{query.trim()}”
             </li>

@@ -34,7 +34,7 @@ export default function ArchivePage() {
             {containers.map((c) => (
               <Row key={c.id}>
                 <KindIcon kind={c.kind} />
-                <Link href={`/c/${c.slug}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+                <Link href={`/c/${c.slug}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
                   {c.name}
                 </Link>
                 <span className="font-mono text-[11px] text-fg-faint">{c.archivedAt ? formatDate(c.archivedAt) : ""}</span>
@@ -53,7 +53,7 @@ export default function ArchivePage() {
             {items.map((i) => (
               <Row key={i.id}>
                 <TypeIcon type={i.type} />
-                <Link href={`/items/${i.id}`} className="flex-1 truncate text-[13.5px] hover:text-brass">
+                <Link href={`/items/${i.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
                   {i.title}
                 </Link>
                 {i.container && <span className="text-[12px] text-fg-faint truncate max-w-[10rem]">{i.container.name}</span>}

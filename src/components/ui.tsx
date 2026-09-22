@@ -11,27 +11,18 @@ import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
-type ButtonTone = "ink" | "paper";
 
 const BUTTON_BASE =
   "focus-ring inline-flex items-center gap-1.5 rounded-sm font-medium whitespace-nowrap transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none";
-const BUTTON_VARIANT: Record<ButtonTone, Record<ButtonVariant, string>> = {
-  ink: {
-    primary: "bg-brass text-brass-ink hover:brightness-105",
-    secondary: "bg-slate border border-hairline hover:border-hairline-strong",
-    danger: "border border-danger/50 text-danger hover:bg-danger/10",
-    ghost: "text-fg-muted hover:text-fg hover:bg-slate-2",
-  },
-  paper: {
-    primary: "bg-brass text-brass-ink hover:brightness-105",
-    secondary: "bg-paper-2 border border-paper-rule text-paper-fg hover:border-brass/60",
-    danger: "border border-danger/50 text-danger hover:bg-danger/10",
-    ghost: "text-paper-muted hover:text-paper-fg hover:bg-paper-2",
-  },
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+  primary: "bg-violet text-on-violet hover:brightness-110",
+  secondary: "bg-layer-1 border border-hairline hover:border-hairline-strong",
+  danger: "border border-danger/50 text-danger hover:bg-danger/10",
+  ghost: "text-fg-muted hover:text-fg hover:bg-layer-2",
 };
 const BUTTON_SIZE = { sm: "h-7 px-2.5 text-[12px]", md: "h-8 px-3 text-[13px]" } as const;
 
-type ButtonVisualProps = { variant?: ButtonVariant; tone?: ButtonTone; size?: "sm" | "md"; icon?: LucideIcon; children?: ReactNode };
+type ButtonVisualProps = { variant?: ButtonVariant; size?: "sm" | "md"; icon?: LucideIcon; children?: ReactNode };
 type ButtonAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ButtonProps =
@@ -40,7 +31,6 @@ type ButtonProps =
 
 export function Button({
   variant = "secondary",
-  tone = "ink",
   size = "md",
   icon: Icon,
   href,
@@ -50,7 +40,7 @@ export function Button({
   title,
   ...props
 }: ButtonProps) {
-  const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[tone][variant]} ${BUTTON_SIZE[size]} ${className}`;
+  const cls = `${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]} ${className}`;
   if (href) {
     const { target, rel } = props as ButtonAnchorProps;
     return (
@@ -76,13 +66,13 @@ export function IconButton({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: LucideIcon; active?: boolean; danger?: boolean }) {
-  const tone = danger ? "text-danger hover:bg-danger/10" : active ? "text-brass bg-brass-dim" : "text-fg-muted hover:text-fg hover:bg-slate-2";
+  const look = danger ? "text-danger hover:bg-danger/10" : active ? "text-violet-bright bg-violet-dim" : "text-fg-muted hover:text-fg hover:bg-layer-2";
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
-      className={`focus-ring inline-flex items-center justify-center w-8 h-8 rounded-sm transition-colors duration-150 disabled:opacity-40 ${tone} ${className}`}
+      className={`focus-ring inline-flex items-center justify-center w-8 h-8 rounded-sm transition-colors duration-150 disabled:opacity-40 ${look} ${className}`}
       {...props}
     >
       <Icon className="w-4 h-4" aria-hidden />
@@ -91,7 +81,7 @@ export function IconButton({
 }
 
 // Appended size utilities do not override these (Tailwind orders by value); use the `size` prop.
-const FIELD = "focus-ring w-full rounded-md border border-hairline bg-slate px-3 text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-hairline-strong focus:border-hairline-strong";
+const FIELD = "focus-ring w-full rounded-md border border-hairline bg-layer-1 px-3 text-fg placeholder:text-fg-faint transition-colors duration-150 hover:border-hairline-strong focus:border-hairline-strong";
 
 const FIELD_SIZE = { sm: "h-8 text-[12.5px]", md: "h-9 text-[13.5px]" } as const;
 const TEXTAREA_SIZE = { sm: "text-[12.5px]", md: "text-[13.5px]" } as const;
@@ -123,31 +113,27 @@ export function Select({
       style={{
         // Literal hex, kept in step with --color-fg-muted by hand: a data URI cannot read a CSS variable.
         backgroundImage:
-          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a3a8b4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
+          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239a98a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\")",
       }}
       {...props}
     />
   );
 }
 
-type ChipTone = "ink" | "paper";
-type ChipVisualProps = { icon?: LucideIcon; active?: boolean; tone?: ChipTone; children?: ReactNode };
+type ChipVisualProps = { icon?: LucideIcon; active?: boolean; children?: ReactNode };
 type ChipAnchorProps = Pick<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "aria-label" | "title" | "target" | "rel">;
 
 type ChipProps =
   | (ButtonHTMLAttributes<HTMLButtonElement> & ChipVisualProps & { href?: undefined; as?: "span"; ref?: Ref<HTMLButtonElement> })
   | (ChipAnchorProps & ChipVisualProps & { href: string; as?: undefined });
 
-const CHIP_TONE: Record<ChipTone, { base: string; active: string }> = {
-  ink: { base: "border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong", active: "border-brass/60 bg-brass-dim text-fg" },
-  paper: { base: "border-paper-rule text-paper-fg hover:bg-paper-2", active: "border-brass bg-brass-dim" },
-};
+const CHIP_BASE = "border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong";
+const CHIP_ACTIVE = "border-violet/60 bg-violet-dim text-fg";
 
 /** A small selectable pill: filters, homes, tags. */
 export function Chip({
   icon: Icon,
   active = false,
-  tone = "ink",
   href,
   as,
   className = "",
@@ -157,7 +143,7 @@ export function Chip({
   ...props
 }: ChipProps) {
   const cls = `focus-ring inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12px] transition-colors duration-150 ${
-    active ? CHIP_TONE[tone].active : CHIP_TONE[tone].base
+    active ? CHIP_ACTIVE : CHIP_BASE
   } ${className}`;
   if (href) {
     const { target, rel } = props as ChipAnchorProps;
@@ -227,5 +213,5 @@ export function List({ children, className = "" }: { children: ReactNode; classN
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <li className={`hairline-row flex items-center gap-3 px-3 h-11 hover:bg-slate-2 transition-colors ${className}`}>{children}</li>;
+  return <li className={`hairline-row flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>{children}</li>;
 }
