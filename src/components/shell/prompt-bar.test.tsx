@@ -172,6 +172,27 @@ describe("PromptBar", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ body: "first\nsecond" });
   });
 
+  it("starts from the draft the dock kept and reports every change back to it", () => {
+    const onDraftChange = vi.fn();
+    render(
+      <ToastProvider>
+        <PromptBar open onClose={onClose} initialValue="buy mil" onDraftChange={onDraftChange} />
+      </ToastProvider>,
+    );
+    expect((field() as HTMLInputElement).value).toBe("buy mil");
+    fireEvent.change(field(), { target: { value: "buy milk" } });
+    expect(onDraftChange).toHaveBeenCalledWith("buy milk");
+  });
+
+  it("closes on escape whether or not something is typed", () => {
+    mount();
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.change(field(), { target: { value: "half typed" } });
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
   it("focuses the field when the shortcut layer asks for it", () => {
     mount();
     window.dispatchEvent(new Event("sb:prompt-focus"));

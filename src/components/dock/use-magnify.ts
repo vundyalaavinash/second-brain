@@ -13,6 +13,8 @@ export interface Magnify {
   scaleAt(index: number): number;
   onPointerMove(e: { clientX: number; currentTarget: HTMLElement }): void;
   onPointerLeave(): void;
+  /** Back to rest, for when the row itself goes away (the bar opening over it). */
+  reset(): void;
 }
 
 /**
@@ -25,6 +27,10 @@ export function useMagnify({ max, radius }: { max: number; radius: number }): Ma
   // Read once into a ref: the hook must never look at `matchMedia` during a render, and a
   // scale that stays at 1 does not need to re-render anything on its own.
   const reduced = useRef(false);
+  // A pointer move fires far more often than the screen repaints, and each one measures
+  // every item, so the row is measured once a frame from the latest position.
+  const frame = useRef(0);
+  const pointer = useRef<{ x: number; row: HTMLElement } | null>(null);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -37,25 +43,41 @@ export function useMagnify({ max, radius }: { max: number; radius: number }): Ma
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  const measure = useCallback(() => {
+    frame.current = 0;
+    const at = pointer.current;
+    if (!at) return;
+    const items = at.row.querySelectorAll<HTMLElement>("[data-dock-item]");
+    setScales(
+      Array.from(items, (el) => {
+        const box = el.getBoundingClientRect();
+        return magnifyScale(box.left + box.width / 2 - at.x, max, radius);
+      }),
+    );
+  }, [max, radius]);
+
   const onPointerMove = useCallback(
     (e: { clientX: number; currentTarget: HTMLElement }) => {
       if (reduced.current) return;
-      // The row comes from the event rather than the ref: the handler is the only place that
+      // The row comes from the event rather than a ref: the handler is the only place that
       // may touch the DOM, and `currentTarget` is the row the pointer is actually over.
-      const items = e.currentTarget.querySelectorAll<HTMLElement>("[data-dock-item]");
-      setScales(
-        Array.from(items, (el) => {
-          const box = el.getBoundingClientRect();
-          return magnifyScale(box.left + box.width / 2 - e.clientX, max, radius);
-        }),
-      );
+      pointer.current = { x: e.clientX, row: e.currentTarget };
+      if (frame.current) return;
+      frame.current = requestAnimationFrame(measure);
     },
-    [max, radius],
+    [measure],
   );
 
-  const onPointerLeave = useCallback(() => setScales([]), []);
+  const reset = useCallback(() => {
+    pointer.current = null;
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    setScales([]);
+  }, []);
 
   const scaleAt = useCallback((index: number) => scales[index] ?? 1, [scales]);
 
-  return { scaleAt, onPointerMove, onPointerLeave };
+  return { scaleAt, onPointerMove, onPointerLeave: reset, reset };
 }

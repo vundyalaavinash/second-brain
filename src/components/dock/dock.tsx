@@ -23,12 +23,13 @@ import { PromptBar } from "../shell/prompt-bar";
 import { DockItem, type DockItemProps } from "./dock-item";
 import { DockSheet } from "./dock-sheet";
 import { useMagnify } from "./use-magnify";
-import type { HelperStateDTO } from "@/lib/dto";
+import type { HelperStateDTO, ItemDTO } from "@/lib/dto";
 
 const POLL_MS = 20_000;
 const ACTIVITY_POLL_MS = 60_000;
 const HELPER_STALE_MS = 120_000;
-/** A link the bar handed over settles, or gives up, within this long. */
+/** A fetched link stops being pending once its reader run finishes. */
+const PENDING_POLL_MS = 2000;
 const PENDING_LIMIT_MS = 60_000;
 const DIM_THROTTLE_MS = 300;
 const NARROW = "(max-width: 719px)";
@@ -83,16 +84,21 @@ export function Dock() {
   const [inboxCount, setInboxCount] = useState(0);
   const [helperDown, setHelperDown] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [barOpen, setOpen] = useState(false);
+  // The path the bar was opened on rides along with the flag, so leaving the page closes the
+  // bar by plain derivation rather than by an effect writing state back.
+  const [bar, setBar] = useState({ open: false, path: "" });
+  const [draft, setDraft] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dimmed, setDimmed] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pendingId, setPendingId] = useState<number | null>(null);
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, wideOnServer);
   // The capture page is the prompt bar writ large, so the bar stays away there and the pill
   // keeps its place rather than leaving the page with nothing at the bottom.
-  const open = barOpen && pathname !== "/capture";
+  const open = bar.open && bar.path === pathname && pathname !== "/capture";
   const shellRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLElement>(null);
+  const captureRef = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
   const magnify = useMagnify({ max: 1.35, radius: 96 });
 
   useEffect(() => {
@@ -144,33 +150,57 @@ export function Dock() {
   // `shortcuts.tsx` owns the `c` key; it asks for the bar, which is now the dock's open state.
   useEffect(() => {
     function onRequest() {
-      setOpen(true);
+      setBar({ open: true, path: pathname });
     }
     window.addEventListener("sb:prompt-focus", onRequest);
     return () => window.removeEventListener("sb:prompt-focus", onRequest);
-  }, []);
+  }, [pathname]);
 
-  // The one intentional autofocus in the app: the bar was asked for, so it takes the caret.
+  // The caret follows the bar in and back out again: opening is the one intentional autofocus
+  // in the app, and closing hands focus to the button that opened it rather than to the body.
   useEffect(() => {
-    if (!open) return;
-    shellRef.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+    if (wasOpen.current === open) return;
+    wasOpen.current = open;
+    if (open) shellRef.current?.querySelector<HTMLElement>("input, textarea")?.focus();
+    else captureRef.current?.focus();
   }, [open]);
 
-  // The bar announces a link it is still reading; the glow breathes until it settles.
+  // The bar hands over the link it just captured; the glow breathes until the reader run for
+  // that item finishes, which outlives the bar itself.
   useEffect(() => {
     function onPending(e: Event) {
-      setPending((e as CustomEvent<boolean>).detail);
+      setPendingId((e as CustomEvent<{ itemId: number }>).detail?.itemId ?? null);
     }
     window.addEventListener("sb:capture-pending", onPending);
     return () => window.removeEventListener("sb:capture-pending", onPending);
   }, []);
 
-  // Closing the bar unmounts its poll, so the dock stops breathing on its own timer too.
   useEffect(() => {
-    if (!pending) return;
-    const id = setTimeout(() => setPending(false), PENDING_LIMIT_MS);
-    return () => clearTimeout(id);
-  }, [pending]);
+    if (pendingId === null) return;
+    const startedAt = Date.now();
+    let stopped = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        if (stopped) return;
+        if (Date.now() - startedAt > PENDING_LIMIT_MS) {
+          setPendingId(null);
+          return;
+        }
+        try {
+          const res = await fetch(`/api/items/${pendingId}`);
+          if (!res.ok || stopped) return;
+          const item = (await res.json()) as ItemDTO;
+          if (!stopped && item.status !== "pending") setPendingId(null);
+        } catch {
+          /* offline: keep waiting until the limit */
+        }
+      })();
+    }, PENDING_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [pendingId]);
 
   // Typing anywhere else pushes the dock back; a glance (the pointer) or a focus into it
   // brings it forward again.
@@ -198,14 +228,25 @@ export function Dock() {
     };
   }, []);
 
+  const { reset } = magnify;
+  const openBar = useCallback(() => {
+    reset();
+    setBar({ open: true, path: pathname });
+  }, [reset, pathname]);
+
+  const closeBar = useCallback(() => {
+    reset();
+    setBar({ open: false, path: pathname });
+  }, [reset, pathname]);
+
+  const hideSheet = useCallback(() => setSheetOpen(false), []);
+
+  /** Escape or a second press on More: the button that opened the sheet takes focus back. */
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
     moreRef.current?.focus();
   }, []);
 
-  const closeBar = useCallback(() => setOpen(false), []);
-  const toggleBar = useCallback(() => setOpen((v) => !v), []);
-  const toggleSheet = useCallback(() => setSheetOpen((v) => !v), []);
   const openPalette = useCallback(() => window.dispatchEvent(new Event("sb:palette")), []);
 
   const status = paused ? "Paused" : helperDown ? "Not recording" : "Recording";
@@ -225,25 +266,38 @@ export function Dock() {
       badge: item.badge === "inbox" && inboxCount > 0 ? inboxCount : undefined,
       dot: item.badge === "activity" && helperDown,
       title: item.badge === "activity" ? status : undefined,
-      onClick: sheetOpen ? () => setSheetOpen(false) : undefined,
+      onClick: sheetOpen ? hideSheet : undefined,
     };
   }
+
+  const captureSlot: DockItemProps & { key: string } = {
+    key: "capture",
+    label: CAPTURE_ITEM.label,
+    shortcut: CAPTURE_ITEM.shortcut,
+    icon: ICONS.capture,
+    raised: true,
+    expanded: open,
+    onClick: open ? closeBar : openBar,
+    ref: captureRef,
+  };
+  const searchSlot: DockItemProps & { key: string } = {
+    key: "search",
+    label: SEARCH_ITEM.label,
+    shortcut: SEARCH_ITEM.shortcut,
+    icon: ICONS.search,
+    onClick: openPalette,
+  };
 
   // The row is built as one ordered list so that its indices, the document order, and the
   // scales the magnify hook reads back out of the DOM all line up.
   const slots: (DockItemProps & { key: string })[] = narrow
     ? [
         ...NARROW_ITEMS.map(navSlot),
-        { key: "search", label: SEARCH_ITEM.label, shortcut: SEARCH_ITEM.shortcut, icon: ICONS.search, onClick: openPalette },
-        { key: "capture", label: CAPTURE_ITEM.label, shortcut: CAPTURE_ITEM.shortcut, icon: ICONS.capture, raised: true, expanded: open, onClick: toggleBar },
-        { key: "more", label: "More", icon: DotsThree, expanded: sheetOpen, onClick: toggleSheet, ref: moreRef },
+        searchSlot,
+        captureSlot,
+        { key: "more", label: "More", icon: DotsThree, expanded: sheetOpen, onClick: sheetOpen ? closeSheet : () => setSheetOpen(true), ref: moreRef },
       ]
-    : [
-        ...BRAIN_ITEMS.map(navSlot),
-        ...TOOLS_ITEMS.map(navSlot),
-        { key: "search", label: SEARCH_ITEM.label, shortcut: SEARCH_ITEM.shortcut, icon: ICONS.search, onClick: openPalette },
-        { key: "capture", label: CAPTURE_ITEM.label, shortcut: CAPTURE_ITEM.shortcut, icon: ICONS.capture, raised: true, expanded: open, onClick: toggleBar },
-      ];
+    : [...BRAIN_ITEMS.map(navSlot), ...TOOLS_ITEMS.map(navSlot), searchSlot, captureSlot];
   // Hairlines after the brain group and after the tools group; the narrow pill has neither.
   const dividers = narrow ? [] : [BRAIN_ITEMS.length - 1, BRAIN_ITEMS.length + TOOLS_ITEMS.length - 1];
   // The pill and the bar are one shared element, so opening morphs one into the other. The
@@ -253,19 +307,18 @@ export function Dock() {
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
-      <motion.div
+      <div
         ref={shellRef}
-        animate={{ opacity: dimmed ? 0.4 : 1 }}
-        transition={{ duration: reduce ? 0 : 0.2 }}
-        className="relative flex flex-col items-center"
+        data-dock-shell
+        className={`relative flex flex-col items-center transition-opacity duration-200 ${dimmed ? "opacity-40" : "opacity-100"}`}
       >
-        <div className={`glow -bottom-72 left-1/2 -translate-x-1/2 ${pending ? "glow-breathing" : ""}`} aria-hidden />
+        <div className={`glow -bottom-72 left-1/2 -translate-x-1/2 ${pendingId === null ? "" : "glow-breathing"}`} aria-hidden />
         {sheetOpen && !open && narrow && (
-          <DockSheet items={SHEET_ITEMS} icons={ICONS} pathname={pathname} onClose={closeSheet} />
+          <DockSheet items={SHEET_ITEMS} icons={ICONS} pathname={pathname} onClose={closeSheet} onNavigate={hideSheet} />
         )}
         {open ? (
           <motion.div {...morph} className="relative w-[calc(100vw-2rem)] max-w-[720px]">
-            <PromptBar open onClose={closeBar} />
+            <PromptBar open onClose={closeBar} initialValue={draft} onDraftChange={setDraft} />
           </motion.div>
         ) : (
           <motion.nav
@@ -285,7 +338,7 @@ export function Dock() {
             ))}
           </motion.nav>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -16,7 +16,7 @@ import { ArrowUp, FileText, Link2, Search, Square } from "lucide-react";
 import { detectIntent, type Intent } from "@/lib/intent";
 import { useCapture } from "@/lib/use-capture";
 import { useCurrentContainer } from "@/lib/current-container";
-import type { ItemDTO, TaskDTO } from "@/lib/dto";
+import type { TaskDTO } from "@/lib/dto";
 import { Kbd } from "../ui";
 import { useToast } from "./toasts";
 import { PromptMenu, PROMPT_ENTRIES, type PromptEntry } from "./prompt-menu";
@@ -24,9 +24,6 @@ import { PromptMenu, PROMPT_ENTRIES, type PromptEntry } from "./prompt-menu";
 const LABEL = "Ask, capture, or add a task";
 const JSON_HEADERS = { "content-type": "application/json" };
 const MAX_ROWS = 5;
-/** A fetched link stops being pending once its reader run finishes. */
-const POLL_MS = 2000;
-const POLL_LIMIT_MS = 60_000;
 const NARROW = "(max-width: 899px)";
 const FIELD = "focus-ring flex-1 min-w-0 bg-transparent rounded-sm px-1 text-[14px] outline-none placeholder:text-fg-faint";
 
@@ -58,9 +55,9 @@ function readNarrow(): boolean {
 
 const wideOnServer = () => false;
 
-/** Tells the dock whether a captured link is still being read, so its glow can breathe. */
-function announcePending(pending: boolean) {
-  window.dispatchEvent(new CustomEvent("sb:capture-pending", { detail: pending }));
+/** Hands the dock the link just captured; the dock watches it settle. */
+function announcePending(itemId: number) {
+  window.dispatchEvent(new CustomEvent("sb:capture-pending", { detail: { itemId } }));
 }
 
 /**
@@ -68,23 +65,42 @@ function announcePending(pending: boolean) {
  * is typed, so there are no modes to switch between. It is the dock's expanded state: the
  * dock opens it and takes it back once the line has been sent.
  */
-export function PromptBar({ open, onClose }: { open: boolean; onClose(): void }) {
+export function PromptBar({
+  open,
+  onClose,
+  initialValue = "",
+  onDraftChange,
+}: {
+  open: boolean;
+  onClose(): void;
+  /** What was left in the field last time; the dock keeps it while the bar is away. */
+  initialValue?: string;
+  onDraftChange?(value: string): void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
   const container = useCurrentContainer();
   const { captureNote, captureLink, uploadFiles } = useCapture();
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, wideOnServer);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialValue);
   const [multiline, setMultiline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
-  const [pendingItemId, setPendingItemId] = useState<number | null>(null);
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const prevMultiline = useRef(multiline);
   const containerId = container?.id ?? null;
+
+  /** The only way the field's value changes, so the dock's copy of it stays in step. */
+  const write = useCallback(
+    (value: string) => {
+      setText(value);
+      onDraftChange?.(value);
+    },
+    [onDraftChange],
+  );
 
   const submit = useCallback(async () => {
     if (busy || !text.trim()) return;
@@ -95,7 +111,7 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
         return;
       }
       router.push(`/search?q=${encodeURIComponent(current.query)}`);
-      setText("");
+      write("");
       setError(null);
       onClose();
       return;
@@ -150,12 +166,11 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
           toast.push({ text: "Already captured", href: `/items/${item.duplicate}` });
         } else {
           toast.push({ text: container ? `Link captured to ${container.name}` : "Link captured", href: `/items/${item.id}` });
-          setPendingItemId(item.id);
-          announcePending(true);
+          announcePending(item.id);
           window.dispatchEvent(new Event("sb:inbox-changed"));
         }
       }
-      setText("");
+      write("");
       setMultiline(false);
       setMenuOpen(false);
       onClose();
@@ -164,7 +179,7 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
     } finally {
       setBusy(false);
     }
-  }, [busy, text, container, containerId, router, toast, captureNote, captureLink, onClose]);
+  }, [busy, text, container, containerId, router, toast, captureNote, captureLink, onClose, write]);
 
   const sendFiles = useCallback(
     async (files: File[]) => {
@@ -175,13 +190,14 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
         const created = await uploadFiles(files, { containerId });
         toast.push({ text: `${created.length} file${created.length === 1 ? "" : "s"} captured` });
         window.dispatchEvent(new Event("sb:inbox-changed"));
+        onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [busy, uploadFiles, containerId, toast],
+    [busy, uploadFiles, containerId, toast, onClose],
   );
 
   // `shortcuts.tsx` owns the `c` key and calls the bar with this event.
@@ -209,38 +225,6 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
     field.setSelectionRange(end, end);
   }, [multiline]);
 
-  // A captured link is read in the background; the glow breathes until the item settles.
-  useEffect(() => {
-    if (pendingItemId === null) return;
-    const startedAt = Date.now();
-    let stopped = false;
-    const timer = setInterval(() => {
-      void (async () => {
-        if (stopped) return;
-        if (Date.now() - startedAt > POLL_LIMIT_MS) {
-          setPendingItemId(null);
-          announcePending(false);
-          return;
-        }
-        try {
-          const res = await fetch(`/api/items/${pendingItemId}`);
-          if (!res.ok || stopped) return;
-          const item = (await res.json()) as ItemDTO;
-          if (!stopped && item.status !== "pending") {
-            setPendingItemId(null);
-            announcePending(false);
-          }
-        } catch {
-          /* offline: keep waiting until the limit */
-        }
-      })();
-    }, POLL_MS);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
-  }, [pendingItemId]);
-
   if (!open || pathname === "/capture") return null;
 
   const intent = detectIntent(text);
@@ -251,13 +235,13 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
   const placeholder = narrow ? "Ask or capture" : LABEL;
 
   function choose(entry: PromptEntry) {
-    setText(`/${entry.word} `);
+    write(`/${entry.word} `);
     setMenuOpen(false);
     fieldRef.current?.focus();
   }
 
   function onChange(value: string) {
-    setText(value);
+    write(value);
     setError(null);
     setMenuIndex(0);
     setMenuOpen(matchingEntries(value).length > 0);
@@ -288,9 +272,8 @@ export function PromptBar({ open, onClose }: { open: boolean; onClose(): void })
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      // With something typed, Escape only steps out of the field: the draft is still there.
-      if (text.trim().length === 0) onClose();
-      else e.currentTarget.blur();
+      // The dock keeps whatever is typed, so Escape can put the pill back without losing it.
+      onClose();
       return;
     }
     if (e.key !== "Enter") return;

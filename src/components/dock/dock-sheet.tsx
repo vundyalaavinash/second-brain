@@ -13,11 +13,15 @@ export function DockSheet({
   icons,
   pathname,
   onClose,
+  onNavigate,
 }: {
   items: NavItem[];
   icons: Record<IconName, Glyph>;
   pathname: string;
+  /** Escape or a dismiss: the sheet closes and hands focus back to the More button. */
   onClose(): void;
+  /** A row was taken: the sheet closes and leaves focus to the page being navigated to. */
+  onNavigate(): void;
 }) {
   const reduce = useReducedMotion();
   const firstRef = useRef<HTMLAnchorElement>(null);
@@ -55,7 +59,7 @@ export function DockSheet({
                 ref={i === 0 ? firstRef : undefined}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                onClick={onClose}
+                onClick={onNavigate}
                 className={`focus-ring flex items-center gap-3 h-11 px-3 rounded-md text-[13px] ${
                   active ? "bg-layer-3 text-violet-bright" : "text-fg-muted hover:text-fg hover:bg-layer-2"
                 }`}

@@ -70,7 +70,7 @@ export function DockItem({
 
   const glyph = (
     <>
-      <Icon size={raised ? 24 : 22} weight={raised ? "bold" : "duotone"} aria-hidden />
+      <Icon size={22} weight={raised ? "bold" : "duotone"} aria-hidden />
       {badge ? (
         <motion.span
           key={badge}
