@@ -34,7 +34,7 @@ function mount() {
   render(<DayView day={day()} today={TODAY} onRefresh={vi.fn()} />);
 }
 
-function drawer(): void {
+function pickerKey(): void {
   act(() => {
     fireEvent.keyDown(window, { key: "/", metaKey: true });
   });
@@ -63,7 +63,7 @@ describe("DayView", () => {
 
   it("puts the keyboard in the picker with the drawer key", () => {
     mount();
-    drawer();
+    pickerKey();
     expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Add a task for today" }));
     expect(screen.getByRole("listbox", { name: "Tasks to plan" })).toBeTruthy();
   });

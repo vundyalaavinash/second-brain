@@ -99,6 +99,7 @@ describe("PlanPicker", () => {
     fireEvent.keyDown(field(), { key: "Enter" });
     await waitFor(() => expect(posts.map((p) => p.url)).toEqual(["/api/tasks", "/api/plan"]));
     expect(posts[0].body).toMatchObject({ title: "Call the bank", estimateMinutes: 15 });
+    expect(posts[0].body).not.toHaveProperty("containerId");
     expect(posts[1].body).toEqual({ date: TODAY, taskId: 99 });
   });
 
@@ -139,5 +140,28 @@ describe("PlanPicker", () => {
     render(<PlanPicker day={day({ unfinishedYesterday: [], sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] } })} today={TODAY} />);
     fireEvent.focus(field());
     expect(screen.getByText(/Nothing due and nothing left from yesterday/)).toBeTruthy();
+  });
+
+  it("names the field after another day, and offers a task once though it is due and left over", () => {
+    stub();
+    const both = task({ title: "Both lists", dueDate: "2026-09-20" });
+    const d = day({ date: "2026-09-24", unfinishedYesterday: [both], sources: { ...day().sources, due: { overdue: [both], today: [] } } });
+    render(<PlanPicker day={d} today={TODAY} />);
+    const input = screen.getByRole("combobox", { name: "Add a task for Thu 24" });
+    fireEvent.focus(input);
+    expect(within(screen.getByRole("listbox")).getAllByText("Both lists")).toHaveLength(1);
+  });
+
+  it("keeps the keyboard in the field when an option is clicked, wraps the arrows, and skips a title-less create", () => {
+    stub();
+    render(<PlanPicker day={day()} today={TODAY} />);
+    field().focus();
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    fireEvent.mouseDown(options[0]);
+    expect(document.activeElement).toBe(field());
+    fireEvent.keyDown(field(), { key: "ArrowUp" });
+    expect(field().getAttribute("aria-activedescendant")).toContain(options[options.length - 1].id.split("-").slice(-2).join("-"));
+    fireEvent.change(field(), { target: { value: "~15m" } });
+    expect(within(screen.getByRole("listbox")).queryByText(/Create/)).toBeNull();
   });
 });

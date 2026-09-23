@@ -110,12 +110,12 @@ export interface ContainerDTO {
 }
 
 export interface SourceGroupDTO {
-  /** Only what the drawer heading needs: a group carries no counts of its own. */
+  /** Only what a home heading needs: a group carries no counts of its own. */
   container: ContainerRefDTO;
   tasks: TaskDTO[];
 }
 
-/** Every open task, by where it lives, for the planning drawer. */
+/** Every open task, by where it lives, for the plan picker. */
 export interface PlannerSourcesDTO {
   inbox: TaskDTO[];
   due: { overdue: TaskDTO[]; today: TaskDTO[] };

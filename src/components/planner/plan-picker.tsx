@@ -29,6 +29,7 @@ interface Option {
   create?: string;
 }
 interface Group {
+  key: string;
   label: string;
   options: Option[];
 }
@@ -52,52 +53,54 @@ export function PlanPicker({ day, today }: Props) {
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const busy = useRef(false);
   const listId = useId();
-
-  const plannedIds = useMemo(() => new Set(day.plan.map((t) => t.id)), [day.plan]);
-  const unplanned = (list: TaskDTO[]) => list.filter((t) => !plannedIds.has(t.id));
 
   const groups = useMemo<Group[]>(() => {
     const { sources } = day;
+    const plannedIds = new Set(day.plan.map((t) => t.id));
+    const unplanned = (list: TaskDTO[]) => list.filter((t) => !plannedIds.has(t.id));
     const q = query.trim().toLowerCase();
-    const homes: { label: string; tasks: TaskDTO[] }[] = [
-      { label: "Inbox", tasks: unplanned(sources.inbox) },
-      ...sources.projects.map((g) => ({ label: g.container.name, tasks: unplanned(g.tasks) })),
-      ...sources.areas.map((g) => ({ label: g.container.name, tasks: unplanned(g.tasks) })),
+    const homes: { key: string; label: string; tasks: TaskDTO[] }[] = [
+      { key: "inbox", label: "Inbox", tasks: unplanned(sources.inbox) },
+      ...sources.projects.map((g) => ({ key: `project-${g.container.id}`, label: g.container.name, tasks: unplanned(g.tasks) })),
+      ...sources.areas.map((g) => ({ key: `area-${g.container.id}`, label: g.container.name, tasks: unplanned(g.tasks) })),
     ];
-    const toGroup = (label: string, tasks: TaskDTO[]): Group => ({ label, options: tasks.map((t) => ({ id: `task-${t.id}`, task: t })) });
+    const toGroup = (key: string, label: string, tasks: TaskDTO[]): Group => ({ key, label, options: tasks.map((t) => ({ id: `task-${t.id}`, task: t })) });
     if (q) {
       const hits = homes.map((h) => ({ ...h, tasks: h.tasks.filter((t) => t.title.toLowerCase().includes(q)) })).filter((h) => h.tasks.length > 0);
       let left = MATCH_CAP;
       const out: Group[] = [];
       for (const h of hits) {
         if (left <= 0) break;
-        out.push(toGroup(h.label, h.tasks.slice(0, left)));
+        out.push(toGroup(h.key, h.label, h.tasks.slice(0, left)));
         left -= h.tasks.length;
       }
-      out.push({ label: "New", options: [{ id: "create", create: query.trim() }] });
+      // Only what can become a task: "~15m" alone has no title to give it.
+      if (quickParse(query.trim()).title) out.push({ key: "new", label: "New", options: [{ id: "create", create: query.trim() }] });
       return out;
     }
     switch (filter) {
       case "due":
-        return [toGroup("Due", unplanned([...sources.due.overdue, ...sources.due.today]))];
+        return [toGroup("due", "Due", unplanned([...sources.due.overdue, ...sources.due.today]))];
       case "inbox":
-        return [toGroup("Inbox", unplanned(sources.inbox))];
+        return [toGroup("inbox", "Inbox", unplanned(sources.inbox))];
       case "projects":
-        return sources.projects.map((g) => toGroup(g.container.name, unplanned(g.tasks)));
+        return sources.projects.map((g) => toGroup(`project-${g.container.id}`, g.container.name, unplanned(g.tasks)));
       case "areas":
-        return sources.areas.map((g) => toGroup(g.container.name, unplanned(g.tasks)));
+        return sources.areas.map((g) => toGroup(`area-${g.container.id}`, g.container.name, unplanned(g.tasks)));
       default: {
         const due = unplanned([...sources.due.overdue, ...sources.due.today]).slice(0, SUGGESTION_CAP);
-        const left = unplanned(day.unfinishedYesterday).slice(0, Math.max(0, SUGGESTION_CAP - due.length));
+        // An overdue task that sat on yesterday's plan is in both lists; it is offered once.
+        const seen = new Set(due.map((t) => t.id));
+        const left = unplanned(day.unfinishedYesterday.filter((t) => !seen.has(t.id))).slice(0, Math.max(0, SUGGESTION_CAP - due.length));
         return [
-          ...(due.length ? [toGroup("Due", due)] : []),
-          ...(left.length ? [toGroup("From yesterday", left)] : []),
+          ...(due.length ? [toGroup("due", "Due", due)] : []),
+          ...(left.length ? [toGroup("yesterday", "From yesterday", left)] : []),
         ];
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [day, query, filter, plannedIds]);
+  }, [day, query, filter]);
 
   const options = useMemo(() => groups.flatMap((g) => g.options), [groups]);
   const current = options[Math.min(active, Math.max(0, options.length - 1))];
@@ -111,6 +114,12 @@ export function PlanPicker({ day, today }: Props) {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
+
+  // Arrowing past the visible rows brings the active one into view.
+  useEffect(() => {
+    if (!open || !current) return;
+    document.getElementById(`${listId}-${current.id}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, current, listId]);
 
   // The ritual's "Open projects" and the ⌘/ key land here.
   useEffect(() => {
@@ -131,28 +140,35 @@ export function PlanPicker({ day, today }: Props) {
 
   /** Puts a task on the plan, or makes one first; the field empties and stays ready for the next. */
   async function choose(option: Option | undefined, close = false) {
-    if (!option) return;
+    // A second Enter while the first is still on its way would make the task twice.
+    if (!option || busy.current) return;
+    busy.current = true;
     try {
       let taskId = option.task?.id;
+      let made = false;
       if (option.create) {
         const parsed = quickParse(option.create);
         const body: Record<string, unknown> = { title: parsed.title, priority: parsed.priority, dueDate: parsed.dueDate };
         if (parsed.estimateMinutes !== null) body.estimateMinutes = parsed.estimateMinutes;
-        const made = await post("/api/tasks", body);
-        if (!made.ok) throw new Error("create");
-        taskId = ((await made.json()) as { id: number }).id;
-        window.dispatchEvent(new Event("sb:tasks-changed"));
+        const res = await post("/api/tasks", body);
+        if (!res.ok) throw new Error("create");
+        taskId = ((await res.json()) as { id: number }).id;
+        made = true;
       }
       const planned = await post("/api/plan", { date: day.date, taskId });
       if (!planned.ok) throw new Error("plan");
       setError(null);
       setQuery("");
       setActive(0);
+      // One announcement each, once the whole move is done, so the day is read back once.
+      if (made) window.dispatchEvent(new Event("sb:tasks-changed"));
       window.dispatchEvent(new Event("sb:plan-changed"));
       if (close) setOpen(false);
       else inputRef.current?.focus();
     } catch {
       setError("Could not add that to the plan");
+    } finally {
+      busy.current = false;
     }
   }
 
@@ -182,7 +198,7 @@ export function PlanPicker({ day, today }: Props) {
     }
   }
 
-  const dayWord = day.date === today ? "today" : formatShortDate(`${day.date}T00:00:00`);
+  const dayWord = day.date === today ? "today" : formatShortDate(day.date);
   const emptyLine = query.trim()
     ? null
     : filter === null
@@ -198,7 +214,7 @@ export function PlanPicker({ day, today }: Props) {
           role="combobox"
           aria-label={`Add a task for ${dayWord}`}
           aria-expanded={open}
-          aria-controls={listId}
+          aria-controls={open ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={open && current ? `${listId}-${current.id}` : undefined}
           placeholder="Add a task: type to search, or create"
@@ -209,6 +225,7 @@ export function PlanPicker({ day, today }: Props) {
             setActive(0);
           }}
           onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
           onKeyDown={onKey}
           className="focus-ring flex-1 min-w-0 h-9 px-2 rounded-md bg-layer-2 border border-hairline text-[13.5px] text-fg placeholder:text-fg-faint"
         />
@@ -231,12 +248,12 @@ export function PlanPicker({ day, today }: Props) {
               </Chip>
             ))}
           </div>
+          {options.length === 0 && emptyLine && <p className="text-[13px] text-fg-faint m-0 px-1">{emptyLine}</p>}
           <div id={listId} role="listbox" aria-label="Tasks to plan" className="flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {options.length === 0 && emptyLine && <p className="text-[13px] text-fg-faint m-0 px-1">{emptyLine}</p>}
             {groups
               .filter((g) => g.options.length > 0)
               .map((g) => (
-                <div key={g.label} role="group" aria-label={g.label} className="flex flex-col">
+                <div key={g.key} role="group" aria-label={g.label} className="flex flex-col">
                   <span className="micro px-1 py-1">{g.label}</span>
                   {g.options.map((o) => {
                     const selected = current?.id === o.id;
