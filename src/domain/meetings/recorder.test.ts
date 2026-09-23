@@ -160,7 +160,8 @@ describe("Recorder", () => {
     process.env.SB_FAKE_RECORDER_STOP_CODE = "3";
     const item = createAdhocMeeting(t.db, new Date());
     recorder.start(item);
-    await until(() => fs.existsSync(path.join(filesDir, meta(t, item.id).recording!.wavPath)));
+    // "recording" on stderr means the helper is fully up, handlers included, not merely that its file exists.
+    await until(() => recorder.status().state === "recording" && fs.existsSync(path.join(filesDir, meta(t, item.id).recording!.wavPath)));
     await recorder.stop();
 
     expect(recorder.status().state).toBe("error");
