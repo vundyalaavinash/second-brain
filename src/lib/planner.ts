@@ -18,7 +18,8 @@ export function plannerCalendar(db: DB): PlannerCalendarDTO {
   return { calendarsSeen: helper.calendarsSeen, permission: helper.permissions?.calendar ?? false };
 }
 
-/** Open tasks grouped by home: inbox (no container), then every active project and area. */
+/** Open tasks grouped by home: inbox (no container), then every active project and area. A task
+ * in an archived container is in no group; it still shows under `due` when it is dated. */
 export function plannerSources(db: DB, date: string, plannedIds: Set<number>): PlannerSourcesDTO {
   const open = listTasks(db, { status: "open" }).map(serializeTask);
   const unplanned = open.filter((t) => !plannedIds.has(t.id));

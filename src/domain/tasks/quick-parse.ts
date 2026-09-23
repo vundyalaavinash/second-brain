@@ -15,7 +15,8 @@ function dateFromToken(token: string, now: Date): string | null {
   return localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + delta));
 }
 
-/** `~25m`, `~1h`, `~1h30m`: one token, anywhere, at most 8 hours. */
+/** `~25m`, `~1h`, `~1h30m`: one token, anywhere, at most 8 hours. Priority marks (`!`) must
+ * already be stripped: the token has to end at a space or the end of the text. */
 const ESTIMATE_RE = /(?:^|\s)~(?:(\d{1,2})h)?(?:(\d{1,3})m)?(?=\s|$)/i;
 
 export function estimateFromToken(text: string): { title: string; estimateMinutes: number | null } {

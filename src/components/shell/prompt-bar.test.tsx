@@ -48,11 +48,11 @@ describe("PromptBar", () => {
     const fetchFn = mockFetch({ id: 9, title: "Call the bank" });
     setCurrentContainer({ id: 4, name: "Health" });
     mount();
-    type("+ Call the bank");
+    type("+ Call the bank ~25m");
     await waitFor(() => expect(screen.getByText("Task added")).toBeTruthy());
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/tasks");
-    expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4 });
+    expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4, estimateMinutes: 25 });
   });
 
   it("plans the new task for the day the planner is showing", async () => {
