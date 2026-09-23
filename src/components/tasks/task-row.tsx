@@ -456,7 +456,9 @@ export function TaskRow({
   }
 
   const Row = (as ?? "li") as ElementType;
+  // The caller's extras (motion props) go first: the row's own role, data and handlers always win.
   const rowProps = {
+    ...extraRowProps,
     role: "listitem" as const,
     "data-task-id": task.id,
     draggable,
@@ -465,7 +467,6 @@ export function TaskRow({
     onDragLeave,
     onDrop: onRowDrop,
     onKeyDown: onRowKeyDown,
-    ...extraRowProps,
   };
 
   // A column of the week is a seventh of the page: the compact row stacks the due date under

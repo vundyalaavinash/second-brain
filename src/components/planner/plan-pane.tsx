@@ -142,7 +142,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
       return;
     }
     ids.splice(index, 0, taskId);
-    await send("/api/plan", "PATCH", { date: day.date, taskIds: ids }, "sb:plan-changed");
+    // The task is on the plan either way; a failed reorder still has to be read back.
+    if (!(await send("/api/plan", "PATCH", { date: day.date, taskIds: ids }, "sb:plan-changed"))) window.dispatchEvent(new Event("sb:plan-changed"));
   }
 
   /** The plan row carried by a drag, when that is what the drag holds. */
@@ -228,6 +229,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
             setOverId(task.id);
           } else if (types?.includes(PLAN_DRAG_MIME)) e.preventDefault();
         }}
+        onDragLeave={(e) => {
+          // Off the row and not into one of its own children: the gap it named is no longer the target.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOverId((id) => (id === task.id ? null : id));
+        }}
         onRowDrop={(e) => handleRowDrop(task.id, e)}
       />
     );
@@ -280,7 +285,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
       <List
         ref={listRef}
         aria-label="Plan"
-        className={`border rounded-md transition-colors duration-100 ${over ? "border-violet" : "border-transparent"} ${day.plan.length === 0 ? "min-h-11" : ""}`}
+        className={`border rounded-md transition-[colors,padding] duration-100 ${over ? "border-violet pb-6" : "border-transparent"} ${day.plan.length === 0 ? "min-h-11" : ""}`}
         onDragOver={(e) => {
           const types = e.dataTransfer?.types;
           // A task from the drawer lands at the end; a plan row dropped here moves last.
