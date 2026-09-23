@@ -79,7 +79,7 @@ export function Timeline({ date, meetings }: { date: string; meetings: MeetingLi
   }
 
   return (
-    <section className="flex flex-col gap-3">
+    <section aria-label="Timeline" className="flex flex-col gap-3">
       {allDay.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="micro">All day</span>

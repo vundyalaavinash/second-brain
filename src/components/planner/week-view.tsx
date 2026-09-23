@@ -4,6 +4,7 @@ import { useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { PlannerWeekDTO, PlannerWeekDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
+import { CAPACITY_TONE_CLASS, capacityTone, formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
 import { List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
@@ -82,6 +83,9 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           <span className={`font-doc text-[24px] leading-none ${isToday ? "text-violet-bright" : ""}`}>{Number(day.date.slice(8, 10))}</span>
           <span className="micro">{weekdayOf(day.date)}</span>
         </span>
+        <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
+          {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
+        </span>
 
         {day.meetings.length > 0 && (
           <ul role="list" className="list-none m-0 p-0 flex flex-col">
@@ -100,6 +104,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           </ul>
         )}
 
+        {/* The column's own day leads the "Plan for" list, so `p` plans for the day on screen. */}
         {day.due.length > 0 && (
           <List>
             {day.due.map((task: TaskDTO) => (
@@ -110,11 +115,12 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
                 onToggle={() => patch(task.id, { status: task.status === "done" ? "open" : "done" })}
                 onRename={(title) => patch(task.id, { title })}
                 onDue={(value) => patch(task.id, { dueDate: value })}
+                onEstimate={(m) => patch(task.id, { estimateMinutes: m })}
                 onPriority={(priority: TaskPriority) => patch(task.id, { priority })}
                 onDrop={() => patch(task.id, { status: "dropped" })}
                 onDelete={() => remove(task.id)}
                 onPlanDate={(date) => planOn(task.id, date)}
-                planFrom={week.start}
+                planFrom={day.date}
                 compact
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData(TASK_MIME, String(task.id))}

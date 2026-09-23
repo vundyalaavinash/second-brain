@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import type { PlannerCalendarDTO, PlannerDayDTO, PlannerMeetingsDTO, PlannerWeekDTO } from "@/lib/dto";
 import { setPlanDate } from "@/lib/plan-date";
 import { Crumb } from "../shell/crumb";
 import { addDaysLocal } from "../activity/format";
+import { CapacityLine } from "./capacity-line";
 import { DateHeader } from "./date-header";
 import { DayView } from "./day-view";
 import { MeetingsView, dayOf } from "./meetings-view";
@@ -33,6 +34,10 @@ const TABS: { view: PlannerView; label: string; href: string }[] = [
 const TAB = "focus-ring relative rounded-full h-7 px-3 flex items-center text-[12.5px] transition-colors duration-150";
 
 const CRUMB: Record<PlannerView, string> = { day: "Planner", week: "Week", meetings: "Meetings" };
+
+/** One interaction often moves a task and the plan in the same breath; the day is ~a quarter
+ * of a megabyte, so the two events are let to settle into one request. */
+const DAY_REFRESH_MS = 50;
 
 /** The one panel the tabs speak for: each view is a route, so only the open one is ever rendered. */
 const PANEL_ID = "planner-panel";
@@ -91,12 +96,29 @@ export function PlannerShell(props: Props) {
     return () => setPlanDate(null);
   }, [selectedDate]);
 
+  // A trailing timer coalesces a burst of change events, and a monotonic request id keeps a
+  // day that was asked for earlier from landing on top of a newer one.
+  const dayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dayRequest = useRef(0);
+  // A pending refresh belongs to the date it was asked for; moving to another day drops it.
+  useEffect(() => () => {
+    if (dayTimer.current) clearTimeout(dayTimer.current);
+  }, [dayDate]);
+
   const refreshDay = useCallback(() => {
     if (!dayDate) return;
-    void (async () => {
-      const res = await fetch(`/api/planner/day?date=${dayDate}`);
-      if (res.ok) setDay((await res.json()) as PlannerDayDTO);
-    })();
+    if (dayTimer.current) clearTimeout(dayTimer.current);
+    dayTimer.current = setTimeout(() => {
+      dayTimer.current = null;
+      const request = ++dayRequest.current;
+      void (async () => {
+        const res = await fetch(`/api/planner/day?date=${dayDate}`);
+        if (!res.ok) return;
+        const body = (await res.json()) as PlannerDayDTO;
+        // A slower earlier request answering last would put the day back as it was.
+        if (request === dayRequest.current) setDay(body);
+      })();
+    }, DAY_REFRESH_MS);
   }, [dayDate]);
 
   const refreshWeek = useCallback(() => {
@@ -119,6 +141,19 @@ export function PlannerShell(props: Props) {
     })();
   }, [meetingWindow]);
 
+  // The capacity is reckoned server-side, so new hours are saved and then read back whole.
+  const saveHours = useCallback(
+    (workHours: string) => {
+      void (async () => {
+        const res = await fetch("/api/settings/planner", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workHours }) });
+        // A refused save leaves the old hours on screen; the toast is the only word about it.
+        if (res.ok) refreshDay();
+        else window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: "Could not save the hours" } }));
+      })();
+    },
+    [refreshDay],
+  );
+
   const calendar: PlannerCalendarDTO | null = day?.calendar ?? meetings?.calendar ?? null;
   // Meetings is not navigated by date, so it keeps the header's numeral and drops the arrows.
   const meetingCounts = meetings && {
@@ -134,7 +169,7 @@ export function PlannerShell(props: Props) {
         <DateHeader
           date={day.date}
           unit="day"
-          summary={`${day.plan.length} planned, ${day.due.overdue.length + day.due.today.length} due, ${count(day.meetings.length, "meeting")}`}
+          summary={<CapacityLine capacity={day.capacity} planned={day.plan.length} meetings={day.meetings.length} onHours={saveHours} />}
           prevHref={`/planner?date=${addDaysLocal(day.date, -1)}`}
           nextHref={`/planner?date=${addDaysLocal(day.date, 1)}`}
           todayHref="/planner"

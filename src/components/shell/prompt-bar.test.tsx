@@ -48,11 +48,11 @@ describe("PromptBar", () => {
     const fetchFn = mockFetch({ id: 9, title: "Call the bank" });
     setCurrentContainer({ id: 4, name: "Health" });
     mount();
-    type("+ Call the bank");
+    type("+ Call the bank ~25m");
     await waitFor(() => expect(screen.getByText("Task added")).toBeTruthy());
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/tasks");
-    expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4 });
+    expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4, estimateMinutes: 25 });
   });
 
   it("plans the new task for the day the planner is showing", async () => {
@@ -169,6 +169,16 @@ describe("PromptBar", () => {
     await waitFor(() => expect(screen.getByText("Type a note")).toBeTruthy());
     expect(fetchFn).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("reads the estimate back in the task chip", () => {
+    mount();
+    const input = field();
+    fireEvent.change(input, { target: { value: "+ Write ~25m" } });
+    const estimate = screen.getByText("~25m");
+    expect(estimate.parentElement?.textContent).toBe("Task~25m");
+    fireEvent.change(input, { target: { value: "+ Write" } });
+    expect(screen.queryByText("~25m")).toBeNull();
   });
 
   it("opens the prompt menu on a leading slash and inserts the chosen word", () => {

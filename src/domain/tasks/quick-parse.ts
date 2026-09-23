@@ -15,8 +15,24 @@ function dateFromToken(token: string, now: Date): string | null {
   return localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + delta));
 }
 
+/** `~25m`, `~1h`, `~1h30m`: one token, anywhere, at most 8 hours. Priority marks (`!`) must
+ * already be stripped: the token has to end at a space or the end of the text. */
+const ESTIMATE_RE = /(?:^|\s)~(?:(\d{1,2})h)?(?:(\d{1,3})m)?(?=\s|$)/i;
+
+export function estimateFromToken(text: string): { title: string; estimateMinutes: number | null } {
+  const m = text.match(ESTIMATE_RE);
+  if (!m || (m[1] === undefined && m[2] === undefined)) return { title: text, estimateMinutes: null };
+  const minutes = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
+  if (minutes < 5 || minutes > 480) return { title: text, estimateMinutes: null };
+  const title = (text.slice(0, m.index) + " " + text.slice(m.index! + m[0].length)).replace(/\s+/g, " ").trim();
+  return { title, estimateMinutes: minutes };
+}
+
 /** Parse "! Title fri" style shortcuts from an add-task input. Pure; `now` is injectable. */
-export function quickParse(input: string, now: Date = new Date()): { title: string; priority: "high" | "normal"; dueDate: string | null } {
+export function quickParse(
+  input: string,
+  now: Date = new Date(),
+): { title: string; priority: "high" | "normal"; dueDate: string | null; estimateMinutes: number | null } {
   let title = input.trim();
   let priority: "high" | "normal" = "normal";
   if (title.startsWith("!")) {
@@ -26,6 +42,8 @@ export function quickParse(input: string, now: Date = new Date()): { title: stri
     priority = "high";
     title = title.slice(0, -1).trim();
   }
+  const est = estimateFromToken(title);
+  title = est.title;
   let dueDate: string | null = null;
   const words = title.split(/\s+/);
   if (words.length > 1) {
@@ -41,5 +59,5 @@ export function quickParse(input: string, now: Date = new Date()): { title: stri
       }
     }
   }
-  return { title: title.trim(), priority, dueDate };
+  return { title: title.trim(), priority, dueDate, estimateMinutes: est.estimateMinutes };
 }

@@ -46,10 +46,26 @@ function header(dataLength) {
   return b;
 }
 
-fs.mkdirSync(path.dirname(wavPath), { recursive: true });
-const fd = fs.openSync(wavPath, "w");
-fs.writeSync(fd, header(0), 0, 44, 0);
+// Signal handlers first: a stop can arrive the instant the WAV exists, and before the handler
+// is on, SIGINT would end the process with no code at all, which reads as a clean stop.
+let fd = null;
 let dataLength = 0;
+const timers = [];
+const stopCode = Number(process.env.SB_FAKE_RECORDER_STOP_CODE ?? 0);
+function finish(code) {
+  for (const t of timers) clearInterval(t);
+  if (fd !== null) {
+    fs.writeSync(fd, header(dataLength), 0, 44, 0);
+    fs.closeSync(fd);
+  }
+  process.exit(code);
+}
+process.on("SIGINT", () => finish(stopCode));
+process.on("SIGTERM", () => finish(stopCode));
+
+fs.mkdirSync(path.dirname(wavPath), { recursive: true });
+fd = fs.openSync(wavPath, "w");
+fs.writeSync(fd, header(0), 0, 44, 0);
 
 function say(line) {
   process.stderr.write(`${JSON.stringify(line)}\n`);
@@ -64,7 +80,7 @@ const timer = setInterval(() => {
   process.stdout.write(silence);
 }, CHUNK_MS);
 
-const timers = [timer];
+timers.push(timer);
 function after(envKey, fn) {
   const ms = Number(process.env[envKey]);
   if (Number.isFinite(ms) && ms >= 0) timers.push(setTimeout(fn, ms));
@@ -73,17 +89,7 @@ function after(envKey, fn) {
 after("SB_FAKE_RECORDER_DEVICE_MS", () => say({ state: "device", systemAudio: false }));
 after("SB_FAKE_RECORDER_STALL_MS", () => say({ state: "error", message: "stdout consumer stalled" }));
 
-function finish(code) {
-  for (const t of timers) clearInterval(t);
-  fs.writeSync(fd, header(dataLength), 0, 44, 0);
-  fs.closeSync(fd);
-  process.exit(code);
-}
-
 after("SB_FAKE_RECORDER_EXIT_MS", () => finish(Number(process.env.SB_FAKE_RECORDER_EXIT_CODE ?? 1)));
 // No handler runs for SIGKILL: the header is left as it was, exactly like a crash.
 after("SB_FAKE_RECORDER_KILL_MS", () => process.kill(process.pid, "SIGKILL"));
 
-const stopCode = Number(process.env.SB_FAKE_RECORDER_STOP_CODE ?? 0);
-process.on("SIGINT", () => finish(stopCode));
-process.on("SIGTERM", () => finish(stopCode));

@@ -2,17 +2,46 @@ import { inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items } from "@/db/schema";
 import { addDays, getHelperState, listMeetings, localDay } from "@/domain/activity";
+import { listContainers } from "@/domain/containers";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { parseMeta } from "@/domain/items";
 import { serializeMeeting, serializePlanTask, serializeTask } from "./api";
+import { freeMinutes, plannedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
-import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerWeekDTO } from "./dto";
+import { getWorkHours } from "./work-hours";
+import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
 export function plannerCalendar(db: DB): PlannerCalendarDTO {
   const helper = getHelperState(db);
   return { calendarsSeen: helper.calendarsSeen, permission: helper.permissions?.calendar ?? false };
+}
+
+/** How many of a group's tasks are not on the day's plan: the number its heading shows. */
+function unplannedIn(tasks: TaskDTO[], plannedIds: Set<number>): number {
+  return tasks.reduce((n, t) => n + (plannedIds.has(t.id) ? 0 : 1), 0);
+}
+
+/** Open tasks grouped by home: inbox (no container), then every active project and area. A task
+ * in an archived container is in no group; it still shows under `due` when it is dated. */
+export function plannerSources(db: DB, date: string, plannedIds: Set<number>): PlannerSourcesDTO {
+  const open = listTasks(db, { status: "open" }).map(serializeTask);
+  const unplanned = open.filter((t) => !plannedIds.has(t.id));
+  // A group heading needs a name and nothing else, so the rows are turned into refs here rather
+  // than through `serializeContainers`, which would count every container's items to say it.
+  const groups = (kind: "project" | "area"): SourceGroupDTO[] =>
+    listContainers(db, { kind, status: "active" })
+      .map((c) => ({ container: { id: c.id, name: c.name, slug: c.slug, kind: c.kind }, tasks: open.filter((t) => t.containerId === c.id) }))
+      // Sorted by what the heading counts — the tasks still to plan — so a container whose work
+      // is all on the day's plan sinks with the empty ones.
+      .sort((a, b) => Number(unplannedIn(b.tasks, plannedIds) > 0) - Number(unplannedIn(a.tasks, plannedIds) > 0));
+  return {
+    inbox: open.filter((t) => t.containerId === null).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    due: partitionDue(unplanned.filter((t) => t.dueDate !== null && t.dueDate <= date), date),
+    projects: groups("project"),
+    areas: groups("area"),
+  };
 }
 
 /**
@@ -21,20 +50,25 @@ export function plannerCalendar(db: DB): PlannerCalendarDTO {
  */
 export function plannerDay(db: DB, date: string): PlannerDayDTO {
   const plan = listPlan(db, date).map(serializePlanTask);
-  const planned = new Set(plan.map((t) => t.id));
+  const plannedIds = new Set(plan.map((t) => t.id));
   // Only what the day can show: `partitionDue` keeps the late and the due-today, so a task
   // due next month never needs loading.
   const open = listTasks(db, { status: "open", dueOnOrBefore: date })
-    .filter((t) => !planned.has(t.id))
+    .filter((t) => !plannedIds.has(t.id))
     .map(serializeTask);
+  const workHours = getWorkHours(db);
+  const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
+  const { planned, unestimated } = plannedMinutes(plan);
   return {
     date,
     plan,
     unfinishedYesterday: unfinished(db, addDays(date, -1)).map(serializeTask),
     due: partitionDue(open, date),
     // The same flagged meetings the list view shows, so the timeline can badge them too.
-    meetings: plannerMeetings(db, { from: date, to: addDays(date, 1) }),
+    meetings,
     calendar: plannerCalendar(db),
+    sources: plannerSources(db, date, plannedIds),
+    capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: planned, unestimated, workHours },
   };
 }
 
@@ -50,13 +84,18 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   }
   // The week's last day is the latest one a column can hold; anything later is not shown.
   const open = listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }).map(serializeTask);
+  const workHours = getWorkHours(db);
   return {
     start,
-    days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => ({
-      date,
-      meetings: byDay.get(date) ?? [],
-      due: open.filter((t) => t.dueDate === date),
-    })),
+    days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
+      const meetings = byDay.get(date) ?? [];
+      return {
+        date,
+        meetings,
+        due: open.filter((t) => t.dueDate === date),
+        capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(listPlan(db, date)).planned },
+      };
+    }),
   };
 }
 

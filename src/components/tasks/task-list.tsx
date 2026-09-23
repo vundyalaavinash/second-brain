@@ -107,6 +107,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
       const body: Record<string, unknown> = { title: parsed.title, containerId };
       if (parsed.priority === "high") body.priority = "high";
       if (parsed.dueDate) body.dueDate = parsed.dueDate;
+      if (parsed.estimateMinutes !== null) body.estimateMinutes = parsed.estimateMinutes;
       const res = await fetch("/api/tasks", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (!res.ok) {
         setError(SAVE_ERROR);
@@ -157,6 +158,13 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
     void mutate(
       (prev) => prev.map((t) => (t.id === id ? { ...t, dueDate } : t)),
       () => fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ dueDate }) }),
+    );
+  }
+
+  function setEstimate(id: number, estimateMinutes: number | null) {
+    void mutate(
+      (prev) => prev.map((t) => (t.id === id ? { ...t, estimateMinutes } : t)),
+      () => fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ estimateMinutes }) }),
     );
   }
 
@@ -252,6 +260,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
               onToggle={() => toggle(task)}
               onRename={(title) => rename(task.id, title)}
               onDue={(value) => setDue(task.id, value)}
+              onEstimate={(m) => setEstimate(task.id, m)}
               onPriority={(priority) => setPriority(task.id, priority)}
               onDrop={() => drop(task.id)}
               onDelete={() => remove(task.id)}
@@ -281,6 +290,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
                   onToggle={() => toggle(task)}
                   onRename={(title) => rename(task.id, title)}
                   onDue={(value) => setDue(task.id, value)}
+                  onEstimate={(m) => setEstimate(task.id, m)}
                   onPriority={(priority) => setPriority(task.id, priority)}
                   onDrop={() => drop(task.id)}
                   onDelete={() => remove(task.id)}

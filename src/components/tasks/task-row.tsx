@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ElementType, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
@@ -10,6 +10,7 @@ import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { titleCase } from "@/lib/format";
 import { addDaysLocal, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
+import { EstimateChip } from "./estimate-chip";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -43,6 +44,8 @@ interface Props {
   onToggle: () => void;
   onRename: (title: string) => void;
   onDue: (value: string | null) => void;
+  /** Shows the estimate chip. Left out where an estimate cannot be saved. */
+  onEstimate?: (minutes: number | null) => void;
   onPriority: (priority: TaskPriority) => void;
   onDrop: () => void;
   onDelete: () => void;
@@ -58,15 +61,25 @@ interface Props {
   planned?: boolean;
   /** The week column's row: stacked, two-line title, no grip or priority chip. */
   compact?: boolean;
+  /** Sits in front of the checkbox: the sources drawer puts its add-to-plan button there. */
+  leading?: ReactNode;
+  /** Extra classes for the row itself, e.g. dimming one that is already on a plan. */
+  className?: string;
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
+  onDragLeave?: (e: DragEvent<HTMLLIElement>) => void;
   onRowDrop?: (e: DragEvent<HTMLLIElement>) => void;
+  /** What the row renders as. The plan list hands in `motion.li` for its layout animation. */
+  as?: ElementType;
+  /** Extra props for that element — motion's `layout`, `initial`, `exit` and the rest. */
+  rowProps?: Record<string, unknown>;
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
-  planLabel = "Plan for today", planned, compact, draggable, onDragStart, onDragOver, onRowDrop,
+  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
+  planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
+  as, rowProps: extraRowProps,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -169,6 +182,19 @@ export function TaskRow({
     if (next !== task.dueDate) onDue(next);
   }
 
+  /** Plans from the keyboard: today's plan, or the first day the row was told to offer. */
+  function planFromKey() {
+    if (onPlan) {
+      onPlan();
+      window.dispatchEvent(
+        new CustomEvent("sb:toast", { detail: { text: planned ? "Taken off the plan" : planLabel === "Plan for today" ? "Planned for today" : "Planned" } }),
+      );
+    } else if (onPlanDate) {
+      onPlanDate(planFrom);
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: planFrom === today ? "Planned for today" : `Planned for ${formatShortDate(planFrom)}` } }));
+    }
+  }
+
   const checkbox = (
     <input
       type="checkbox"
@@ -200,6 +226,7 @@ export function TaskRow({
   ) : (
     <button
       type="button"
+      data-title
       className={`focus-ring text-left min-w-0 text-[13.5px] ${compact ? "w-full line-clamp-2" : "flex-1 truncate"} ${
         done ? "line-through text-fg-faint" : ""
       }`}
@@ -411,25 +438,57 @@ export function TaskRow({
     </>
   );
 
-  const rowProps = { role: "listitem" as const, draggable, onDragStart, onDragOver, onDrop: onRowDrop };
+  // `p` plans the task under the cursor, unless something on the row is taking the letter itself.
+  function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
+    if (e.key !== "p" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!onPlan && !onPlanDate) return;
+    // The actions menu and the estimate popover are portalled to the body: their keys still
+    // bubble up this React tree, but they are not the row and must not plan it.
+    const target = e.target as HTMLElement | null;
+    if (!target || !e.currentTarget.contains(target)) return;
+    // Only fields that take a letter keep it: the checkbox is an input that does not.
+    if (target.isContentEditable || target instanceof HTMLTextAreaElement) return;
+    if (target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio") return;
+    e.preventDefault();
+    // The row has claimed the letter: the window's `g p` chord must not read it as a jump too.
+    e.stopPropagation();
+    planFromKey();
+  }
+
+  const Row = (as ?? "li") as ElementType;
+  // The caller's extras (motion props) go first: the row's own role, data and handlers always win.
+  const rowProps = {
+    ...extraRowProps,
+    role: "listitem" as const,
+    "data-task-id": task.id,
+    draggable,
+    onDragStart,
+    onDragOver,
+    onDragLeave,
+    onDrop: onRowDrop,
+    onKeyDown: onRowKeyDown,
+  };
 
   // A column of the week is a seventh of the page: the compact row stacks the due date under
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.
   if (compact) {
     return (
-      <li {...rowProps} className="hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors">
+      <Row {...rowProps} className={`hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors ${className}`}>
+        {leading}
         {checkbox}
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
           {dueNode}
+          {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} compact />}
         </span>
         {actions}
-      </li>
+      </Row>
     );
   }
 
   return (
-    <li {...rowProps} className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors">
+    <Row {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
+      {leading}
       <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
         <GripVertical className="w-3.5 h-3.5" />
       </span>
@@ -446,7 +505,8 @@ export function TaskRow({
         </Chip>
       )}
       {dueNode}
+      {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
       {actions}
-    </li>
+    </Row>
   );
 }

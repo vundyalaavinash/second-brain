@@ -10,6 +10,7 @@ const t = (id: number, dueDate: string | null) => ({
   dueDate,
   containerId: null,
   sourceItemId: null,
+  estimateMinutes: null,
   completedAt: null,
   sortOrder: 0,
   createdAt: "",

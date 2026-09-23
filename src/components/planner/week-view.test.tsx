@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { WeekView } from "./week-view";
 import { PatchTaskBody } from "@/lib/validation";
 import type { PlannerWeekDTO, TaskDTO } from "@/lib/dto";
@@ -13,7 +13,7 @@ const TODAY = "2026-09-22";
 
 const task: TaskDTO = {
   id: 4, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: START, containerId: null, sourceItemId: null,
-  completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function week(): PlannerWeekDTO {
@@ -21,7 +21,9 @@ function week(): PlannerWeekDTO {
     start: START,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
-      return { date, meetings: [], due: date === START ? [task] : [] };
+      // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
+      const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
+      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes } };
     }),
   };
 }
@@ -64,6 +66,17 @@ describe("WeekView", () => {
     const { fetchMock } = mount();
     fireEvent.drop(column("Wed"), { dataTransfer: { getData: () => "" } });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says what each day already holds against the time it has", () => {
+    mount();
+    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
+  });
+
+  it("colours a day that is over its hours", () => {
+    mount();
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
+    expect(within(column("Tue")).getByText("10h / 9h").className).toContain("text-warn");
   });
 
   it("plans from the week on screen rather than from today", () => {

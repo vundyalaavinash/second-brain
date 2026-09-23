@@ -128,6 +128,7 @@ export function serializeTask(t: Task): TaskDTO {
     dueDate: t.dueDate,
     containerId: t.containerId,
     sourceItemId: t.sourceItemId,
+    estimateMinutes: t.estimateMinutes,
     completedAt: t.completedAt,
     sortOrder: t.sortOrder,
     createdAt: t.createdAt,

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDayHeading } from "../activity/format";
 import { Button } from "../ui";
@@ -5,8 +6,8 @@ import { Button } from "../ui";
 interface Props {
   /** The day the numeral names: the shown day, or the week's first day. */
   date: string;
-  /** The mono line under the arrows, e.g. "3 planned, 2 due, 4 meetings". */
-  summary: string;
+  /** The line under the arrows: a plain string is set in mono, a node renders as it is. */
+  summary: ReactNode;
   /** The three navigation links. Left out on a view that is not navigated by date. */
   prevHref?: string;
   nextHref?: string;
@@ -41,7 +42,7 @@ export function DateHeader({ date, summary, prevHref, nextHref, todayHref, unit 
             <Button href={nextHref} size="sm" variant="ghost" icon={ChevronRight} aria-label={`Next ${noun}`} />
           </span>
         )}
-        <span className="font-mono text-[12px] text-fg-muted">{summary}</span>
+        {typeof summary === "string" ? <span className="font-mono text-[12px] text-fg-muted">{summary}</span> : summary}
       </span>
     </header>
   );

@@ -14,7 +14,7 @@ afterEach(() => {
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 const progress = { open: 1, done: 0, total: 1, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
 
@@ -35,9 +35,9 @@ describe("TaskList", () => {
     render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
     const input = screen.getByPlaceholderText("Add a task") as HTMLInputElement;
     input.focus();
-    fireEvent.change(input, { target: { value: "! Ship it fri" } });
+    fireEvent.change(input, { target: { value: "! Ship it ~45m fri" } });
     await act(async () => { fireEvent.keyDown(input, { key: "Enter" }); });
-    expect(calls[0]).toMatchObject({ title: "Ship it", priority: "high", containerId: 5 });
+    expect(calls[0]).toMatchObject({ title: "Ship it", priority: "high", containerId: 5, estimateMinutes: 45 });
     expect((calls[0] as { dueDate: string }).dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(input.value).toBe("");
     expect(document.activeElement).toBe(input);

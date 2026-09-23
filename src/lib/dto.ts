@@ -68,6 +68,7 @@ export interface TaskDTO {
   dueDate: string | null;
   containerId: number | null;
   sourceItemId: number | null;
+  estimateMinutes: number | null;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -105,6 +106,27 @@ export interface ContainerDTO {
   pinnedLinks: PinnedLinkDTO[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SourceGroupDTO {
+  /** Only what the drawer heading needs: a group carries no counts of its own. */
+  container: ContainerRefDTO;
+  tasks: TaskDTO[];
+}
+
+/** Every open task, by where it lives, for the planning drawer. */
+export interface PlannerSourcesDTO {
+  inbox: TaskDTO[];
+  due: { overdue: TaskDTO[]; today: TaskDTO[] };
+  projects: SourceGroupDTO[];
+  areas: SourceGroupDTO[];
+}
+
+export interface CapacityDTO {
+  freeMinutes: number;
+  plannedMinutes: number;
+  unestimated: number;
+  workHours: string;
 }
 
 export interface PersonDTO {
@@ -200,12 +222,15 @@ export interface PlannerDayDTO {
   due: { overdue: TaskDTO[]; today: TaskDTO[] };
   meetings: MeetingListDTO[];
   calendar: PlannerCalendarDTO;
+  sources: PlannerSourcesDTO;
+  capacity: CapacityDTO;
 }
 
 export interface PlannerWeekDayDTO {
   date: string;
   meetings: ActivityMeetingDTO[];
   due: TaskDTO[];
+  capacity: { freeMinutes: number; plannedMinutes: number };
 }
 
 export interface PlannerWeekDTO {

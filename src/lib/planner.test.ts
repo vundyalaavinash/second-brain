@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { captureMeeting, listMeetings, replaceCalendarEvents } from "@/domain/activity";
+import { createContainer } from "@/domain/containers";
+import { addToPlan } from "@/domain/plan";
 import { createTask } from "@/domain/tasks";
 import { hasUserNotes, plannerDay, plannerWeek } from "./planner";
 
@@ -75,5 +77,33 @@ describe("plannerDay", () => {
     // The week ends on the 27th, so October's task is never loaded into a column.
     const week = plannerWeek(t.db, "2026-09-21");
     expect(week.days.flatMap((d) => d.due.map((x) => x.title))).toEqual(["Due"]);
+  });
+
+  it("groups every open task by where it lives and marks the day's capacity", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Launch" });
+    const area = createContainer(t.db, { kind: "area", name: "Health" });
+    const empty = createContainer(t.db, { kind: "project", name: "Idle" });
+    const inbox = createTask(t.db, { title: "Loose", estimateMinutes: 25 });
+    const late = createTask(t.db, { title: "Late", dueDate: "2026-09-20", containerId: project.id });
+    const todayTask = createTask(t.db, { title: "Today", dueDate: "2026-09-23", containerId: area.id, estimateMinutes: 45 });
+    const planned = createTask(t.db, { title: "Planned", containerId: project.id, estimateMinutes: 60 });
+    addToPlan(t.db, "2026-09-23", planned.id);
+    addToPlan(t.db, "2026-09-23", todayTask.id);
+    replaceCalendarEvents(t.db, [
+      { externalId: "m1", title: "Sync", startsAt: "2026-09-23T10:00:00", endsAt: "2026-09-23T11:00:00", attendees: 2, hasCallLink: true },
+    ]);
+    const day = plannerDay(t.db, "2026-09-23");
+    expect(day.sources.inbox.map((x) => x.id)).toEqual([inbox.id]);
+    expect(day.sources.due.overdue.map((x) => x.id)).toEqual([late.id]);
+    expect(day.sources.due.today).toEqual([]); // already planned
+    expect(day.sources.projects.map((g) => [g.container.name, g.tasks.length])).toEqual([["Launch", 2], ["Idle", 0]]);
+    // A group carries the name its heading needs and nothing more: no counts, no progress.
+    expect(day.sources.projects[0].container).toEqual({ id: project.id, name: "Launch", slug: project.slug, kind: "project" });
+    expect(day.sources.areas.map((g) => [g.container.name, g.tasks.map((x) => x.id)])).toEqual([["Health", [todayTask.id]]]);
+    expect(day.capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, unestimated: 0, workHours: "09:00-18:00" });
+    void empty;
+    const week = plannerWeek(t.db, "2026-09-21");
+    expect(week.days[2].capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105 });
+    expect(week.days[0].capacity).toEqual({ freeMinutes: 540, plannedMinutes: 0 });
   });
 });
