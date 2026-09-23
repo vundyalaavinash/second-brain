@@ -72,6 +72,7 @@ function stubSettings(initial: MeetingSettingsDTO) {
     }
     if (url === "/api/settings/meetings") return Response.json(current);
     if (url === "/api/settings/calendar") return Response.json({ feedUrl: "", syncedAt: null, error: null, count: 0 });
+    if (/\/api\/activity\/meetings\/\d+\/capture$/.test(url)) return Response.json({ id: 42 });
     if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
     return new Response("{}", { status: 404 });
   });
@@ -252,7 +253,7 @@ describe("MeetingsView", () => {
     expect(screen.getByRole("region", { name: "Calendar settings" })).toBeTruthy();
   });
 
-  it("lists an all-day event as a chip with nothing to record or join", () => {
+  it("lists an all-day event as a chip with nothing to record or join", async () => {
     stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
     const holiday = meeting({ id: 9, title: "Dussehra", startsAt: `${TODAY}T00:00:00`, endsAt: "2026-09-24T00:00:00", allDay: true, attendees: 0, organizer: "" });
     render(<MeetingsView today={TODAY} meetings={[holiday, MEETINGS[0]]} />);
@@ -262,5 +263,14 @@ describe("MeetingsView", () => {
     expect(screen.getByRole("button", { name: "Record Standup" })).toBeTruthy();
     expect(screen.queryByText("0 attendees")).toBeNull();
     fireEvent.click(within(line).getByRole("button", { name: "Dussehra" }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/items/42"));
+  });
+
+  it("keeps past all-day events to the chip line as well", () => {
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    const past = meeting({ id: 8, title: "Onam", startsAt: "2026-09-15T00:00:00", endsAt: "2026-09-16T00:00:00", allDay: true, attendees: 0, organizer: "" });
+    render(<MeetingsView today={TODAY} meetings={[past, MEETINGS[0]]} />);
+    expect(screen.queryByRole("button", { name: "Record Onam" })).toBeNull();
+    expect(screen.getAllByLabelText("All day").some((el) => within(el).queryByText("Onam"))).toBe(true);
   });
 });

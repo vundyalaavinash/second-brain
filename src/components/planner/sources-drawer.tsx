@@ -300,11 +300,12 @@ export function SourcesDrawer({ day, today }: Props) {
     }
   }
 
-  // Every open task the drawer could show; with none, the tabs would only spell out five zeros.
+  // Anything still to plan from; once it is all on the plan, five tabs would only spell out zeros.
   const empty =
-    sources.inbox.length === 0 &&
-    sources.projects.every((g) => g.tasks.length === 0) &&
-    sources.areas.every((g) => g.tasks.length === 0);
+    dueCount === 0 &&
+    open(sources.inbox, plannedIds) === 0 &&
+    !sources.projects.some((g) => open(g.tasks, plannedIds) > 0) &&
+    !sources.areas.some((g) => open(g.tasks, plannedIds) > 0);
   const counts: Record<DrawerTab, number | null> = {
     inbox: open(sources.inbox, plannedIds),
     due: dueCount,

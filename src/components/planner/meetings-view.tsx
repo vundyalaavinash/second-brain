@@ -240,7 +240,8 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
                 past.map((g) => (
                   <div key={g.key} className="flex flex-col gap-1">
                     <span className="micro px-1">{g.label}</span>
-                    {rows(g.meetings)}
+                    {allDayLine(g.meetings.filter((m) => m.allDay))}
+                    {g.meetings.some((m) => !m.allDay) && rows(g.meetings.filter((m) => !m.allDay))}
                   </div>
                 ))
               )}

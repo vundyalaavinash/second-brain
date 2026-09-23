@@ -195,4 +195,11 @@ describe("SourcesDrawer", () => {
     render(<SourcesDrawer day={day({ sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: launch, tasks: [ship] }], areas: [] } })} today={TODAY} />);
     expect(screen.getByRole("tab", { name: /Projects/ }).getAttribute("aria-selected")).toBe("true");
   });
+
+  it("goes quiet once everything it could offer is already on the plan", () => {
+    stubPlan();
+    render(<SourcesDrawer day={day({ plan: [{ ...ship, planId: 3 }], sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: launch, tasks: [ship] }], areas: [] } })} today={TODAY} />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByText(/Nothing to plan yet/)).toBeTruthy();
+  });
 });
