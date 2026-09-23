@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type ElementType, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ElementType, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
@@ -57,6 +57,9 @@ interface Props {
   onBlockNow?: () => void;
   /** Takes the task's block off the timeline; the task stays on the plan. */
   onUnblock?: () => void;
+  /** The day this row belongs to. A block on it gets a chip that goes and looks at it; a block
+   * on any other day is only told, because no timeline on this screen holds it. */
+  blockDate?: string;
   /** Offered instead of `onPlan` when the day is the caller's to choose. */
   onPlanDate?: (date: string) => void;
   /** The first of the seven days the "Plan for" list offers. Defaults to today. */
@@ -66,8 +69,6 @@ interface Props {
   planned?: boolean;
   /** The week column's row: stacked, two-line title, no grip or priority chip. */
   compact?: boolean;
-  /** Sits in front of the checkbox: the sources drawer puts its add-to-plan button there. */
-  leading?: ReactNode;
   /** Extra classes for the row itself, e.g. dimming one that is already on a plan. */
   className?: string;
   draggable?: boolean;
@@ -82,8 +83,8 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, planFrom = today,
-  planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
+  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, blockDate, planFrom = today,
+  planLabel = "Plan for today", planned, compact, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
   as, rowProps: extraRowProps,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
@@ -278,17 +279,25 @@ export function TaskRow({
     )
   );
 
-  // Where the task sits on the timeline, and the one press that goes and looks at it.
-  const blockNode = task.scheduledAt && (
-    <button
-      type="button"
-      aria-label={`Blocked at ${formatClock(task.scheduledAt)}`}
-      onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id } }))}
-      className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
-    >
-      {formatClock(task.scheduledAt)}
-    </button>
-  );
+  // Where the task sits on the timeline. On the row's own day that is one press away, so the
+  // chip is a button; a block on another day has no column here to jump to, and the same mono
+  // figure only says which day holds it.
+  const blockNode =
+    task.scheduledAt &&
+    (blockDate && task.scheduledAt.startsWith(blockDate) ? (
+      <button
+        type="button"
+        aria-label={`Blocked at ${formatClock(task.scheduledAt)}`}
+        onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id } }))}
+        className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
+      >
+        {formatClock(task.scheduledAt)}
+      </button>
+    ) : (
+      <span title={`Blocked on ${formatShortDate(task.scheduledAt.slice(0, 10))} at ${formatClock(task.scheduledAt)}`} className="font-mono text-[11px] text-violet-bright px-1 shrink-0">
+        {formatClock(task.scheduledAt)}
+      </span>
+    ));
 
   const actions = (
     <>
@@ -522,7 +531,6 @@ export function TaskRow({
   if (compact) {
     return (
       <Row {...rowProps} className={`hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors ${className}`}>
-        {leading}
         {checkbox}
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
@@ -541,7 +549,6 @@ export function TaskRow({
 
   return (
     <Row {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
-      {leading}
       <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
         <GripVertical className="w-3.5 h-3.5" />
       </span>

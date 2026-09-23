@@ -77,6 +77,28 @@ describe("plan domain", () => {
     expect(getTask(t.db, b.id)!.scheduledAt).toBeNull();
   });
 
+  it("leaves a block on another day alone when the task is unplanned", () => {
+    const mon = "2026-09-21";
+    const tue = "2026-09-22";
+    // One task on both days, blocked on Tuesday: Monday's plan has no claim on that hour.
+    const a = createTask(t.db, { title: "A", scheduledAt: `${tue}T10:00:00` });
+    addToPlan(t.db, mon, a.id);
+    addToPlan(t.db, tue, a.id);
+    removeFromPlan(t.db, mon, a.id);
+    expect(getTask(t.db, a.id)!.scheduledAt).toBe(`${tue}T10:00:00`);
+    removeFromPlan(t.db, tue, a.id);
+    expect(getTask(t.db, a.id)!.scheduledAt).toBeNull();
+  });
+
+  it("carries a task over without touching a block it holds on another day", () => {
+    const mon = "2026-09-21";
+    const wed = "2026-09-23";
+    const a = createTask(t.db, { title: "A", scheduledAt: `${wed}T14:00:00` });
+    addToPlan(t.db, mon, a.id);
+    expect(carryOver(t.db, mon, "2026-09-22")).toBe(1);
+    expect(getTask(t.db, a.id)!.scheduledAt).toBe(`${wed}T14:00:00`);
+  });
+
   it("sorts the plan by block time, unblocked rows keeping their order at the end", () => {
     const late = createTask(t.db, { title: "Late", scheduledAt: "2026-09-23T15:00:00" });
     const early = createTask(t.db, { title: "Early", scheduledAt: "2026-09-23T09:00:00" });

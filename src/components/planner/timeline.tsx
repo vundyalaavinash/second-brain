@@ -7,8 +7,8 @@ import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
 import { blockLength, DEFAULT_BLOCK_MINUTES, parseWorkHours } from "@/lib/capacity";
 import { layoutBlocks, type TimelineMeeting } from "./timeline-layout";
-import { blockEnd, minutesToIso, snap } from "./block-math";
-import { PLAN_DRAG_MIME, PLAN_MINUTES_MIME } from "./drag-mime";
+import { blockEnd, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
+import { PLAN_DRAG_MIME, readPlanMinutes } from "./drag-mime";
 import { TaskBlock } from "./task-block";
 import { useRecorder } from "./use-recorder";
 
@@ -142,9 +142,11 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     })();
   }
 
-  /** Keeps a block's top on the column, whatever the pointer did. */
+  /** Keeps a block's top on the column, whatever the pointer did. The last slot the column
+   * offers is one snap short of its end: on a column widened to midnight, a drop on the very
+   * last pixel would otherwise roll the block over into tomorrow. */
   function clampTop(offset: number): number {
-    return Math.max(0, Math.min(minutes, offset));
+    return Math.max(0, Math.min(minutes - SNAP_MINUTES, offset));
   }
 
   /** Where the pointer is on the column, in minutes from its start, snapped to five. */
@@ -156,10 +158,10 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     void onPatchTask(id, { scheduledAt: minutesToIso(date, dayStart * 60 + offset) });
   }
 
-  /** How long the dragged plan row's block will be, when the row said so. */
+  /** How long the dragged plan row's block will be, when the row said so. Through a dragover
+   * the data store is protected, so the answer is read off the types rather than the data. */
   function draggedLength(e: DragEvent<HTMLElement>): number {
-    const said = e.dataTransfer.types.includes(PLAN_MINUTES_MIME) ? Number(e.dataTransfer.getData(PLAN_MINUTES_MIME)) : 0;
-    return said > 0 ? said : DEFAULT_BLOCK_MINUTES;
+    return readPlanMinutes(e.dataTransfer.types) ?? DEFAULT_BLOCK_MINUTES;
   }
 
   function onDragOver(e: DragEvent<HTMLDivElement>) {

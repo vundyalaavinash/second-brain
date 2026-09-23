@@ -71,8 +71,8 @@ describe("plannerDay", () => {
     createTask(t.db, { title: "Someday" });
 
     const day = plannerDay(t.db, DATE);
-    expect(day.due.overdue.map((x) => x.id)).toEqual([late.id]);
-    expect(day.due.today.map((x) => x.id)).toEqual([due.id]);
+    expect(day.sources.due.overdue.map((x) => x.id)).toEqual([late.id]);
+    expect(day.sources.due.today.map((x) => x.id)).toEqual([due.id]);
 
     // The week ends on the 27th, so October's task is never loaded into a column.
     const week = plannerWeek(t.db, "2026-09-21");

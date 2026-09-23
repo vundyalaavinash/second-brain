@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import type { PlanTaskDTO } from "@/lib/dto";
 import { formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
@@ -33,19 +34,35 @@ const DEFAULT_LENGTH = 25;
  */
 export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatch, onDragStart }: Props) {
   const [resizing, setResizing] = useState(false);
+  const reduce = useReducedMotion();
   // A resize in flight, as the one call that takes its window listeners off again. Held in a
   // ref so a block that goes away mid-drag — the day reloading under it — leaves none behind.
   const detachResize = useRef<(() => void) | null>(null);
   useEffect(() => () => detachResize.current?.(), []);
+  // The start the last arrow wrote, until the day comes back holding it. Two presses in a row
+  // are faster than the round trip, and the second must count from the first's answer rather
+  // than from a prop that has not moved yet.
+  const pending = useRef<number | null>(null);
+  // Only the ref: the prop has caught up with what was written, so it has nothing left to add.
+  useEffect(() => {
+    if (pending.current !== null && task.scheduledAt && isoToMinutes(task.scheduledAt) === pending.current) pending.current = null;
+  }, [task.scheduledAt]);
   const start = task.scheduledAt!;
   const end = blockEnd({ scheduledAt: start, estimateMinutes: task.estimateMinutes });
   const done = task.status === "done";
   const name = `${task.title}, ${formatClock(start)} to ${formatClock(end)}`;
 
   async function move(deltaMinutes: number) {
-    const next = Math.max(0, Math.min(24 * 60 - FINE, snap(isoToMinutes(start) + deltaMinutes)));
+    const from = pending.current ?? isoToMinutes(start);
+    const next = Math.max(0, Math.min(24 * 60 - FINE, snap(from + deltaMinutes)));
+    const before = pending.current;
+    // Noted before the write, so the next press already counts from here; a write that fails
+    // never happened, and the ref goes back to what it was.
+    pending.current = next;
     if (await onPatch(task.id, { scheduledAt: minutesToIso(date, next) })) {
       window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: `Moved to ${formatClock(minutesToIso(date, next))}` } }));
+    } else {
+      pending.current = before;
     }
   }
 
@@ -114,22 +131,26 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
     window.addEventListener("pointercancel", onCancel);
   }
 
-  return (
-    <div
-      role="group"
-      aria-label={name}
-      tabIndex={0}
-      data-task-block={task.id}
-      onKeyDown={onKey}
-      onPointerDown={done ? undefined : onDragStart}
-      className={`focus-ring absolute rounded-md border-l-2 border-violet bg-violet-dim overflow-hidden select-none ${done ? "opacity-50" : ""} ${resizing ? "cursor-ns-resize" : "cursor-grab"}`}
-      style={{
-        top: top * pxPerMin,
-        height: height * pxPerMin,
-        left: `calc(3.5rem + (100% - 3.5rem) * ${col / cols})`,
-        width: `calc((100% - 3.5rem) / ${cols} - 4px)`,
-      }}
-    >
+  // Everything that names the block and answers to it: the same element either way, so the
+  // focus, the keyboard and the pointer never notice which one is rendered.
+  const blockProps = {
+    role: "group",
+    "aria-label": name,
+    tabIndex: 0,
+    "data-task-block": task.id,
+    onKeyDown: onKey,
+    onPointerDown: done ? undefined : onDragStart,
+    className: `focus-ring absolute rounded-md border-l-2 border-violet bg-violet-dim overflow-hidden select-none ${done ? "opacity-50" : ""} ${resizing ? "cursor-ns-resize" : "cursor-grab"}`,
+    style: {
+      top: top * pxPerMin,
+      height: height * pxPerMin,
+      left: `calc(3.5rem + (100% - 3.5rem) * ${col / cols})`,
+      width: `calc((100% - 3.5rem) / ${cols} - 4px)`,
+    },
+  } as const;
+
+  const inside = (
+    <>
       <div className="p-2 flex flex-col gap-0.5 h-full pointer-events-none">
         <span className="flex items-center gap-2 min-w-0">
           <input
@@ -158,6 +179,16 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
           className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize pointer-events-auto"
         />
       )}
-    </div>
+    </>
+  );
+
+  // Spec §7: a block settles into its new top and height over 200 ms, so a move or a resize
+  // elsewhere on the column is followed rather than jumped. Reduced motion gets a plain div.
+  return reduce ? (
+    <div {...blockProps}>{inside}</div>
+  ) : (
+    <motion.div layout transition={{ duration: 0.2 }} {...blockProps}>
+      {inside}
+    </motion.div>
   );
 }

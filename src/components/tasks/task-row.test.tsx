@@ -18,6 +18,7 @@ interface ExtraProps {
   onPlan?: () => void;
   onBlockNow?: () => void;
   onUnblock?: () => void;
+  blockDate?: string;
   onEstimate?: (minutes: number | null) => void;
   onPlanDate?: (date: string) => void;
   planFrom?: string;
@@ -306,7 +307,7 @@ describe("TaskRow blocks", () => {
     const listen = (e: Event) => focus.push((e as CustomEvent).detail);
     window.addEventListener("sb:timeline-focus", listen);
     try {
-      renderRow({ onBlockNow, onUnblock }, { ...task, scheduledAt: "2026-09-16T10:30:00" });
+      renderRow({ onBlockNow, onUnblock, blockDate: "2026-09-16" }, { ...task, scheduledAt: "2026-09-16T10:30:00" });
       fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
       expect(focus).toEqual([{ taskId: task.id }]);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
@@ -319,6 +320,26 @@ describe("TaskRow blocks", () => {
     } finally {
       window.removeEventListener("sb:timeline-focus", listen);
     }
+  });
+
+  it("only tells the time for a block the row's own day does not hold", () => {
+    // No day to measure against, and a day that is not the block's: neither has a column here
+    // to jump to, so the figure is said rather than offered.
+    for (const extra of [{ onBlockNow: vi.fn() }, { onBlockNow: vi.fn(), blockDate: "2026-09-17" }]) {
+      renderRow(extra, { ...task, scheduledAt: "2026-09-16T10:30:00" });
+      expect(screen.queryByRole("button", { name: /^Blocked at/ })).toBeNull();
+      expect(screen.getByTitle("Blocked on Wed 16 at 10:30").textContent).toBe("10:30");
+      cleanup();
+    }
+  });
+
+  it("leaves n alone on a row that is already finished", () => {
+    const onBlockNow = vi.fn();
+    renderRow({ onBlockNow }, { ...task, title: "Write", status: "done" });
+    const title = screen.getByRole("button", { name: "Write" });
+    title.focus();
+    fireEvent.keyDown(title, { key: "n" });
+    expect(onBlockNow).not.toHaveBeenCalled();
   });
 
   it("keeps the chip and the unblock item away from a task with no block", () => {

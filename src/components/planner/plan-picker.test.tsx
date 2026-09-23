@@ -31,7 +31,6 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     date: TODAY,
     plan: [{ ...planned, planId: 1 }],
     unfinishedYesterday: [leftover, planned],
-    due: { overdue: [late], today: [] },
     meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [loose], due: { overdue: [late], today: [] }, projects: [{ container: launch, tasks: [late, ship, planned] }], areas: [{ container: health, tasks: [walk] }] },

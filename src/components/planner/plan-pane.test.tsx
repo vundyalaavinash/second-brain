@@ -18,14 +18,12 @@ const planned: PlanTaskDTO = { ...base, id: 2, title: "Write the brief", planId:
 const a: TaskDTO = { ...base, id: 3, title: "First thing" };
 const b: TaskDTO = { ...base, id: 4, title: "Second thing" };
 const c: TaskDTO = { ...base, id: 5, title: "Dragged in" };
-const late: TaskDTO = { ...base, id: 6, title: "Late one", dueDate: "2026-09-20" };
 
 function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   return {
     date: TODAY,
     plan: [planned],
     unfinishedYesterday: [base],
-    due: { overdue: [], today: [base] },
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: { id: 10, name: "Launch", slug: "launch", kind: "project" }, tasks: [c] }], areas: [] },
@@ -97,12 +95,6 @@ describe("PlanPane", () => {
     expect(screen.getByRole("menuitem", { name: "Remove from plan" })).toBeTruthy();
   });
 
-  it("no longer lists due tasks itself", () => {
-    render(<PlanPane day={day({ due: { overdue: [late], today: [] } })} today={TODAY} onRefresh={vi.fn()} />);
-    expect(screen.queryByText("Due")).toBeNull();
-    expect(screen.queryByText("Late one")).toBeNull();
-  });
-
   it("fills the capacity bar and turns it red well past the free time", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     const { container } = render(
@@ -112,6 +104,18 @@ describe("PlanPane", () => {
     expect(fill).toBeTruthy();
     // Past the free time the bar stops at full rather than running off the track.
     expect(fill.style.width).toBe("100%");
+  });
+
+  it("shows blocked time against the day's free hours, estimates or no estimates", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    // Three blocks nobody estimated: 75 minutes of a 300-minute day, and not one of them
+    // counted in `plannedMinutes`, which is what the segment used to be measured against.
+    const { container } = render(
+      <PlanPane day={day({ capacity: { freeMinutes: 300, plannedMinutes: 0, unestimated: 3, workHours: "09:00-14:00", blockedMinutes: 75 } })} today={TODAY} onRefresh={vi.fn()} />,
+    );
+    const blocked = container.querySelector(".bg-violet-bright") as HTMLElement;
+    expect(blocked).toBeTruthy();
+    expect(blocked.style.width).toBe("25%");
   });
 
   it("opens today's empty plan with the ritual, and not another day's", async () => {
@@ -205,6 +209,24 @@ describe("PlanPane", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
       await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T10:35:00` } }]));
 
+      // On the mark itself the next slot is the one after it, never the minute already going.
+      cleanup();
+      vi.setSystemTime(new Date(`${TODAY}T10:30:00`));
+      const onTheMark = stubPlan();
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
+      await waitFor(() => expect(onTheMark).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T10:35:00` } }]));
+
+      // The last slot the day holds: 23:58 blocks at 23:55 rather than rolling into tomorrow.
+      cleanup();
+      vi.setSystemTime(new Date(`${TODAY}T23:58:00`));
+      const atMidnight = stubPlan();
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
+      await waitFor(() => expect(atMidnight).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T23:55:00` } }]));
+
       // Another day has no "now" on it: the item is not offered at all.
       cleanup();
       render(<PlanPane day={day({ date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
@@ -212,6 +234,20 @@ describe("PlanPane", () => {
       expect(screen.queryByRole("menuitem", { name: "Block now" })).toBeNull();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("gives a block on the pane's own day a chip that goes and looks at it", () => {
+    stubPlan();
+    const seen: unknown[] = [];
+    const listen = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("sb:timeline-focus", listen);
+    try {
+      render(<PlanPane day={day({ plan: [{ ...planned, scheduledAt: `${TODAY}T10:30:00` }] })} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
+      expect(seen).toEqual([{ taskId: planned.id }]);
+    } finally {
+      window.removeEventListener("sb:timeline-focus", listen);
     }
   });
 

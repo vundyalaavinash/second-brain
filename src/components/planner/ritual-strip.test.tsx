@@ -28,7 +28,7 @@ const PROJECT = { container: { id: 10, name: "Launch", slug: "launch", kind: "pr
 
 function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   return {
-    date: TODAY, plan: [], unfinishedYesterday: [left], due: { overdue: [late], today: [due] }, meetings: [],
+    date: TODAY, plan: [], unfinishedYesterday: [left], meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [], due: { overdue: [late], today: [due] }, projects: [PROJECT], areas: [] },
     capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0 },

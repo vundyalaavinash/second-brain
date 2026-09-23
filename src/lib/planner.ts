@@ -45,17 +45,13 @@ export function plannerSources(db: DB, date: string, plannedIds: Set<number>): P
 }
 
 /**
- * One day of the Planner: the day's plan, what yesterday left open, what is due and not
- * already planned, the day's meetings, and the calendar's state.
+ * One day of the Planner: the day's plan, what yesterday left open, the day's meetings, the
+ * calendar's state, and every open task by where it lives for the picker to draw on. What is
+ * due reaches the day through `sources.due`; the day itself lists none of it.
  */
 export function plannerDay(db: DB, date: string): PlannerDayDTO {
   const plan = listPlan(db, date).map(serializePlanTask);
   const plannedIds = new Set(plan.map((t) => t.id));
-  // Only what the day can show: `partitionDue` keeps the late and the due-today, so a task
-  // due next month never needs loading.
-  const open = listTasks(db, { status: "open", dueOnOrBefore: date })
-    .filter((t) => !plannedIds.has(t.id))
-    .map(serializeTask);
   const workHours = getWorkHours(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
   const { planned, unestimated } = plannedMinutes(plan);
@@ -63,7 +59,6 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
     date,
     plan,
     unfinishedYesterday: unfinished(db, addDays(date, -1)).map(serializeTask),
-    due: partitionDue(open, date),
     // The same flagged meetings the list view shows, so the timeline can badge them too.
     meetings,
     calendar: plannerCalendar(db),

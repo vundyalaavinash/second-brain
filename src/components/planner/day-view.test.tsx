@@ -18,7 +18,6 @@ function day(): PlannerDayDTO {
     date: TODAY,
     plan: [],
     unfinishedYesterday: [],
-    due: { overdue: [], today: [] },
     meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [loose], due: { overdue: [], today: [] }, projects: [], areas: [] },
@@ -61,7 +60,7 @@ describe("DayView", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("puts the keyboard in the picker with the drawer key", () => {
+  it("puts the keyboard in the picker with its own key", () => {
     mount();
     pickerKey();
     expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Add a task for today" }));

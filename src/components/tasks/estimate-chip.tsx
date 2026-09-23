@@ -22,7 +22,7 @@ export function EstimateChip({ value, onChange, compact }: { value: number | nul
   const panel = useRef<HTMLDivElement | null>(null);
 
   // Portalled and positioned against the trigger the way task-row.tsx places its actions menu.
-  // Fixed, so the sources drawer's scroll container cannot clip the panel at narrow widths.
+  // Fixed, so a scrolling pane around the row cannot clip the panel at narrow widths.
   useEffect(() => {
     if (!open) return;
     const buttonEl = button.current;

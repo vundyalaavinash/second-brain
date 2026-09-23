@@ -15,7 +15,6 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR, over: Partial<Plann
     date: "2026-09-22",
     plan: [],
     unfinishedYesterday: [],
-    due: { overdue: [], today: [] },
     meetings: [],
     calendar,
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
@@ -24,7 +23,7 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR, over: Partial<Plann
   };
 }
 
-/** The view tabs, not the source drawer's: the day view nests a tablist of its own. */
+/** The planner's own view tabs: Day, Week, Meetings. */
 function viewTabs(): HTMLElement[] {
   return within(screen.getByRole("tablist", { name: "Planner views" })).getAllByRole("tab");
 }
@@ -119,7 +118,7 @@ describe("PlannerShell", () => {
 
   it("points each tab at the panel the views are rendered in", () => {
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
-    // Named for its own tab: the day view's drawer brings a second tablist and panel of its own.
+    // One panel holds whichever view is up, named for the tab that asked for it.
     const panel = screen.getByRole("tabpanel", { name: "Day" });
     expect(panel.getAttribute("aria-labelledby")).toBe(viewTabs()[0].id);
     for (const tab of viewTabs()) expect(tab.getAttribute("aria-controls")).toBe(panel.id);

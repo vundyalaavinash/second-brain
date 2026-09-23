@@ -12,7 +12,7 @@ import { MENU_ITEM, TaskRow } from "../tasks/task-row";
 import { minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
-import { PLAN_DRAG_MIME, PLAN_MINUTES_MIME } from "./drag-mime";
+import { PLAN_DRAG_MIME, planMinutesType } from "./drag-mime";
 import { PlanPicker } from "./plan-picker";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -34,12 +34,13 @@ const RITUAL_MOTION = {
   transition: { type: "spring", stiffness: 420, damping: 38, mass: 0.6 },
 } as const;
 
-/** The clock as minutes since local midnight, for a block that starts "now". */
-/** The next five-minute mark after now: 10:30 and 10:34 both start at 10:35. */
+/** The next five-minute mark after now: 10:30 and 10:34 both start at 10:35. The last one the
+ * day holds is 23:55, so a block taken out at 23:58 does not begin tomorrow. */
 function nextSlot(minutes: number): number {
-  return Math.ceil((minutes + 1) / SNAP_MINUTES) * SNAP_MINUTES;
+  return Math.min(24 * 60 - SNAP_MINUTES, Math.ceil((minutes + 1) / SNAP_MINUTES) * SNAP_MINUTES);
 }
 
+/** The clock as minutes since local midnight, for a block that starts "now". */
 function nowMinutes(): number {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
@@ -83,7 +84,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     queueMicrotask(() => setRitual(day.date === today && !done));
   }, [day.date, today]);
 
-  // A task planned from the drawer before the ritual began says the morning is already under
+  // A task planned from the picker before the ritual began says the morning is already under
   // way: the strip stands aside, and stays away for the rest of the day.
   useEffect(() => {
     if (ritual !== true || started || day.plan.length === 0) return;
@@ -221,6 +222,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
         onPlan={() => void unplan(task.id)}
+        // The pane is one day's plan, so a chip here only leads to a block that is on it.
+        blockDate={day.date}
         // "Now" only means something on the day being lived through; other days are placed by hand.
         onBlockNow={day.date === today ? () => patch(task.id, { scheduledAt: minutesToIso(today, nextSlot(nowMinutes())) }) : undefined}
         onUnblock={() => patch(task.id, { scheduledAt: null })}
@@ -228,10 +231,12 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         draggable
         onDragStart={(e) => {
           setDragId(task.id);
-          // The timeline accepts this one to give the task a block; the length beside it sizes
-          // the ghost the timeline draws under the cursor.
+          // The timeline accepts this one to give the task a block; the second type spells out
+          // the length, which is all a dragover is allowed to read, and sizes the ghost.
           e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
-          e.dataTransfer.setData(PLAN_MINUTES_MIME, String(blockLength(task)));
+          // The data is the same number again, so nothing depends on a browser keeping an
+          // entry whose value is empty; only the type is ever read.
+          e.dataTransfer.setData(planMinutesType(blockLength(task)), String(blockLength(task)));
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
@@ -250,7 +255,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
-  const blockedFill = capacity.plannedMinutes > 0 ? Math.min(100, (capacity.blockedMinutes / capacity.plannedMinutes) * 100) : 0;
+  // Blocked time is measured against the same track as the fill, not against the fill itself:
+  // a block on a task nobody estimated is real time on the timeline, and the estimates it is
+  // missing from would otherwise keep it off the bar altogether.
+  const blockedFill = Math.min(100, capacity.freeMinutes ? (capacity.blockedMinutes / capacity.freeMinutes) * 100 : capacity.blockedMinutes ? 100 : 0);
   const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
 
   return (
@@ -291,11 +299,12 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </span>
       </div>
 
-      <div className="h-1 rounded-full bg-layer-2 overflow-hidden" aria-hidden>
-        <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }}>
-          {/* How much of what is planned has a place on the timeline, brighter inside the fill. */}
-          {blockedFill > 0 && <div className="h-full rounded-full bg-violet-bright" style={{ width: `${blockedFill}%` }} />}
-        </div>
+      <div className="relative h-1 rounded-full bg-layer-2 overflow-hidden" aria-hidden>
+        <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }} />
+        {/* How much of the day already has a place on the timeline, brighter over the fill. */}
+        {blockedFill > 0 && (
+          <div className="absolute inset-y-0 left-0 rounded-full bg-violet-bright transition-[width] duration-300" style={{ width: `${blockedFill}%` }} />
+        )}
       </div>
 
       {day.unfinishedYesterday.length > 0 && !showRitual && (

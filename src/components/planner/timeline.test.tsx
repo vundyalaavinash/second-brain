@@ -82,8 +82,8 @@ beforeAll(() => {
 /** The strip along a block's bottom edge; it is out of the accessibility tree by design. */
 const resizeHandle = (block: HTMLElement) => block.querySelector<HTMLElement>("[data-resize]")!;
 
-/** The now line is the only violet rule on the column. */
-const nowLine = (root: HTMLElement) => root.querySelector(".border-violet");
+/** The now line: the one violet rule on the column, as against the blocks' violet left edge. */
+const nowLine = (root: HTMLElement) => root.querySelector(".border-t.border-violet");
 
 afterEach(() => {
   cleanup();
@@ -138,16 +138,44 @@ describe("Timeline", () => {
     expect(block.style.height).toBe("45px");
   });
 
-  it("drops a plan row onto the timeline at the snapped slot", async () => {
+  it("drops a plan row onto the timeline at the snapped slot, the ghost as long as the block", async () => {
     const posts = stubPatch();
     render(<Timeline date={DATE} meetings={[]} tasks={[]} onPatchTask={patchTask} workHours="09:00-18:00" />);
     const column = screen.getByTestId("timeline-column");
     Object.defineProperty(column, "getBoundingClientRect", { value: () => ({ top: 100, left: 0, width: 400, height: 540 }) });
-    const dt = { types: ["application/x-sb-plan"], getData: () => "7", dropEffect: "move" };
-    fireEvent.dragOver(column, { dataTransfer: dt, clientY: 100 + 93 });
-    expect(screen.getByTestId("block-ghost").style.top).toBe("95px");
+    // Through a dragover the data store is protected: only the types can be read, so the row's
+    // 45 minutes ride in a type of their own and `getData` answers "" for everything.
+    const dt = {
+      types: ["application/x-sb-plan", "application/x-sb-plan-minutes-45"],
+      getData: (type: string) => (type === "application/x-sb-plan" ? "7" : ""),
+      dropEffect: "move",
+    };
+    fireEvent.dragOver(column, { dataTransfer: { ...dt, getData: () => "" }, clientY: 100 + 93 });
+    const ghost = screen.getByTestId("block-ghost");
+    expect(ghost.style.top).toBe("95px");
+    expect(ghost.style.height).toBe("45px");
     fireEvent.drop(column, { dataTransfer: dt, clientY: 100 + 93 });
     await waitFor(() => expect(posts).toEqual([{ id: 7, body: { scheduledAt: `${DATE}T10:35:00` } }]));
+  });
+
+  it("falls back to the default length for a drag that declares none", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const column = screen.getByTestId("timeline-column");
+    Object.defineProperty(column, "getBoundingClientRect", { value: () => ({ top: 100, left: 0, width: 400, height: 540 }) });
+    fireEvent.dragOver(column, { dataTransfer: { types: ["application/x-sb-plan"], getData: () => "" }, clientY: 100 + 93 });
+    expect(screen.getByTestId("block-ghost").style.height).toBe("25px");
+  });
+
+  it("keeps a drop on the column's last pixel on the day it was made", async () => {
+    const posts = stubPatch();
+    // A block crossing midnight runs the column to 24:00, so its last minute is the day's last.
+    const late = { ...blocked, scheduledAt: `${DATE}T23:50:00`, estimateMinutes: null };
+    render(<Timeline date={DATE} meetings={[]} tasks={[late]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const column = screen.getByTestId("timeline-column");
+    Object.defineProperty(column, "getBoundingClientRect", { value: () => ({ top: 0, left: 0, width: 400, height: 900 }) });
+    const dt = { types: ["application/x-sb-plan"], getData: () => "7", dropEffect: "move" };
+    fireEvent.drop(column, { dataTransfer: dt, clientY: 900 });
+    await waitFor(() => expect(posts).toEqual([{ id: 7, body: { scheduledAt: `${DATE}T23:55:00` } }]));
   });
 
   it("moves a block with the arrows, resizes with alt, and unblocks with backspace", async () => {
@@ -157,12 +185,41 @@ describe("Timeline", () => {
     block.focus();
     fireEvent.keyDown(block, { key: "ArrowDown" });
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: `${DATE}T10:45:00` } }));
+    // The day has not come back with 10:45 yet, so the next press counts from it, not from 10:30.
     fireEvent.keyDown(block, { key: "ArrowUp", shiftKey: true });
-    await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: `${DATE}T10:25:00` } }));
+    await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: `${DATE}T10:40:00` } }));
     fireEvent.keyDown(block, { key: "ArrowDown", altKey: true });
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { estimateMinutes: 50 } }));
     fireEvent.keyDown(block, { key: "Backspace" });
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: null } }));
+  });
+
+  it("moves twice before the day comes back, the second press counting from the first", async () => {
+    const posts = stubPatch();
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
+    block.focus();
+    fireEvent.keyDown(block, { key: "ArrowDown" });
+    fireEvent.keyDown(block, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(posts).toEqual([
+        { id: blocked.id, body: { scheduledAt: `${DATE}T10:45:00` } },
+        { id: blocked.id, body: { scheduledAt: `${DATE}T11:00:00` } },
+      ]),
+    );
+  });
+
+  it("counts from the prop again once the day has caught up with the last write", async () => {
+    const posts = stubPatch();
+    const { rerender } = render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
+    block.focus();
+    fireEvent.keyDown(block, { key: "ArrowDown" });
+    await waitFor(() => expect(posts).toHaveLength(1));
+    // The day comes back holding 10:45: the note of what was written has nothing left to say.
+    rerender(<Timeline date={DATE} meetings={[]} tasks={[{ ...blocked, scheduledAt: `${DATE}T10:45:00` }]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    fireEvent.keyDown(screen.getByRole("group", { name: "Write the note, 10:45 to 11:30" }), { key: "ArrowDown" });
+    await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: `${DATE}T11:00:00` } }));
   });
 
   it("runs the column to midnight for a block that crosses it", () => {
