@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "setup": "scripts/brain.sh setup",
     "restart": "scripts/brain.sh restart",
+    "update": "scripts/brain.sh update",
     "stop": "scripts/brain.sh stop",
     "status": "scripts/brain.sh status",
     "logs": "scripts/brain.sh logs"

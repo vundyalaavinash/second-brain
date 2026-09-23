@@ -8,10 +8,14 @@ A personal capture, search, task, and meeting system that runs locally on a Mac.
 
 One command: installs dependencies, builds, downloads the embedding model, installs a launchd agent that starts the app at login and keeps it running on http://localhost:3141, and opens it. After that:
 
-    npm run status      # agent and server state
-    npm run restart     # restart; add -- --build after pulling changes
-    npm run stop        # stop the agent
+    npm run status      # agent, server, tool and helper state
+    npm run update      # after pulling changes: deps, app and helper builds, models, restart
+    npm run restart     # restart; add -- --build to rebuild the app, -- --helpers for the Swift helpers
+    npm run stop        # stop the agent and the activity helper
     npm run logs        # tail the server log
+
+    scripts/brain.sh helpers   # rebuild and reinstall just the activity helper and the recorder
+    scripts/brain.sh open      # open the app in the browser
 
 The script behind these is `scripts/brain.sh`.
 

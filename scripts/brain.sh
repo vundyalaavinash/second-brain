@@ -32,11 +32,15 @@ usage() {
 Usage: scripts/brain.sh <command>
 
   setup            install deps, build, download the embedding and whisper models, install the launch agent, the activity helper and the recorder, start
+  update           after pulling changes: install deps, rebuild the app and both helpers, fetch any missing models, restart
   start            start the launch agent and open the browser
-  stop             stop the launch agent
-  restart [--build] stop, optionally rebuild, start
-  status           show agent and server state
+  stop             stop the launch agent and the activity helper
+  restart [--build] [--helpers]
+                   stop, rebuild the app (--build) and/or the Swift helpers (--helpers), start
+  helpers          rebuild and reinstall the activity helper and the recorder, then bounce the helper
+  status           show agent, server, tool and helper state
   logs             tail the server log
+  open             open the app in the browser
   dev              run the dev server in the foreground (port $PORT)
 
 Data directory: $DATA_DIR   (override with SB_DATA_DIR)
@@ -371,9 +375,22 @@ cmd_stop() {
   fi
 }
 
+# Rebuilds both Swift helpers and puts the binaries where the launch agents expect them.
+# The activity helper's agent is written again in case the paths in it changed.
+build_helpers() {
+  if build_helper; then write_helper_plist; fi
+  build_recorder || true
+}
+
 cmd_restart() {
-  local build=0
-  [ "${1:-}" = "--build" ] && build=1
+  local build=0 helpers=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --build)   build=1 ;;
+      --helpers) helpers=1 ;;
+      *) fail "unknown option: $arg (use --build and/or --helpers)" ;;
+    esac
+  done
   cmd_stop
   if [ "$build" = 1 ]; then
     require_node
@@ -381,7 +398,38 @@ cmd_restart() {
     say "rebuilding"
     npm run build
   fi
+  if [ "$helpers" = 1 ]; then build_helpers; fi
   cmd_start --no-open
+}
+
+cmd_helpers() {
+  helper_stop
+  build_helpers
+  helper_start
+  probe_recorder
+}
+
+# Everything setup does for code that changed, without touching the app's launch agent.
+cmd_update() {
+  require_node
+  cd "$ROOT"
+  say "installing dependencies"
+  if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+  cmd_stop
+  say "building"
+  npm run build
+  mkdir -p "$DATA_DIR/files" "$LOG_DIR"
+  download_model
+  ensure_token
+  build_helpers
+  download_whisper_models
+  cmd_start --no-open
+  ok "update complete"
+}
+
+cmd_open() {
+  is_up || fail "server not answering at $URL. Run: scripts/brain.sh start"
+  open "$URL"
 }
 
 cmd_status() {
@@ -414,9 +462,12 @@ cmd_dev() {
 
 case "${1:-}" in
   setup)   cmd_setup ;;
+  update)  cmd_update ;;
+  helpers) cmd_helpers ;;
+  open)    cmd_open ;;
   start)   cmd_start ;;
   stop)    cmd_stop ;;
-  restart) cmd_restart "${2:-}" ;;
+  restart) shift; cmd_restart "$@" ;;
   status)  cmd_status ;;
   logs)    cmd_logs ;;
   dev)     cmd_dev ;;
