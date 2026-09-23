@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, act, within } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act, within, waitFor } from "@testing-library/react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import { DayView } from "./day-view";
 
@@ -27,7 +27,10 @@ function day(): PlannerDayDTO {
 }
 
 function mount() {
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({})));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => (String(input) === "/api/meetings/recorder" ? Response.json({ state: "idle", missing: [] }) : Response.json({}))),
+  );
   render(<DayView day={day()} today={TODAY} onRefresh={vi.fn()} />);
 }
 
@@ -63,12 +66,26 @@ afterEach(() => {
 });
 
 describe("DayView", () => {
-  it("is a plain column on a wide screen, whatever the drawer key does", () => {
-    atWidth(false);
+  it("keeps the sources off the page until asked, then slides them over the plan from the button", () => {
+    atWidth(true);
+    mount();
+    expect(overlay()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add tasks" }));
+    expect(overlay()).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide sources" }).getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Hide sources" }));
+    expect(overlay()).toBeNull();
+  });
+
+  it("remembers a slide-over left open", async () => {
+    atWidth(true);
     mount();
     drawer();
-    expect(overlay()).toBeNull();
-    expect(screen.getByRole("tab", { name: /Inbox/ })).toBeTruthy();
+    expect(overlay()).toBeTruthy();
+    cleanup();
+    atWidth(true);
+    mount();
+    await waitFor(() => expect(overlay()).toBeTruthy());
   });
 
   it("writes the plan first, then the timeline, then the sources", () => {
@@ -82,11 +99,11 @@ describe("DayView", () => {
     expect(timeline.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("moves into the sources with the drawer key where they are already on the page", () => {
+  it("moves into the stacked sources with the drawer key on a narrow screen", () => {
     atWidth(false);
     mount();
     drawer();
-    // Nothing to toggle at this width, so the key only hands over the keyboard.
+    // Nothing floats at this width, so the key opens the section and hands over the keyboard.
     expect(overlay()).toBeNull();
     expect(document.activeElement?.getAttribute("role")).toBe("tab");
     expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
