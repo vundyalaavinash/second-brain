@@ -347,7 +347,13 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
             aria-hidden
             className="absolute left-14 right-2 rounded-md border border-dashed border-violet bg-violet-dim/50 pointer-events-none"
             style={{ top: ghost.top * PX_PER_MIN, height: ghost.height * PX_PER_MIN }}
-          />
+          >
+            {/* The slot it would take, spelled out: the picture under the pointer and the rule
+              * lines say roughly where; this says exactly. */}
+            <span className="absolute -top-2.5 left-1.5 px-1 rounded-sm bg-carbon font-mono text-[11px] text-violet-bright">
+              {formatClock(minutesToIso(date, dayStart * 60 + ghost.top))}
+            </span>
+          </div>
         )}
 
         {nowTop !== null && (

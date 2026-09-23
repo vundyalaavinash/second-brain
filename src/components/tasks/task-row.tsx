@@ -75,6 +75,7 @@ interface Props {
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
   onDragLeave?: (e: DragEvent<HTMLLIElement>) => void;
+  onDragEnd?: (e: DragEvent<HTMLLIElement>) => void;
   onRowDrop?: (e: DragEvent<HTMLLIElement>) => void;
   /** What the row renders as. The plan list hands in `motion.li` for its layout animation. */
   as?: ElementType;
@@ -84,7 +85,7 @@ interface Props {
 
 export function TaskRow({
   task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, blockDate, planFrom = today,
-  planLabel = "Plan for today", planned, compact, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
+  planLabel = "Plan for today", planned, compact, className = "", draggable, onDragStart, onDragOver, onDragLeave, onDragEnd, onRowDrop,
   as, rowProps: extraRowProps,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
@@ -522,6 +523,7 @@ export function TaskRow({
     onDragStart,
     onDragOver,
     onDragLeave,
+    onDragEnd,
     onDrop: onRowDrop,
     onKeyDown: onRowKeyDown,
   };

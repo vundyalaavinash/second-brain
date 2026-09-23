@@ -152,6 +152,7 @@ describe("Timeline", () => {
     };
     fireEvent.dragOver(column, { dataTransfer: { ...dt, getData: () => "" }, clientY: 100 + 93 });
     const ghost = screen.getByTestId("block-ghost");
+    expect(ghost.textContent).toBe("10:35");
     expect(ghost.style.top).toBe("95px");
     expect(ghost.style.height).toBe("45px");
     fireEvent.drop(column, { dataTransfer: dt, clientY: 100 + 93 });

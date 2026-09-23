@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { blockLength, capacityTone } from "@/lib/capacity";
+import { blockLength, capacityTone, formatMinutes } from "@/lib/capacity";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
@@ -16,6 +16,23 @@ import { PLAN_DRAG_MIME, planMinutesType } from "./drag-mime";
 import { PlanPicker } from "./plan-picker";
 
 const JSON_HEADERS = { "content-type": "application/json" };
+const DRAG_CHIP_ID = "plan-drag-chip";
+
+/** The picture a dragged plan row shows: its title and its block length, one line, under the pointer. */
+function dragChip(task: TaskDTO): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  document.getElementById(DRAG_CHIP_ID)?.remove();
+  const el = document.createElement("div");
+  el.id = DRAG_CHIP_ID;
+  el.className = "panel fixed top-0 left-0 -z-10 rounded-md px-2.5 h-8 flex items-center gap-2 text-[13px] text-fg whitespace-nowrap pointer-events-none";
+  el.textContent = task.title;
+  const len = document.createElement("span");
+  len.className = "font-mono text-[11px] text-fg-muted";
+  len.textContent = formatMinutes(blockLength(task));
+  el.appendChild(len);
+  document.body.appendChild(el);
+  return el;
+}
 const SAVE_ERROR = "Could not save that change";
 /** How full the day reads at a glance; the header line says it in words. */
 const BAR_CLASS = { ok: "bg-violet", warn: "bg-warn", danger: "bg-danger" } as const;
@@ -238,6 +255,15 @@ export function PlanPane({ day, today, onRefresh }: Props) {
           // entry whose value is empty; only the type is ever read.
           e.dataTransfer.setData(planMinutesType(blockLength(task)), String(blockLength(task)));
           e.dataTransfer.effectAllowed = "move";
+          // The browser would otherwise drag the whole row from wherever it was grabbed, and the
+          // block then lands where the pointer is, well below the row's picture. A small chip
+          // pinned to the pointer's top-left says what is moving and where it will start.
+          const chip = dragChip(task);
+          if (chip) e.dataTransfer.setDragImage(chip, 8, 8);
+        }}
+        onDragEnd={() => {
+          document.getElementById(DRAG_CHIP_ID)?.remove();
+          setDragId(null);
         }}
         onDragOver={(e) => {
           // Only another plan row may land here; everything else keeps its own drop.
