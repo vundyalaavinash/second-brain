@@ -23,6 +23,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, TOAST_MS);
     timers.current.push(timer);
   }, []);
+  // Anything in the app can raise a toast without reaching for the context: the planner's rows
+  // and the palette both fire this event from handlers that have no provider above them.
+  useEffect(() => {
+    function onToast(e: Event) {
+      const text = (e as CustomEvent<{ text?: string }>).detail?.text;
+      if (text) push({ text });
+    }
+    window.addEventListener("sb:toast", onToast);
+    return () => window.removeEventListener("sb:toast", onToast);
+  }, [push]);
   useEffect(() => {
     const scheduled = timers;
     return () => {

@@ -6,7 +6,8 @@ import { Search } from "lucide-react";
 import { NAV_ITEMS, SEARCH_ITEM, CAPTURE_ITEM, type IconName } from "./nav";
 import { Icon } from "./icons";
 import { Kbd } from "./ui";
-import type { ContainerDTO } from "@/lib/dto";
+import { todayLocal } from "./activity/format";
+import type { ContainerDTO, TaskDTO } from "@/lib/dto";
 
 interface Command {
   id: string;
@@ -17,6 +18,10 @@ interface Command {
   iconName?: IconName;
   run: () => void;
 }
+
+/** Below this many characters a title match says nothing, so the Plan section stays away. */
+const PLAN_MIN_QUERY = 2;
+const PLAN_LIMIT = 6;
 
 const KINDS = [
   { kind: "project", prefix: "Project", iconName: "project" as IconName },
@@ -35,6 +40,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [jumps, setJumps] = useState<Command[]>([]);
+  const [tasks, setTasks] = useState<TaskDTO[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const commands = useMemo<Command[]>(
@@ -74,6 +80,14 @@ export function CommandPalette() {
       } catch {
         /* offline: keep whatever the last opening found */
       }
+      try {
+        const res = await fetch("/api/tasks?status=open", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { tasks: TaskDTO[] };
+        if (alive) setTasks(body.tasks);
+      } catch {
+        /* offline: the Plan section simply offers nothing */
+      }
     }
     void load();
     return () => {
@@ -83,7 +97,31 @@ export function CommandPalette() {
 
   const filteredViews = useMemo(() => matching(commands, query), [commands, query]);
   const filteredJumps = useMemo(() => matching(jumps, query), [jumps, query]);
-  const filtered = useMemo(() => [...filteredViews, ...filteredJumps], [filteredViews, filteredJumps]);
+
+  // An open task is only worth offering once the query is specific enough to mean one: a
+  // single letter would put six of them under every view the palette already lists.
+  const plans = useMemo<Command[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < PLAN_MIN_QUERY) return [];
+    return tasks
+      .filter((t) => t.title.toLowerCase().includes(q))
+      .slice(0, PLAN_LIMIT)
+      .map((t) => ({
+        id: `plan:${t.id}`,
+        label: t.title,
+        // No prefix: the "Plan" heading above these rows already says what they do.
+        iconName: "planner" as IconName,
+        run: () => {
+          void fetch("/api/plan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ date: todayLocal(), taskId: t.id }) }).then((res) => {
+            if (!res.ok) return;
+            window.dispatchEvent(new Event("sb:plan-changed"));
+            window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: "Planned for today" } }));
+          });
+        },
+      }));
+  }, [tasks, query]);
+
+  const filtered = useMemo(() => [...filteredViews, ...filteredJumps, ...plans], [filteredViews, filteredJumps, plans]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -171,6 +209,8 @@ export function CommandPalette() {
           {filteredViews.map(row)}
           {filteredJumps.length > 0 && <li className="micro px-4 pt-3 pb-1">Jump to</li>}
           {filteredJumps.map((c, i) => row(c, filteredViews.length + i))}
+          {plans.length > 0 && <li className="micro px-4 pt-3 pb-1">Plan</li>}
+          {plans.map((c, i) => row(c, filteredViews.length + filteredJumps.length + i))}
         </ul>
       </div>
     </div>

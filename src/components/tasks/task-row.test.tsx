@@ -225,3 +225,41 @@ describe("TaskRow estimate", () => {
     expect(screen.queryByRole("button", { name: /Estimate/ })).toBeNull();
   });
 });
+
+describe("TaskRow keyboard planning", () => {
+  it("plans on p from the title, unplans when already planned, and says so", () => {
+    const onPlan = vi.fn();
+    const toasts: unknown[] = [];
+    const listen = (e: Event) => toasts.push((e as CustomEvent).detail);
+    window.addEventListener("sb:toast", listen);
+    try {
+      renderRow({ onPlan }, { ...task, title: "Write" });
+      const title = screen.getByRole("button", { name: "Write" });
+      title.focus();
+      fireEvent.keyDown(title, { key: "p" });
+      expect(onPlan).toHaveBeenCalledTimes(1);
+      expect(toasts).toEqual([{ text: "Planned for today" }]);
+      cleanup();
+      renderRow({ onPlan, planned: true }, { ...task, title: "Write" });
+      fireEvent.keyDown(screen.getByRole("button", { name: "Write" }), { key: "p" });
+      expect(toasts[1]).toEqual({ text: "Taken off the plan" });
+    } finally {
+      window.removeEventListener("sb:toast", listen);
+    }
+  });
+
+  it("plans for the first offered day when the day is the caller's to choose", () => {
+    const onPlanDate = vi.fn();
+    renderRow({ onPlanDate, planFrom: "2026-09-25" }, { ...task, title: "Write" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Write" }), { key: "p" });
+    expect(onPlanDate).toHaveBeenCalledWith("2026-09-25");
+  });
+
+  it("ignores p while the title is being edited", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan }, { ...task, title: "Write" });
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "p" });
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
@@ -174,6 +174,19 @@ export function TaskRow({
   function commitDue(value: string) {
     const next = value || null;
     if (next !== task.dueDate) onDue(next);
+  }
+
+  /** Plans from the keyboard: today's plan, or the first day the row was told to offer. */
+  function planFromKey() {
+    if (onPlan) {
+      onPlan();
+      window.dispatchEvent(
+        new CustomEvent("sb:toast", { detail: { text: planned ? "Taken off the plan" : planLabel === "Plan for today" ? "Planned for today" : "Planned" } }),
+      );
+    } else if (onPlanDate) {
+      onPlanDate(planFrom);
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: planFrom === today ? "Planned for today" : `Planned for ${planFrom}` } }));
+    }
   }
 
   const checkbox = (
@@ -418,7 +431,16 @@ export function TaskRow({
     </>
   );
 
-  const rowProps = { role: "listitem" as const, draggable, onDragStart, onDragOver, onDrop: onRowDrop };
+  // `p` plans the task under the cursor, unless a field on the row is taking the letter itself.
+  function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
+    if (e.key !== "p" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (!onPlan && !onPlanDate) return;
+    e.preventDefault();
+    planFromKey();
+  }
+
+  const rowProps = { role: "listitem" as const, draggable, onDragStart, onDragOver, onDrop: onRowDrop, onKeyDown: onRowKeyDown };
 
   // A column of the week is a seventh of the page: the compact row stacks the due date under
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.

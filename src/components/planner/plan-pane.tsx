@@ -8,6 +8,7 @@ import { addDaysLocal } from "../activity/format";
 import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
 import { count } from "./open-meeting";
+import { RitualStrip, ritualDoneKey } from "./ritual-strip";
 import { PLAN_DRAG_MIME, TASK_DRAG_MIME } from "./sources-drawer";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -27,6 +28,19 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
+  // The morning ritual belongs to today alone. Whether it was already walked through lives in
+  // the browser, so the read waits for the effect rather than running during the render.
+  const [ritual, setRitual] = useState(day.date === today);
+
+  useEffect(() => {
+    let done = false;
+    try {
+      done = localStorage.getItem(ritualDoneKey(day.date)) === "1";
+    } catch {
+      /* no storage: the strip simply shows */
+    }
+    if (done) queueMicrotask(() => setRitual(false));
+  }, [day.date]);
 
   // Everything that moves a task or a plan entry says so; the pane reloads the whole day
   // rather than guessing which half of it changed.
@@ -130,6 +144,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     );
   }
 
+  // An empty plan on today, not yet walked through: the strip takes over the carry-over line too.
+  const showRitual = ritual && day.plan.length === 0;
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
@@ -142,7 +158,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }} />
       </div>
 
-      {day.unfinishedYesterday.length > 0 && (
+      {day.unfinishedYesterday.length > 0 && !showRitual && (
         <div className="flex items-center gap-3 rounded-md bg-layer-2 border border-hairline px-3 py-2">
           <span className="text-[12.5px] text-fg-muted flex-1 min-w-0">{count(day.unfinishedYesterday.length, "unfinished task")} from yesterday</span>
           <Button size="sm" onClick={carryOver}>
@@ -151,7 +167,12 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </div>
       )}
 
-      {day.plan.length === 0 && <p className="text-[13px] text-fg-faint m-0">Nothing planned. Drag a task in from the sources beside this, or use Plan for today on any task</p>}
+      {day.plan.length === 0 &&
+        (showRitual ? (
+          <RitualStrip day={day} today={today} onDone={() => setRitual(false)} />
+        ) : (
+          <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add from the sources on the right, or press p on any task.</p>
+        ))}
 
       <List
         aria-label="Plan"

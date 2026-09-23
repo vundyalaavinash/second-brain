@@ -59,6 +59,11 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   nav.push.mockClear();
+  try {
+    localStorage.clear();
+  } catch {
+    /* no storage */
+  }
 });
 
 describe("PlanPane", () => {
@@ -121,6 +126,23 @@ describe("PlanPane", () => {
       ["POST", { date: TODAY, taskId: c.id }],
       ["PATCH", { date: TODAY, taskIds: [a.id, c.id, b.id] }],
     ]));
+  });
+
+  it("opens today's empty plan with the ritual, and not another day's", () => {
+    stubPlan();
+    render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
+    expect(screen.getByRole("list", { name: "Plan the day" })).toBeTruthy();
+    cleanup();
+    render(<PlanPane day={day({ plan: [], date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
+    expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
+    expect(screen.getByText(/Nothing planned\. Add from the sources on the right, or press p on any task/)).toBeTruthy();
+  });
+
+  it("does not bring the ritual back once it was done today", async () => {
+    stubPlan();
+    localStorage.setItem("sb:ritual-done:" + TODAY, "1");
+    render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull());
   });
 
   it("plans a task dropped past the last row without reordering", async () => {
