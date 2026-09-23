@@ -219,7 +219,7 @@ Claude-Session: https://claude.ai/code/session_01QYJrz3x3KjYd5nuXomA55j"
 - Test: `src/components/planner/timeline.test.tsx`, `src/components/planner/block-math.test.ts`
 
 **Interfaces:**
-- Consumes: `PlanTaskDTO.scheduledAt`, `blockLength`, `layoutBlocks({ id, startsAt, endsAt }[])`, `PLAN_DRAG_MIME` (plan rows already set it on drag start), `PATCH /api/tasks/:id { scheduledAt | estimateMinutes }`, `sb:tasks-changed`, `sb:toast`.
+- Consumes: `PlanTaskDTO.scheduledAt`, `blockLength`, `layoutBlocks({ id, startsAt, endsAt }[])`, `PLAN_DRAG_MIME` from `./drag-mime` (plan rows already set it on drag start), `PATCH /api/tasks/:id { scheduledAt | estimateMinutes }`, `sb:tasks-changed`, `sb:toast`.
 - Produces: `Timeline` props gain `tasks: PlanTaskDTO[]` and `onPatchTask(id, body): Promise<boolean>`; `src/components/planner/block-math.ts` exports `snap(minutes: number, step = 5): number`, `minutesToIso(date: string, minutesOfDay: number): string` ("2026-09-23T10:35:00"), `isoToMinutes(iso: string): number`, `blockEnd(task): string`; `TaskBlock` component; block ids in the layout are `-task.id` so they never collide with meeting ids (layout is generic over ids).
 
 - [ ] **Step 1: Failing math tests**
@@ -465,7 +465,7 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
 `timeline.tsx`:
 - Props: `tasks: PlanTaskDTO[]`, `onPatchTask: (id: number, body: Record<string, unknown>) => Promise<boolean>`.
 - Blocks: `const taskSpans = tasks.filter((t) => t.scheduledAt?.startsWith(date) && t.status !== "dropped").map((t) => ({ id: -t.id, startsAt: t.scheduledAt!, endsAt: blockEnd(t) }))`; lay out `[...timed, ...taskSpans]` together so meetings and tasks share columns; render `TaskBlock` for negative ids, meetings for positive.
-- The column `div` gets `data-testid="timeline-column"`, `onDragOver` accepting `PLAN_DRAG_MIME` (from `./sources-drawer`), computing `minutesOfDay = dayStart * 60 + snap((e.clientY - rect.top) / PX_PER_MIN)` and setting `ghost` state `{ top, height: 25 }` (height from the dragged task when known: the plan pane sets a second data item `application/x-sb-plan-minutes` with the block length; fall back to 25); `onDragLeave` clears the ghost when leaving the column; `onDrop` calls `onPatchTask(id, { scheduledAt: minutesToIso(date, minutesOfDay) })` and clears the ghost. The ghost: `<div data-testid="block-ghost" aria-hidden className="absolute left-14 right-2 rounded-md border border-dashed border-violet bg-violet-dim/50 pointer-events-none" style={{ top: ghost.top * PX_PER_MIN, height: ghost.height * PX_PER_MIN }} />`.
+- The column `div` gets `data-testid="timeline-column"`, `onDragOver` accepting `PLAN_DRAG_MIME` (from `./drag-mime`), computing `minutesOfDay = dayStart * 60 + snap((e.clientY - rect.top) / PX_PER_MIN)` and setting `ghost` state `{ top, height: 25 }` (height from the dragged task when known: the plan pane sets a second data item `application/x-sb-plan-minutes` with the block length; fall back to 25); `onDragLeave` clears the ghost when leaving the column; `onDrop` calls `onPatchTask(id, { scheduledAt: minutesToIso(date, minutesOfDay) })` and clears the ghost. The ghost: `<div data-testid="block-ghost" aria-hidden className="absolute left-14 right-2 rounded-md border border-dashed border-violet bg-violet-dim/50 pointer-events-none" style={{ top: ghost.top * PX_PER_MIN, height: ghost.height * PX_PER_MIN }} />`.
 - Pointer move of an existing block: `TaskBlock`'s `onDragStart` hands the timeline a pointer-drag session: on `pointermove` the ghost follows (snapped), on `pointerup` write `scheduledAt`; a click without movement (< 4 px) does nothing. Use `setPointerCapture` on the column.
 - Plan rows already set `PLAN_DRAG_MIME`; in `plan-pane.tsx` also set `e.dataTransfer.setData("application/x-sb-plan-minutes", String(blockLength(task)))`.
 - `day-view.tsx` passes `tasks={day.plan}` and `onPatchTask={(id, body) => patch...}`: add a small `patchTask` in DayView that PATCHes `/api/tasks/:id`, dispatches `sb:tasks-changed` on success and returns ok-ness (mirror `plan-pane`'s `send`).
@@ -487,7 +487,7 @@ Claude-Session: https://claude.ai/code/session_01QYJrz3x3KjYd5nuXomA55j"
 ### Task 3: Plan chips, Block now, Sort by time, capacity figures, README
 
 **Files:**
-- Modify: `src/components/tasks/task-row.tsx` (+ test), `src/components/planner/plan-pane.tsx` (+ test), `src/components/planner/sources-drawer.tsx`, `src/components/planner/capacity-line.tsx` (+ test), `src/components/planner/week-view.tsx` (+ test), `src/components/planner/planner-shell.tsx`, `README.md`
+- Modify: `src/components/tasks/task-row.tsx` (+ test), `src/components/planner/plan-pane.tsx` (+ test), `src/components/planner/capacity-line.tsx` (+ test), `src/components/planner/week-view.tsx` (+ test), `src/components/planner/planner-shell.tsx`, `README.md`
 
 **Interfaces:**
 - Consumes: `TaskDTO.scheduledAt`, `CapacityDTO.blockedMinutes`, `PlannerWeekDayDTO.capacity.blockedMinutes`, `POST /api/plan/sort`, `minutesToIso`, `snap`.
@@ -538,7 +538,7 @@ describe("TaskRow blocks", () => {
 
 Menu items after the plan item: `{onBlockNow && !done && <button role="menuitem" …>Block now</button>}` and `{onUnblock && task.scheduledAt && <button role="menuitem" …>Take off the timeline</button>}`. In `onRowKeyDown`, `n` (same guards as `p`) calls `onBlockNow` when provided.
 
-`plan-pane.tsx`: pass `onBlockNow` only when `day.date === today`: `() => patch(task.id, { scheduledAt: minutesToIso(today, snap(nowMinutes() + 4)) })` where `nowMinutes()` is the current local minutes-of-day and `snap(x + 4)` rounds up to the next 5; `onUnblock={() => patch(task.id, { scheduledAt: null })}`. Header: a `IconButton` (`MoreHorizontal`, label "Plan actions") with a small `role="menu"` holding "Sort by time" → `send("/api/plan/sort", "POST", { date: day.date }, "sb:plan-changed")`. `sources-drawer.tsx`: pass `onUnblock` too (rows there can be blocked).
+`plan-pane.tsx`: pass `onBlockNow` only when `day.date === today`: `() => patch(task.id, { scheduledAt: minutesToIso(today, snap(nowMinutes() + 4)) })` where `nowMinutes()` is the current local minutes-of-day and `snap(x + 4)` rounds up to the next 5; `onUnblock={() => patch(task.id, { scheduledAt: null })}`. Header: a `IconButton` (`MoreHorizontal`, label "Plan actions") with a small `role="menu"` holding "Sort by time" → `send("/api/plan/sort", "POST", { date: day.date }, "sb:plan-changed")`. (The sources drawer no longer exists; the plan picker under the plan is where tasks come from, and it needs no block controls.)
 
 `timeline.tsx`: listen for `sb:timeline-focus`; `document.querySelector(\`[data-task-block="${taskId}"]\`)` → `scrollIntoView({ block: "center" })` and `focus()`.
 
