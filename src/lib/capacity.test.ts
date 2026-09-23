@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { capacityTone, formatMinutes, freeMinutes, parseWorkHours, plannedMinutes } from "./capacity";
+import { blockedMinutes, blockLength, capacityTone, formatMinutes, freeMinutes, parseWorkHours, plannedMinutes } from "./capacity";
 
 const DAY = "2026-09-23";
 const m = (start: string, end: string, over: Partial<{ allDay: boolean; status: string }> = {}) => ({
@@ -47,6 +47,18 @@ describe("capacity", () => {
     expect(formatMinutes(45)).toBe("45m");
     expect(formatMinutes(60)).toBe("1h");
     expect(formatMinutes(130)).toBe("2h 10m");
+  });
+
+  it("counts blocked minutes on the day only, estimate or the 25-minute default", () => {
+    const tasks = [
+      { status: "open", estimateMinutes: 60, scheduledAt: "2026-09-23T10:00:00" },
+      { status: "open", estimateMinutes: null, scheduledAt: "2026-09-23T14:00:00" },
+      { status: "done", estimateMinutes: 30, scheduledAt: "2026-09-23T15:00:00" },
+      { status: "open", estimateMinutes: 45, scheduledAt: "2026-09-24T09:00:00" },
+      { status: "open", estimateMinutes: 45, scheduledAt: null },
+    ];
+    expect(blockLength({ estimateMinutes: null })).toBe(25);
+    expect(blockedMinutes(tasks, "2026-09-23")).toBe(85);
   });
 
   it("tones the plan against the free time", () => {

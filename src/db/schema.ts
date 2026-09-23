@@ -266,6 +266,8 @@ export const tasks = sqliteTable(
     recurrence: text("recurrence"),
     /** Minutes the task is expected to take; null when nobody has guessed. */
     estimateMinutes: integer("estimate_minutes"),
+    /** When the task's block starts on the timeline, a local timestamp; null when unblocked. */
+    scheduledAt: text("scheduled_at"),
     completedAt: text("completed_at"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),

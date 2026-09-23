@@ -21,7 +21,7 @@ let nextId = 1;
 function task(over: Partial<TaskDTO> & { title: string }): TaskDTO {
   return {
     id: nextId++, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-    completedAt: null, sortOrder: 0, estimateMinutes: null, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z", ...over,
+    completedAt: null, sortOrder: 0, estimateMinutes: null, scheduledAt: null, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z", ...over,
   };
 }
 function container(id: number, kind: "project" | "area", name: string): ContainerRefDTO {
@@ -44,7 +44,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [loose], due: { overdue: [late], today: [] }, projects: [{ container: launch, tasks: [late, ship, planned] }], areas: [{ container: health, tasks: [walk] }] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0 },
     ...over,
   };
 }

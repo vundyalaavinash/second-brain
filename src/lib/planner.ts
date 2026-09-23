@@ -7,7 +7,7 @@ import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { parseMeta } from "@/domain/items";
 import { serializeMeeting, serializePlanTask, serializeTask } from "./api";
-import { freeMinutes, plannedMinutes } from "./capacity";
+import { blockedMinutes, freeMinutes, plannedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
 import { getWorkHours } from "./work-hours";
 import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
@@ -68,7 +68,7 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
     meetings,
     calendar: plannerCalendar(db),
     sources: plannerSources(db, date, plannedIds),
-    capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: planned, unestimated, workHours },
+    capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: planned, unestimated, workHours, blockedMinutes: blockedMinutes(plan, date) },
   };
 }
 
@@ -89,11 +89,12 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
     start,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
+      const dayPlan = listPlan(db, date);
       return {
         date,
         meetings,
         due: open.filter((t) => t.dueDate === date),
-        capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(listPlan(db, date)).planned },
+        capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(dayPlan).planned, blockedMinutes: blockedMinutes(dayPlan, date) },
       };
     }),
   };

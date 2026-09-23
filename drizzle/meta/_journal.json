@@ -71,6 +71,13 @@
       "when": 1790132292591,
       "tag": "0009_task_estimate",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790171290766,
+      "tag": "0010_task_scheduled_at",
+      "breakpoints": true
     }
   ]
 }

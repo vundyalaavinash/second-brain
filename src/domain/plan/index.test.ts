@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { createTask, completeTask, dropTask, TaskError } from "@/domain/tasks";
-import { addToPlan, carryOver, listPlan, removeFromPlan, reorderPlan, unfinished } from "./index";
+import { createTask, completeTask, dropTask, getTask, TaskError } from "@/domain/tasks";
+import { addToPlan, carryOver, listPlan, removeFromPlan, reorderPlan, sortPlanByTime, unfinished } from "./index";
 
 describe("plan domain", () => {
   let t: TestDb;
@@ -64,5 +64,25 @@ describe("plan domain", () => {
     expect(listPlan(db, "2026-09-21")).toEqual([]);
     expect(unfinished(db, "2026-09-21")).toEqual([]);
     expect(carryOver(db, "2026-09-21", "2026-09-22")).toBe(0);
+  });
+
+  it("clears a block when the task leaves the plan or is carried over", () => {
+    const a = createTask(t.db, { title: "A", scheduledAt: "2026-09-23T10:00:00" });
+    const b = createTask(t.db, { title: "B", scheduledAt: "2026-09-23T11:00:00" });
+    addToPlan(t.db, "2026-09-23", a.id);
+    addToPlan(t.db, "2026-09-23", b.id);
+    removeFromPlan(t.db, "2026-09-23", a.id);
+    expect(getTask(t.db, a.id)!.scheduledAt).toBeNull();
+    expect(carryOver(t.db, "2026-09-23", "2026-09-24")).toBe(1);
+    expect(getTask(t.db, b.id)!.scheduledAt).toBeNull();
+  });
+
+  it("sorts the plan by block time, unblocked rows keeping their order at the end", () => {
+    const late = createTask(t.db, { title: "Late", scheduledAt: "2026-09-23T15:00:00" });
+    const early = createTask(t.db, { title: "Early", scheduledAt: "2026-09-23T09:00:00" });
+    const loose1 = createTask(t.db, { title: "Loose 1" });
+    const loose2 = createTask(t.db, { title: "Loose 2" });
+    for (const id of [loose1.id, late.id, loose2.id, early.id]) addToPlan(t.db, "2026-09-23", id);
+    expect(sortPlanByTime(t.db, "2026-09-23").map((p) => p.title)).toEqual(["Early", "Late", "Loose 1", "Loose 2"]);
   });
 });

@@ -12,7 +12,7 @@ const TODAY = "2026-09-22";
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, scheduledAt: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 const planned: PlanTaskDTO = { ...base, id: 2, title: "Write the brief", planId: 9, sortOrder: 0 };
 const a: TaskDTO = { ...base, id: 3, title: "First thing" };
@@ -29,7 +29,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: { id: 10, name: "Launch", slug: "launch", kind: "project" }, tasks: [c] }], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0 },
     ...over,
   };
 }
@@ -106,7 +106,7 @@ describe("PlanPane", () => {
   it("fills the capacity bar and turns it red well past the free time", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     const { container } = render(
-      <PlanPane day={day({ capacity: { freeMinutes: 540, plannedMinutes: 700, unestimated: 0, workHours: "09:00-18:00" } })} today={TODAY} onRefresh={vi.fn()} />,
+      <PlanPane day={day({ capacity: { freeMinutes: 540, plannedMinutes: 700, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0 } })} today={TODAY} onRefresh={vi.fn()} />,
     );
     const fill = container.querySelector(".bg-danger") as HTMLElement;
     expect(fill).toBeTruthy();

@@ -13,7 +13,7 @@ const TODAY = "2026-09-22";
 
 const task: TaskDTO = {
   id: 4, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: START, containerId: null, sourceItemId: null,
-  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, scheduledAt: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function week(): PlannerWeekDTO {
@@ -23,7 +23,7 @@ function week(): PlannerWeekDTO {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
       // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
       const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
-      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes } };
+      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes, blockedMinutes: 0 } };
     }),
   };
 }

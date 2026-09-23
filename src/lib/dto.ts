@@ -69,6 +69,7 @@ export interface TaskDTO {
   containerId: number | null;
   sourceItemId: number | null;
   estimateMinutes: number | null;
+  scheduledAt: string | null;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -127,6 +128,7 @@ export interface CapacityDTO {
   plannedMinutes: number;
   unestimated: number;
   workHours: string;
+  blockedMinutes: number;
 }
 
 export interface PersonDTO {
@@ -230,7 +232,7 @@ export interface PlannerWeekDayDTO {
   date: string;
   meetings: ActivityMeetingDTO[];
   due: TaskDTO[];
-  capacity: { freeMinutes: number; plannedMinutes: number };
+  capacity: { freeMinutes: number; plannedMinutes: number; blockedMinutes: number };
 }
 
 export interface PlannerWeekDTO {

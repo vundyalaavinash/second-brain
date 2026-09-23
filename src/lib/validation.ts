@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES } from "@/db/enums";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
 
 export const ContainerBody = z
   .object({
@@ -25,6 +26,7 @@ export const TaskBody = z.object({
   containerId: z.number().int().positive().nullable().optional(),
   sourceItemId: z.number().int().positive().nullable().optional(),
   estimateMinutes: z.number().int().min(5).max(480).nullable().optional(),
+  scheduledAt: LocalTimestamp.nullable().optional(),
 });
 export const PatchTaskBody = TaskBody.partial().omit({ sourceItemId: true }).extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
 export const ReorderTasksBody = z.object({ containerId: z.number().int().positive().nullable(), ids: z.array(z.number().int().positive()) });

@@ -30,6 +30,7 @@ export interface CreateTaskInput {
   notes?: string;
   sourceItemId?: number | null;
   estimateMinutes?: number | null;
+  scheduledAt?: string | null;
 }
 
 export interface UpdateTaskInput {
@@ -39,15 +40,22 @@ export interface UpdateTaskInput {
   dueDate?: string | null;
   containerId?: number | null;
   estimateMinutes?: number | null;
+  scheduledAt?: string | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ESTIMATE_MIN = 5;
 const ESTIMATE_MAX = 480;
+const LOCAL_TS = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 
 function checkEstimate(n: number | null | undefined): void {
   if (n == null) return;
   if (!Number.isInteger(n) || n < ESTIMATE_MIN || n > ESTIMATE_MAX) throw new TaskError(`An estimate is between ${ESTIMATE_MIN} and ${ESTIMATE_MAX} minutes`, 400);
+}
+
+function checkScheduledAt(v: string | null | undefined): void {
+  if (v == null) return;
+  if (!LOCAL_TS.test(v) || Number.isNaN(Date.parse(v))) throw new TaskError("A block start is YYYY-MM-DDTHH:MM:SS in local time", 400);
 }
 
 function cleanTitle(title: string): string {
@@ -91,6 +99,7 @@ export function createTask(db: DB, input: CreateTaskInput): Task {
   const title = cleanTitle(input.title);
   checkDate(input.dueDate);
   checkEstimate(input.estimateMinutes);
+  checkScheduledAt(input.scheduledAt);
   const containerId = input.containerId ?? null;
   if (containerId !== null) requireContainer(db, containerId);
   const sourceItemId = input.sourceItemId ?? null;
@@ -106,6 +115,7 @@ export function createTask(db: DB, input: CreateTaskInput): Task {
       containerId,
       sourceItemId,
       estimateMinutes: input.estimateMinutes ?? null,
+      scheduledAt: input.scheduledAt ?? null,
       sortOrder: nextSortOrder(db, containerId),
       createdAt: now,
       updatedAt: now,
@@ -159,6 +169,10 @@ export function updateTask(db: DB, id: number, patch: UpdateTaskInput): Task {
   if (patch.estimateMinutes !== undefined) {
     checkEstimate(patch.estimateMinutes);
     set.estimateMinutes = patch.estimateMinutes;
+  }
+  if (patch.scheduledAt !== undefined) {
+    checkScheduledAt(patch.scheduledAt);
+    set.scheduledAt = patch.scheduledAt;
   }
   const row = db.update(tasks).set(set).where(eq(tasks.id, id)).returning().get();
   if (!row) throw new TaskError(`Task ${id} not found`, 404);

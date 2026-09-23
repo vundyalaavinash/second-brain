@@ -114,4 +114,12 @@ describe("tasks domain", () => {
     expect(() => updateTask(t.db, task.id, { estimateMinutes: 3 })).toThrow(/5 and 480/);
     expect(() => createTask(t.db, { title: "x", estimateMinutes: 481 })).toThrow(/5 and 480/);
   });
+
+  it("sets, validates and clears a block start", () => {
+    const task = createTask(t.db, { title: "Write", scheduledAt: "2026-09-23T10:30:00" });
+    expect(task.scheduledAt).toBe("2026-09-23T10:30:00");
+    expect(updateTask(t.db, task.id, { scheduledAt: null }).scheduledAt).toBeNull();
+    expect(() => updateTask(t.db, task.id, { scheduledAt: "2026-09-23 10:30" })).toThrow(/YYYY-MM-DDTHH:MM:SS/);
+    expect(() => updateTask(t.db, task.id, { scheduledAt: "2026-09-23T25:00:00" })).toThrow(/YYYY-MM-DDTHH:MM:SS/);
+  });
 });

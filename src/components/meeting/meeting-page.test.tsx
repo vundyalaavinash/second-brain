@@ -101,6 +101,7 @@ const TASK: TaskDTO = {
   containerId: null,
   sourceItemId: 7,
   estimateMinutes: null,
+  scheduledAt: null,
   completedAt: null,
   sortOrder: 0,
   createdAt: "2026-09-22T11:05:00.000Z",

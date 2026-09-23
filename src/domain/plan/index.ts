@@ -48,6 +48,7 @@ export function addToPlan(db: DB, date: string, taskId: number): void {
  * on the plan is a no-op, so an undo can be replayed safely. */
 export function removeFromPlan(db: DB, date: string, taskId: number): void {
   db.delete(dailyPlanEntries).where(and(eq(dailyPlanEntries.date, date), eq(dailyPlanEntries.taskId, taskId))).run();
+  db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(eq(tasks.id, taskId)).run();
 }
 
 /** Listed ids take positions 0..n-1 in order; the day's other entries follow in their current order. */
@@ -79,8 +80,17 @@ export function carryOver(db: DB, from: string, to: string): number {
     for (const task of unfinished(db, from)) {
       if (entryId(db, to, task.id) !== undefined) continue;
       addToPlan(db, to, task.id);
+      db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(eq(tasks.id, task.id)).run();
       moved += 1;
     }
   });
   return moved;
+}
+
+/** Blocked tasks first in clock order; the rest keep their order after them. */
+export function sortPlanByTime(db: DB, date: string): PlanTask[] {
+  const current = listPlan(db, date);
+  const blocked = current.filter((t) => t.scheduledAt?.startsWith(date)).sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
+  const rest = current.filter((t) => !t.scheduledAt?.startsWith(date));
+  return reorderPlan(db, date, [...blocked, ...rest].map((t) => t.id));
 }

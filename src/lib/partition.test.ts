@@ -11,6 +11,7 @@ const t = (id: number, dueDate: string | null) => ({
   containerId: null,
   sourceItemId: null,
   estimateMinutes: null,
+  scheduledAt: null,
   completedAt: null,
   sortOrder: 0,
   createdAt: "",

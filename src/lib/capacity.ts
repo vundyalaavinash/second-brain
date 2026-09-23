@@ -62,6 +62,15 @@ export function formatMinutes(n: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+export const DEFAULT_BLOCK_MINUTES = 25;
+export function blockLength(task: { estimateMinutes: number | null }): number {
+  return task.estimateMinutes ?? DEFAULT_BLOCK_MINUTES;
+}
+/** Open tasks whose block starts on `date`, summed by their block length. */
+export function blockedMinutes(tasks: { status: string; estimateMinutes: number | null; scheduledAt: string | null }[], date: string): number {
+  return tasks.filter((t) => t.status === "open" && t.scheduledAt?.startsWith(date)).reduce((n, t) => n + blockLength(t), 0);
+}
+
 export type CapacityTone = "ok" | "warn" | "danger";
 
 /** How a capacity figure is coloured, wherever one is shown. */
