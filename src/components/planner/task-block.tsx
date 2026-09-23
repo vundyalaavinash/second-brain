@@ -43,9 +43,10 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
   // are faster than the round trip, and the second must count from the first's answer rather
   // than from a prop that has not moved yet.
   const pending = useRef<number | null>(null);
-  // Only the ref: the prop has caught up with what was written, so it has nothing left to add.
+  // Only the ref: whatever the prop moved to is the truth now, whether it caught up with what
+  // was written here or a pointer drag landed first, so the next move counts from it.
   useEffect(() => {
-    if (pending.current !== null && task.scheduledAt && isoToMinutes(task.scheduledAt) === pending.current) pending.current = null;
+    pending.current = null;
   }, [task.scheduledAt]);
   const start = task.scheduledAt!;
   const end = blockEnd({ scheduledAt: start, estimateMinutes: task.estimateMinutes });
