@@ -21,7 +21,9 @@ function week(): PlannerWeekDTO {
     start: START,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
-      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes: date === START ? 75 : 0 } };
+      // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
+      const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
+      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes } };
     }),
   };
 }
@@ -69,6 +71,12 @@ describe("WeekView", () => {
   it("says what each day already holds against the time it has", () => {
     mount();
     expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
+  });
+
+  it("colours a day that is over its hours", () => {
+    mount();
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
+    expect(within(column("Tue")).getByText("10h / 9h").className).toContain("text-warn");
   });
 
   it("plans from the week on screen rather than from today", () => {

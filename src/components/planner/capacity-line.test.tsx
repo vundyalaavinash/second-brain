@@ -29,6 +29,44 @@ describe("CapacityLine", () => {
     expect(screen.getByRole("status").querySelector(".text-danger")).toBeTruthy();
   });
 
+  it("closes without saving when the trigger is clicked again", () => {
+    const onHours = vi.fn();
+    render(<CapacityLine capacity={base} planned={0} meetings={0} onHours={onHours} />);
+    const trigger = screen.getByRole("button", { name: "Hours 09:00-18:00" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("textbox", { name: "Working hours" })).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("textbox", { name: "Working hours" })).toBeNull();
+    expect(onHours).not.toHaveBeenCalled();
+  });
+
+  it("saves a changed value once when the click lands outside, and drops a bad one", () => {
+    const onHours = vi.fn();
+    render(<CapacityLine capacity={base} planned={0} meetings={0} onHours={onHours} />);
+    fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Working hours" }), { target: { value: "08:30-17:00" } });
+    fireEvent.mouseDown(document.body);
+    expect(onHours).toHaveBeenCalledTimes(1);
+    expect(onHours).toHaveBeenCalledWith("08:30-17:00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Working hours" }), { target: { value: "nonsense" } });
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("textbox", { name: "Working hours" })).toBeNull();
+    expect(onHours).toHaveBeenCalledTimes(1);
+  });
+
+  it("complains about a range Enter cannot make sense of", () => {
+    const onHours = vi.fn();
+    render(<CapacityLine capacity={base} planned={0} meetings={0} onHours={onHours} />);
+    fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
+    const field = screen.getByRole("textbox", { name: "Working hours" });
+    fireEvent.change(field, { target: { value: "18:00-09:00" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(screen.getByText("Use HH:MM-HH:MM, start before end")).toBeTruthy();
+    expect(onHours).not.toHaveBeenCalled();
+  });
+
   it("edits the hours from the chip", async () => {
     const onHours = vi.fn();
     render(<CapacityLine capacity={base} planned={0} meetings={0} onHours={onHours} />);

@@ -98,6 +98,17 @@ describe("PlanPane", () => {
     expect(screen.queryByText("Late one")).toBeNull();
   });
 
+  it("fills the capacity bar and turns it red well past the free time", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const { container } = render(
+      <PlanPane day={day({ capacity: { freeMinutes: 540, plannedMinutes: 700, unestimated: 0, workHours: "09:00-18:00" } })} today={TODAY} onRefresh={vi.fn()} />,
+    );
+    const fill = container.querySelector(".bg-danger") as HTMLElement;
+    expect(fill).toBeTruthy();
+    // Past the free time the bar stops at full rather than running off the track.
+    expect(fill.style.width).toBe("100%");
+  });
+
   it("accepts a dragged task at the end and between rows", async () => {
     const posts = stubPlan();
     render(<PlanPane day={day({ plan: [{ ...a, planId: 1 }, { ...b, planId: 2 }] })} today={TODAY} onRefresh={vi.fn()} />);

@@ -4,11 +4,10 @@ import { useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { PlannerWeekDTO, PlannerWeekDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { capacityTone, formatMinutes } from "@/lib/capacity";
+import { CAPACITY_TONE_CLASS, capacityTone, formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
 import { List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
-import { TONE_CLASS } from "./capacity-line";
 import { openMeeting } from "./open-meeting";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -84,7 +83,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           <span className={`font-doc text-[24px] leading-none ${isToday ? "text-violet-bright" : ""}`}>{Number(day.date.slice(8, 10))}</span>
           <span className="micro">{weekdayOf(day.date)}</span>
         </span>
-        <span className={`font-mono text-[11px] ${TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
+        <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
           {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
         </span>
 

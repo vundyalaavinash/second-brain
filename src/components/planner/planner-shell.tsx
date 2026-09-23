@@ -125,7 +125,9 @@ export function PlannerShell(props: Props) {
     (workHours: string) => {
       void (async () => {
         const res = await fetch("/api/settings/planner", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workHours }) });
+        // A refused save leaves the old hours on screen; the toast is the only word about it.
         if (res.ok) refreshDay();
+        else window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: "Could not save the hours" } }));
       })();
     },
     [refreshDay],

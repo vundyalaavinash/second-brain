@@ -62,8 +62,13 @@ export function formatMinutes(n: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+export type CapacityTone = "ok" | "warn" | "danger";
+
+/** How a capacity figure is coloured, wherever one is shown. */
+export const CAPACITY_TONE_CLASS: Record<CapacityTone, string> = { ok: "text-fg-muted", warn: "text-warn", danger: "text-danger" };
+
 /** Fine up to the free time, warn past it, danger past a quarter over. */
-export function capacityTone(planned: number, free: number): "ok" | "warn" | "danger" {
+export function capacityTone(planned: number, free: number): CapacityTone {
   if (planned <= free) return "ok";
   if (free === 0) return "danger";
   return planned > free * 1.25 ? "danger" : "warn";

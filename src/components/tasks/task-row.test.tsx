@@ -181,6 +181,42 @@ describe("TaskRow estimate", () => {
     expect(onEstimate).toHaveBeenLastCalledWith(null);
   });
 
+  it("leaves the estimate alone on Escape, from the field or from the chip", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: 90 });
+    const chip = screen.getByRole("button", { name: "Estimate 1h 30m" });
+    fireEvent.click(chip);
+    const field = screen.getByRole("spinbutton", { name: "Minutes" });
+    fireEvent.change(field, { target: { value: "50" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(onEstimate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu", { name: "Estimate" })).toBeNull();
+    expect(document.activeElement).toBe(chip);
+
+    // Escape reaches the wrapper from the trigger too, not only from inside the panel.
+    fireEvent.click(chip);
+    expect(screen.getByRole("menu", { name: "Estimate" })).toBeTruthy();
+    fireEvent.keyDown(chip, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Estimate" })).toBeNull();
+    expect(onEstimate).not.toHaveBeenCalled();
+  });
+
+  it("says what the field will take rather than swallowing an impossible number", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null });
+    fireEvent.click(screen.getByRole("button", { name: "Estimate: none" }));
+    const field = screen.getByRole("spinbutton", { name: "Minutes" });
+    fireEvent.change(field, { target: { value: "900" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onEstimate).not.toHaveBeenCalled();
+    expect(screen.getByText("Between 5 and 480 minutes")).toBeTruthy();
+    // Typing again clears the complaint, and a sane number still commits.
+    fireEvent.change(field, { target: { value: "45" } });
+    expect(screen.queryByText("Between 5 and 480 minutes")).toBeNull();
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onEstimate).toHaveBeenCalledWith(45);
+  });
+
   it("reads est when there is none, and hides without a handler", () => {
     renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: null });
     expect(screen.getByRole("button", { name: "Estimate: none" }).textContent).toBe("est");

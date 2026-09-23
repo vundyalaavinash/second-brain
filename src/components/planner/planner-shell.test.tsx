@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { PlannerShell } from "./planner-shell";
 import { usePlanDate } from "@/lib/plan-date";
 import type { PlannerDayDTO } from "@/lib/dto";
@@ -26,6 +26,24 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
 /** The view tabs, not the source drawer's: the day view nests a tablist of its own. */
 function viewTabs(): HTMLElement[] {
   return within(screen.getByRole("tablist", { name: "Planner views" })).getAllByRole("tab");
+}
+
+type FetchCall = [string, RequestInit | undefined];
+
+/** A fetch that answers the routes named and turns everything else away, so the day view's
+ * own requests (the recorder, most of all) cannot be mistaken for the one under test. */
+function stubRoutes(routes: Record<string, () => Response>) {
+  const fn = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    for (const [prefix, answer] of Object.entries(routes)) if (url.startsWith(prefix)) return answer();
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
+function callTo(fetchMock: ReturnType<typeof stubRoutes>, url: string): FetchCall | undefined {
+  return (fetchMock.mock.calls as unknown as FetchCall[]).find(([input]) => String(input) === url);
 }
 
 /** The prompt bar's view of the open plan, read through the same hook the bar uses. */
@@ -89,6 +107,47 @@ describe("PlannerShell", () => {
     const panel = screen.getByRole("tabpanel", { name: "Day" });
     expect(panel.getAttribute("aria-labelledby")).toBe(viewTabs()[0].id);
     for (const tab of viewTabs()) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
+  });
+
+  it("says the hours are the day's own and hands a new pair to the settings route", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workHours: "08:00-16:00" }) });
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+    expect(screen.getByRole("status").textContent).toBe("0 planned · 0m of 9h free · 0 meetings");
+    fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
+    const field = screen.getByRole("textbox", { name: "Working hours" });
+    fireEvent.change(field, { target: { value: "08:00-16:00" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    const saved = await waitFor(() => {
+      const call = callTo(fetchMock, "/api/settings/planner");
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(saved[1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(saved[1]?.body))).toEqual({ workHours: "08:00-16:00" });
+    // The capacity is reckoned server-side, so the day is read back rather than patched here.
+    await waitFor(() => expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeTruthy());
+  });
+
+  it("keeps the old hours and says so when the save is refused", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => new Response(null, { status: 400 }) });
+    const toasts: string[] = [];
+    const onToast = (e: Event) => toasts.push((e as CustomEvent<{ text: string }>).detail.text);
+    window.addEventListener("sb:toast", onToast);
+    try {
+      render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
+      const field = screen.getByRole("textbox", { name: "Working hours" });
+      fireEvent.change(field, { target: { value: "08:00-16:00" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+
+      await waitFor(() => expect(toasts).toEqual(["Could not save the hours"]));
+      // Nothing was read back, so the chip still names the hours the day was built with.
+      expect(screen.getByRole("button", { name: "Hours 09:00-18:00" })).toBeTruthy();
+      expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeUndefined();
+    } finally {
+      window.removeEventListener("sb:toast", onToast);
+    }
   });
 
   it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {
