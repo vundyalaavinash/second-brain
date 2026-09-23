@@ -13,7 +13,7 @@ const TODAY = "2026-09-22";
 
 const task: TaskDTO = {
   id: 4, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: START, containerId: null, sourceItemId: null,
-  completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function week(): PlannerWeekDTO {
@@ -21,7 +21,7 @@ function week(): PlannerWeekDTO {
     start: START,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
-      return { date, meetings: [], due: date === START ? [task] : [] };
+      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes: 0 } };
     }),
   };
 }

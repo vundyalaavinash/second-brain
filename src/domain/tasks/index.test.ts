@@ -105,4 +105,13 @@ describe("tasks domain", () => {
     expect(getTask(t.db, fromItem.id)?.containerId).toBeNull();
     expect(getTask(t.db, bId)?.containerId).toBeNull();
   });
+
+  it("stores, updates, clears, and bounds an estimate", () => {
+    const task = createTask(t.db, { title: "Write", estimateMinutes: 25 });
+    expect(task.estimateMinutes).toBe(25);
+    expect(updateTask(t.db, task.id, { estimateMinutes: 90 }).estimateMinutes).toBe(90);
+    expect(updateTask(t.db, task.id, { estimateMinutes: null }).estimateMinutes).toBeNull();
+    expect(() => updateTask(t.db, task.id, { estimateMinutes: 3 })).toThrow(/5 and 480/);
+    expect(() => createTask(t.db, { title: "x", estimateMinutes: 481 })).toThrow(/5 and 480/);
+  });
 });

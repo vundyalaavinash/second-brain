@@ -264,6 +264,8 @@ export const tasks = sqliteTable(
     containerId: integer("container_id").references(() => containers.id, { onDelete: "set null" }),
     sourceItemId: integer("source_item_id").references(() => items.id, { onDelete: "set null" }),
     recurrence: text("recurrence"),
+    /** Minutes the task is expected to take; null when nobody has guessed. */
+    estimateMinutes: integer("estimate_minutes"),
     completedAt: text("completed_at"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),

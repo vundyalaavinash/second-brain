@@ -24,6 +24,7 @@ export const TaskBody = z.object({
   dueDate: DateString.nullable().optional(),
   containerId: z.number().int().positive().nullable().optional(),
   sourceItemId: z.number().int().positive().nullable().optional(),
+  estimateMinutes: z.number().int().min(5).max(480).nullable().optional(),
 });
 export const PatchTaskBody = TaskBody.partial().omit({ sourceItemId: true }).extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
 export const ReorderTasksBody = z.object({ containerId: z.number().int().positive().nullable(), ids: z.array(z.number().int().positive()) });

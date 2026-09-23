@@ -138,7 +138,7 @@ export function PromptBar({
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: JSON_HEADERS,
-          body: JSON.stringify({ title: current.title, priority: current.priority, dueDate: current.dueDate, containerId }),
+          body: JSON.stringify({ title: current.title, priority: current.priority, dueDate: current.dueDate, estimateMinutes: current.estimateMinutes, containerId }),
         });
         if (!res.ok) {
           const data = (await res.json().catch(() => null)) as { error?: string } | null;

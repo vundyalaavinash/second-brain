@@ -11,7 +11,16 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh:
 const CALENDAR = { calendarsSeen: 2, permission: true };
 
 function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
-  return { date: "2026-09-22", plan: [], unfinishedYesterday: [], due: { overdue: [], today: [] }, meetings: [], calendar };
+  return {
+    date: "2026-09-22",
+    plan: [],
+    unfinishedYesterday: [],
+    due: { overdue: [], today: [] },
+    meetings: [],
+    calendar,
+    sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
+  };
 }
 
 /** The prompt bar's view of the open plan, read through the same hook the bar uses. */

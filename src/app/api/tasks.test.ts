@@ -84,4 +84,15 @@ describe("tasks api", () => {
     expect(inbox.tasks.map((t) => t.id)).toContain(t3);
     expect((await r.task.DELETE(json("DELETE", "/x"), params(t3))).status).toBe(204);
   });
+
+  it("accepts an estimate on create and patch, rejects one out of bounds", async () => {
+    const a = await r.tasks.POST(json("POST", "/api/tasks", { title: "Est", estimateMinutes: 45 }));
+    expect(((await a.json()) as { estimateMinutes: number }).estimateMinutes).toBe(45);
+    const list = (await (await r.tasks.GET(json("GET", "/api/tasks"))).json()) as { tasks: { id: number; title: string; estimateMinutes: number | null }[] };
+    const est = list.tasks.find((t) => t.title === "Est")!;
+    expect(est.estimateMinutes).toBe(45);
+    expect((await r.task.PATCH(json("PATCH", `/api/tasks/${est.id}`, { estimateMinutes: 600 }), params(est.id))).status).toBe(400);
+    const cleared = await r.task.PATCH(json("PATCH", `/api/tasks/${est.id}`, { estimateMinutes: null }), params(est.id));
+    expect(((await cleared.json()) as { estimateMinutes: number | null }).estimateMinutes).toBeNull();
+  });
 });

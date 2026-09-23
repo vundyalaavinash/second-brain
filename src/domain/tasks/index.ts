@@ -29,6 +29,7 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   notes?: string;
   sourceItemId?: number | null;
+  estimateMinutes?: number | null;
 }
 
 export interface UpdateTaskInput {
@@ -37,9 +38,17 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   dueDate?: string | null;
   containerId?: number | null;
+  estimateMinutes?: number | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ESTIMATE_MIN = 5;
+const ESTIMATE_MAX = 480;
+
+function checkEstimate(n: number | null | undefined): void {
+  if (n == null) return;
+  if (!Number.isInteger(n) || n < ESTIMATE_MIN || n > ESTIMATE_MAX) throw new TaskError(`An estimate is between ${ESTIMATE_MIN} and ${ESTIMATE_MAX} minutes`, 400);
+}
 
 function cleanTitle(title: string): string {
   const t = title.trim();
@@ -81,6 +90,7 @@ function requireTask(db: DB, id: number): Task {
 export function createTask(db: DB, input: CreateTaskInput): Task {
   const title = cleanTitle(input.title);
   checkDate(input.dueDate);
+  checkEstimate(input.estimateMinutes);
   const containerId = input.containerId ?? null;
   if (containerId !== null) requireContainer(db, containerId);
   const sourceItemId = input.sourceItemId ?? null;
@@ -95,6 +105,7 @@ export function createTask(db: DB, input: CreateTaskInput): Task {
       dueDate: input.dueDate ?? null,
       containerId,
       sourceItemId,
+      estimateMinutes: input.estimateMinutes ?? null,
       sortOrder: nextSortOrder(db, containerId),
       createdAt: now,
       updatedAt: now,
@@ -144,6 +155,10 @@ export function updateTask(db: DB, id: number, patch: UpdateTaskInput): Task {
     if (patch.containerId !== null) requireContainer(db, patch.containerId);
     set.containerId = patch.containerId;
     set.sortOrder = nextSortOrder(db, patch.containerId);
+  }
+  if (patch.estimateMinutes !== undefined) {
+    checkEstimate(patch.estimateMinutes);
+    set.estimateMinutes = patch.estimateMinutes;
   }
   const row = db.update(tasks).set(set).where(eq(tasks.id, id)).returning().get();
   if (!row) throw new TaskError(`Task ${id} not found`, 404);
