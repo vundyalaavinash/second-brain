@@ -36,6 +36,7 @@
     "@tiptap/suggestion": "3.31.3",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
+    "ical.js": "^2.2.1",
     "linkedom": "^0.18.13",
     "lowlight": "3.3.0",
     "lucide-react": "^1.45.0",

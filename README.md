@@ -98,6 +98,10 @@ Two switches sit in the Meetings header. **Record meetings automatically** is of
 
 A meeting you have declined, an all-day block, one already recorded, and one marked "Don't record" on its row are left alone, and nothing auto-starts while another recording is running. A recording started this way stops five minutes after the meeting's scheduled end; **Keep recording** on the dock chip cancels that for a meeting that runs over, and **Stop** ends any recording there and then.
 
+### Meetings from a published calendar
+
+The activity helper reads macOS Calendar, so any account added in System Settings › Internet Accounts with Calendars on shows up on its own. Outlook's own cache cannot be read (the new Outlook keeps an encrypted store and its scripting bridge exposes no events), so for an Outlook account not on the Mac, publish the calendar instead: in Outlook on the web, Settings › Calendar › Shared calendars › Publish a calendar, choose "Can view all details", and paste the ICS link into the **Calendar feed** row under Meetings. Saving the link syncs it straight away and the server re-reads it every five minutes, thirty days back and sixty ahead, recurrences expanded and cancellations dropped. The link is a secret: it is stored as a setting and never leaves the machine. Feed events and helper events live side by side, and each source only ever removes its own.
+
 ## Planner
 
 `/planner` has three views: **Day**, a timeline of the day's meetings beside the plan for it, with what is due below; **Week**, seven columns of meetings and due tasks, drag a task to another day to change its due date, or pick a day from its "Plan for" menu to add it to that day's plan; and **Meetings**, every meeting in the next 60 days, searchable by title, organizer, or attendee. Plan a task for today from its row menu anywhere in the app; a plan left unfinished offers a one-click carry-over to move it to today.

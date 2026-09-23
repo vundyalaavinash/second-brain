@@ -10,10 +10,11 @@ import {
   TASK_STATUSES,
   TASK_PRIORITIES,
   MEETING_STATUSES,
+  CALENDAR_SOURCES,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -196,6 +197,8 @@ export const calendarEvents = sqliteTable(
     allDay: integer("all_day").notNull().default(0),
     status: text("status", { enum: MEETING_STATUSES }).notNull().default("none"),
     calendarTitle: text("calendar_title").notNull().default(""),
+    /** Who wrote the row: the EventKit helper or a published calendar feed. Each source only purges its own. */
+    source: text("source", { enum: CALENDAR_SOURCES }).notNull().default("eventkit"),
     /** The captured meeting item, kept across calendar refreshes. */
     itemId: integer("item_id").references(() => items.id, { onDelete: "set null" }),
     /** Person-set: do not record this meeting. Kept across calendar refreshes. */

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, notInArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents, items, type CalendarEvent, type Item, type MeetingStatus } from "@/db/schema";
+import { activitySessions, calendarEvents, items, type CalendarEvent, type CalendarSource, type Item, type MeetingStatus } from "@/db/schema";
 import { createItem } from "@/domain/items";
 import { ActivityError, listCategories } from "./rules";
 
@@ -68,7 +68,10 @@ export function replaceCalendarEvents(
   events: CalendarEventInput[],
   window?: CalendarWindow,
   proof: { calendarsSeen?: number } = {},
+  /** Rows from another source are never this call's to remove. */
+  opts: { source?: CalendarSource } = {},
 ): { days: string[]; inserted: number; removed: number } {
+  const source: CalendarSource = opts.source ?? "eventkit";
   const days = [...new Set(events.map((e) => localDay(e.startsAt)))];
   const externalIds = events.map((e) => e.externalId);
   let inserted = 0;
@@ -94,6 +97,7 @@ export function replaceCalendarEvents(
         allDay: e.allDay ? 1 : 0,
         status: e.status ?? "none",
         calendarTitle: e.calendarTitle ?? "",
+        source,
       };
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();
       inserted++;
@@ -106,7 +110,8 @@ export function replaceCalendarEvents(
           ? inArray(calendarEvents.day, days)
           : undefined;
     if (inWindow) {
-      const stale = externalIds.length ? and(inWindow, notInArray(calendarEvents.externalId, externalIds)) : inWindow;
+      const mine = and(inWindow, eq(calendarEvents.source, source));
+      const stale = externalIds.length ? and(mine, notInArray(calendarEvents.externalId, externalIds)) : mine;
       removed = tx.delete(calendarEvents).where(stale).run().changes;
     }
   });

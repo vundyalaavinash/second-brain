@@ -166,4 +166,18 @@ describe("calendar", () => {
     replaceCalendarEvents(t.db, [tuesday]);
     expect(t.db.select().from(calendarEvents).all().map((e) => e.externalId).sort()).toEqual(["m", "t1"]);
   });
+
+  it("purges only its own source inside the window", () => {
+    const window = { from: "2026-09-16", to: "2026-09-17" };
+    replaceCalendarEvents(t.db, [{ externalId: "ek", title: "Helper", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false }], window, { calendarsSeen: 1 });
+    replaceCalendarEvents(t.db, [{ externalId: "feed:x", title: "Feed", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false }], window, { calendarsSeen: 1 }, { source: "feed" });
+    // The helper posts the same window again: the feed's row is not its to remove.
+    const r = replaceCalendarEvents(t.db, [{ externalId: "ek", title: "Helper", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false }], window, { calendarsSeen: 1 });
+    expect(r.removed).toBe(0);
+    const ids = t.db.select().from(calendarEvents).all().map((e) => [e.externalId, e.source]);
+    expect(ids).toEqual(expect.arrayContaining([["ek", "eventkit"], ["feed:x", "feed"]]));
+    // An empty feed with proof purges the feed row alone.
+    expect(replaceCalendarEvents(t.db, [], window, { calendarsSeen: 1 }, { source: "feed" }).removed).toBe(1);
+    expect(t.db.select().from(calendarEvents).all().map((e) => e.externalId)).toEqual(["ek"]);
+  });
 });

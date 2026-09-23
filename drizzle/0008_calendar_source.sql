@@ -1,0 +1,1 @@
+ALTER TABLE `calendar_events` ADD `source` text DEFAULT 'eventkit' NOT NULL;

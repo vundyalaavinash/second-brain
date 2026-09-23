@@ -9,14 +9,19 @@ import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
 import { autoStartTick } from "@/domain/meetings/auto-start";
 import { reconcileRecordings, stopForShutdown } from "@/domain/meetings/reconcile";
 import { hasChatKey } from "@/providers/chat";
+import { syncCalendarFeed } from "@/domain/activity";
 import { getEmbedProvider } from "./providers";
 
 const g = globalThis as unknown as {
   __sbWorker?: JobWorker;
   __sbBackupInterval?: NodeJS.Timeout;
-  __sbAutoStartInterval?: NodeJS.Timeout;
+  __sbAutoStartInterval?: NodeJS.Timeout; __sbFeedInterval?: NodeJS.Timeout;
   __sbShutdownHooked?: boolean;
 };
+
+/** Outlook republishes a calendar every few minutes; polling faster only re-reads the same file. */
+const FEED_CHECK_MS = 5 * 60_000;
+const FEED_FIRST_MS = 15_000;
 
 /** Every 6 hours we check whether today's backup exists yet; cheap enough to just poll. */
 const BACKUP_CHECK_MS = 6 * 60 * 60 * 1000;
@@ -88,6 +93,12 @@ export function boot(): JobWorker {
   ensureTodayBackupQueued(db);
   if (!g.__sbBackupInterval) {
     g.__sbBackupInterval = setInterval(() => ensureTodayBackupQueued(db), BACKUP_CHECK_MS);
+  }
+  if (!g.__sbFeedInterval) {
+    // A published calendar link, when one is set; the sync records its own errors.
+    const feed = () => void syncCalendarFeed(db, { log: (m) => console.log(`[calendar-feed] ${m}`) });
+    setTimeout(feed, FEED_FIRST_MS).unref();
+    g.__sbFeedInterval = setInterval(feed, FEED_CHECK_MS);
   }
   if (!g.__sbAutoStartInterval) {
     // The tick swallows its own errors; the setting it reads decides whether it does anything.

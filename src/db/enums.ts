@@ -36,3 +36,6 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 export const MEETING_STATUSES = ["accepted", "tentative", "declined", "none"] as const;
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
+
+export const CALENDAR_SOURCES = ["eventkit", "feed"] as const;
+export type CalendarSource = (typeof CALENDAR_SOURCES)[number];

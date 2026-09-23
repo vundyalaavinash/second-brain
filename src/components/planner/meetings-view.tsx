@@ -8,6 +8,7 @@ import { Button, Chip, Input, List } from "../ui";
 import { MeetingRow } from "./meeting-row";
 import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
+import { CalendarFeed } from "./calendar-feed";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SETTINGS_URL = "/api/settings/meetings";
@@ -184,6 +185,8 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           </Button>
         </span>
       </div>
+
+      <CalendarFeed onSynced={onRefresh} />
 
       {/* With nothing to group, the groups are all empty lines saying the same thing: one line
         * says it once. The setup card above the tabs carries the fix when there is one. */}
