@@ -182,4 +182,17 @@ describe("SourcesDrawer", () => {
     render(<SourcesDrawer day={day()} today={TODAY} />);
     expect(screen.getByRole("tabpanel").getAttribute("tabindex")).toBe("0");
   });
+
+  it("says there is nothing to plan from instead of five empty tabs", () => {
+    stubPlan();
+    render(<SourcesDrawer day={day({ sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: launch, tasks: [] }], areas: [] } })} today={TODAY} />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByText("Nothing to plan yet. Add tasks from the Inbox or a project.")).toBeTruthy();
+  });
+
+  it("opens on the first tab that has work when nothing is due and the inbox is empty", () => {
+    stubPlan();
+    render(<SourcesDrawer day={day({ sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: launch, tasks: [ship] }], areas: [] } })} today={TODAY} />);
+    expect(screen.getByRole("tab", { name: /Projects/ }).getAttribute("aria-selected")).toBe("true");
+  });
 });

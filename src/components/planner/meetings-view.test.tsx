@@ -71,11 +71,17 @@ function stubSettings(initial: MeetingSettingsDTO) {
       return Response.json(current);
     }
     if (url === "/api/settings/meetings") return Response.json(current);
+    if (url === "/api/settings/calendar") return Response.json({ feedUrl: "", syncedAt: null, error: null, count: 0 });
     if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fn);
   return fn;
+}
+
+/** The switches and the feed link sit behind the gear once there are meetings on screen. */
+function openSettings() {
+  fireEvent.click(screen.getByRole("button", { name: "Calendar settings" }));
 }
 
 /** By test id, not by role: the past group's rows sit inside a closed `details`. */
@@ -197,6 +203,7 @@ describe("MeetingsView", () => {
   it("keeps the switches off screen until the settings answer, rather than guessing at them", async () => {
     stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
     mount();
+    openSettings();
     expect(screen.queryByRole("switch", { name: "Record meetings automatically" })).toBeNull();
 
     const auto = await screen.findByRole("switch", { name: "Record meetings automatically" });
@@ -208,6 +215,7 @@ describe("MeetingsView", () => {
   it("saves each switch as it is flipped", async () => {
     const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
     mount();
+    openSettings();
     const auto = await screen.findByRole("switch", { name: "Record meetings automatically" });
 
     fireEvent.click(auto);
@@ -229,5 +237,30 @@ describe("MeetingsView", () => {
     const record = screen.getByRole("button", { name: "Record now" });
     await waitFor(() => expect(record.getAttribute("title")).toBe("A recording is already running"));
     expect(record.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps the calendar settings behind the gear while there are meetings, and opens them when there are none", async () => {
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    mount();
+    expect(screen.queryByRole("region", { name: "Calendar settings" })).toBeNull();
+    openSettings();
+    expect(screen.getByRole("region", { name: "Calendar settings" })).toBeTruthy();
+    expect(await screen.findByLabelText("Published calendar link")).toBeTruthy();
+    cleanup();
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    render(<MeetingsView today={TODAY} meetings={[]} />);
+    expect(screen.getByRole("region", { name: "Calendar settings" })).toBeTruthy();
+  });
+
+  it("lists an all-day event as a chip with nothing to record or join", () => {
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+    const holiday = meeting({ id: 9, title: "Dussehra", startsAt: `${TODAY}T00:00:00`, endsAt: "2026-09-24T00:00:00", allDay: true, attendees: 0, organizer: "" });
+    render(<MeetingsView today={TODAY} meetings={[holiday, MEETINGS[0]]} />);
+    const line = screen.getByLabelText("All day");
+    expect(within(line).getByRole("button", { name: "Dussehra" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Record Dussehra" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Record Standup" })).toBeTruthy();
+    expect(screen.queryByText("0 attendees")).toBeNull();
+    fireEvent.click(within(line).getByRole("button", { name: "Dussehra" }));
   });
 });

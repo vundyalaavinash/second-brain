@@ -9,7 +9,7 @@ import { addDaysLocal } from "../activity/format";
 import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
 import { count } from "./open-meeting";
-import { RitualStrip, ritualDoneKey } from "./ritual-strip";
+import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
 import { PLAN_DRAG_MIME, TASK_DRAG_MIME } from "./sources-drawer";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -240,7 +240,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
 
   // Today, not yet walked through, and either still empty or mid-ritual: the strip takes over
   // the carry-over line too.
-  const showRitual = ritual === true && (started || day.plan.length === 0);
+  // A ritual with no step to offer is not shown at all; once started it runs to the end.
+  const showRitual = ritual === true && (started || (day.plan.length === 0 && ritualSteps(day).length > 0));
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);

@@ -91,7 +91,7 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
         <PlanPane day={day} today={today} onRefresh={onRefresh} />
       </div>
       <div className="min-[1100px]:order-1">
-        <Timeline date={day.date} meetings={day.meetings} />
+        <Timeline date={day.date} meetings={day.meetings} workHours={day.capacity.workHours} />
       </div>
       <div
         ref={regionRef}

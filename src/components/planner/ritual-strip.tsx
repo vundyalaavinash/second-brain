@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
-import type { PlannerDayDTO } from "@/lib/dto";
+import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import { addDaysLocal } from "../activity/format";
 import { Button } from "../ui";
 
@@ -25,27 +25,35 @@ interface Props {
  * left out when it has nothing to offer, so the strip runs one to three steps long. It is an
  * ordered list; the current step carries aria-current, finished ones a check.
  */
+/** Overdue first, oldest deadline leading, then what falls due on the day itself. */
+function dueInOrder(day: PlannerDayDTO): TaskDTO[] {
+  return [...[...day.sources.due.overdue].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")), ...day.sources.due.today];
+}
+
+/**
+ * The steps a morning has to offer. Each one is left out when it has nothing behind it, so a
+ * day with no leftovers, nothing due and no project work has no ritual at all.
+ */
+export function ritualSteps(day: PlannerDayDTO): StepId[] {
+  const planned = new Set(day.plan.map((t) => t.id));
+  const projectWork = day.sources.projects.some((g) => g.tasks.some((t) => !planned.has(t.id)));
+  return [
+    ...(day.unfinishedYesterday.length ? (["carry"] as StepId[]) : []),
+    ...(dueInOrder(day).length ? (["due"] as StepId[]) : []),
+    ...(projectWork ? (["projects"] as StepId[]) : []),
+  ];
+}
+
 export function RitualStrip({ day, today, onStarted, onDone }: Props) {
   // The morning the strip opened on, latched: acting on a step reloads the day, and a step
   // whose work is now done must strike itself through rather than disappear mid-walk.
-  const [morning] = useState(() => {
-    // Overdue first, oldest deadline leading, then what falls due on the day itself.
-    const dueTasks = [
-      ...[...day.sources.due.overdue].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")),
-      ...day.sources.due.today,
-    ];
-    return {
-      dueTasks,
-      carried: day.unfinishedYesterday.length,
-      overdue: day.sources.due.overdue.length,
-      dueToday: day.sources.due.today.length,
-      steps: [
-        ...(day.unfinishedYesterday.length ? (["carry"] as StepId[]) : []),
-        ...(dueTasks.length ? (["due"] as StepId[]) : []),
-        "projects" as StepId,
-      ],
-    };
-  });
+  const [morning] = useState(() => ({
+    dueTasks: dueInOrder(day),
+    carried: day.unfinishedYesterday.length,
+    overdue: day.sources.due.overdue.length,
+    dueToday: day.sources.due.today.length,
+    steps: ritualSteps(day),
+  }));
   const { dueTasks, steps } = morning;
   const [finished, setFinished] = useState<StepId[]>([]);
   const [error, setError] = useState<string | null>(null);

@@ -5,19 +5,21 @@ import { useRouter } from "next/navigation";
 import type { ActivityMeetingDTO, MeetingItemDTO, MeetingListDTO } from "@/lib/dto";
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
+import { parseWorkHours } from "@/lib/capacity";
 import { layoutBlocks } from "./timeline-layout";
 import { useRecorder } from "./use-recorder";
 
 /** One minute of the day is one pixel of the column: a 14-hour day is 840px, about a screen. */
 const PX_PER_MIN = 1;
 const TICK_MS = 60_000;
-const DEFAULT_START = 7;
-const DEFAULT_END = 21;
+const DEFAULT_START = 9;
+const DEFAULT_END = 18;
 
 /** The hours the column covers: the working day, widened to hold every meeting on it. */
-function hourRange(meetings: ActivityMeetingDTO[]): { dayStart: number; dayEnd: number } {
-  let dayStart = DEFAULT_START;
-  let dayEnd = DEFAULT_END;
+export function hourRange(meetings: ActivityMeetingDTO[], workHours?: string): { dayStart: number; dayEnd: number } {
+  const hours = workHours ? parseWorkHours(workHours) : null;
+  let dayStart = hours ? Math.floor(hours.start / 60) : DEFAULT_START;
+  let dayEnd = hours ? Math.ceil(hours.end / 60) : DEFAULT_END;
   for (const m of meetings) {
     const from = new Date(m.startsAt);
     const to = new Date(m.endsAt);
@@ -39,7 +41,7 @@ const BADGES: { key: keyof Omit<MeetingItemDTO, "id">; label: string; dot: strin
   { key: "hasSummary", label: "Summary", dot: "bg-success" },
 ];
 
-export function Timeline({ date, meetings }: { date: string; meetings: MeetingListDTO[] }) {
+export function Timeline({ date, meetings, workHours }: { date: string; meetings: MeetingListDTO[]; workHours?: string }) {
   const router = useRouter();
   const [now, setNow] = useState<number | null>(null);
   const recorder = useRecorder();
@@ -58,7 +60,7 @@ export function Timeline({ date, meetings }: { date: string; meetings: MeetingLi
 
   const allDay = meetings.filter((m) => m.allDay);
   const timed = meetings.filter((m) => !m.allDay);
-  const { dayStart, dayEnd } = hourRange(timed);
+  const { dayStart, dayEnd } = hourRange(timed, workHours);
   const minutes = (dayEnd - dayStart) * 60;
   const hours = Array.from({ length: dayEnd - dayStart + 1 }, (_, i) => dayStart + i);
   const blocks = layoutBlocks(timed, { dayStart, dayEnd });
@@ -100,7 +102,7 @@ export function Timeline({ date, meetings }: { date: string; meetings: MeetingLi
         {hours.map((hour) => (
           <div key={hour} className="absolute left-0 right-0 flex items-start gap-2" style={{ top: (hour - dayStart) * 60 * PX_PER_MIN }}>
             <span className="font-mono text-[11px] text-fg-faint w-12 shrink-0 -translate-y-1.5 text-right">{String(hour % 24).padStart(2, "0")}:00</span>
-            <span className="flex-1 border-t border-hairline" aria-hidden />
+            <span className="flex-1 border-t border-hairline opacity-60" aria-hidden />
           </div>
         ))}
 

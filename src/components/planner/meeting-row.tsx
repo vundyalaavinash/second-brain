@@ -33,7 +33,7 @@ export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, blocked, rec
         <span data-testid="meeting-title">{meeting.title}</span>
       </button>
       {meeting.organizer && <span className="text-[12px] text-fg-faint shrink-0 truncate max-w-[20ch]">{meeting.organizer}</span>}
-      <span className="text-[12px] text-fg-faint shrink-0 whitespace-nowrap">{count(meeting.attendees, "attendee")}</span>
+      {meeting.attendees > 0 && <span className="text-[12px] text-fg-faint shrink-0 whitespace-nowrap">{count(meeting.attendees, "attendee")}</span>}
       {badges(meeting).map((b) => (
         <Chip as="span" key={b} className="shrink-0">
           {b}

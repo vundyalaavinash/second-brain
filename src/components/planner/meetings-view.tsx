@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Settings2 } from "lucide-react";
 import type { MeetingListDTO, MeetingSettingsDTO } from "@/lib/dto";
 import { formatDayHeading, todayLocal } from "../activity/format";
-import { Button, Chip, Input, List } from "../ui";
+import { Button, Chip, IconButton, Input, List } from "../ui";
 import { MeetingRow } from "./meeting-row";
 import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
@@ -51,6 +52,9 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Null until the server has answered: a switch that renders before then would render a guess.
   const [settings, setSettings] = useState<MeetingSettingsDTO | null>(null);
+  // The switches and the feed link live behind one control; with no meetings at all the panel
+  // opens on its own, since connecting a calendar is then the only thing to do here.
+  const [settingsOpen, setSettingsOpen] = useState(meetings.length === 0);
   const recorder = useRecorder();
 
   useEffect(() => {
@@ -135,11 +139,29 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     );
   }
 
+  /** All-day events are a line of names, not rows: nothing on them can be recorded or joined. */
+  function allDayLine(list: MeetingListDTO[]) {
+    if (list.length === 0) return null;
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap px-1" aria-label="All day">
+        <span className="font-mono text-[11px] text-fg-faint shrink-0">All day</span>
+        {list.map((m) => (
+          <Chip key={m.id} onClick={() => open(m.id)} title={m.calendarTitle || undefined}>
+            {m.title}
+          </Chip>
+        ))}
+      </div>
+    );
+  }
+
   function group(label: string, list: MeetingListDTO[], empty?: string) {
+    const timed = list.filter((m) => !m.allDay);
+    const allDay = list.filter((m) => m.allDay);
     return (
       <section key={label} className="pane p-2 flex flex-col gap-2">
         <span className="micro px-1">{label}</span>
-        {list.length === 0 ? <p className="text-[13px] text-fg-faint m-0 px-1 pb-1">{empty}</p> : rows(list)}
+        {allDayLine(allDay)}
+        {list.length === 0 ? <p className="text-[13px] text-fg-faint m-0 px-1 pb-1">{empty}</p> : timed.length > 0 && rows(timed)}
       </section>
     );
   }
@@ -155,29 +177,14 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-[320px]"
         />
-        {settings && (
-          <div className="flex items-center gap-2">
-            <Chip
-              role="switch"
-              aria-checked={settings.autoRecord}
-              active={settings.autoRecord}
-              onClick={() => saveSetting({ autoRecord: !settings.autoRecord })}
-            >
-              Record meetings automatically
-            </Chip>
-            {settings.autoRecord && (
-              <Chip
-                role="switch"
-                aria-checked={settings.autoRecordNeedsCallLink}
-                active={settings.autoRecordNeedsCallLink}
-                onClick={() => saveSetting({ autoRecordNeedsCallLink: !settings.autoRecordNeedsCallLink })}
-                className="h-6 px-2 text-[11.5px]"
-              >
-                Only with a join link
-              </Chip>
-            )}
-          </div>
-        )}
+        <IconButton
+          label="Calendar settings"
+          icon={Settings2}
+          active={settingsOpen}
+          aria-expanded={settingsOpen}
+          aria-controls="calendar-settings"
+          onClick={() => setSettingsOpen((v) => !v)}
+        />
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
         <span title={recorder.title ?? undefined} className="ml-auto">
           <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>
@@ -186,7 +193,34 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
         </span>
       </div>
 
-      <CalendarFeed onSynced={onRefresh} />
+      {settingsOpen && (
+        <section id="calendar-settings" aria-label="Calendar settings" className="pane p-3 flex flex-col gap-3">
+          {settings && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Chip
+                role="switch"
+                aria-checked={settings.autoRecord}
+                active={settings.autoRecord}
+                onClick={() => saveSetting({ autoRecord: !settings.autoRecord })}
+              >
+                Record meetings automatically
+              </Chip>
+              {settings.autoRecord && (
+                <Chip
+                  role="switch"
+                  aria-checked={settings.autoRecordNeedsCallLink}
+                  active={settings.autoRecordNeedsCallLink}
+                  onClick={() => saveSetting({ autoRecordNeedsCallLink: !settings.autoRecordNeedsCallLink })}
+                  className="h-6 px-2 text-[11.5px]"
+                >
+                  Only with a join link
+                </Chip>
+              )}
+            </div>
+          )}
+          <CalendarFeed onSynced={onRefresh} />
+        </section>
+      )}
 
       {/* With nothing to group, the groups are all empty lines saying the same thing: one line
         * says it once. The setup card above the tabs carries the fix when there is one. */}

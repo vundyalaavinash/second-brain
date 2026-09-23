@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import { Check, Plus } from "lucide-react";
 import type { PlannerDayDTO, SourceGroupDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
@@ -50,9 +57,26 @@ function groupCount(groups: SourceGroupDTO[], plannedIds: Set<number>): number {
  */
 export function SourcesDrawer({ day, today }: Props) {
   const { sources } = day;
-  const plannedIds = useMemo(() => new Set(day.plan.map((t) => t.id)), [day.plan]);
-  const dueCount = open([...sources.due.overdue, ...sources.due.today], plannedIds);
-  const [tab, setTab] = useDrawerTab(dueCount > 0 ? "due" : "inbox");
+  const plannedIds = useMemo(
+    () => new Set(day.plan.map((t) => t.id)),
+    [day.plan],
+  );
+  const dueCount = open(
+    [...sources.due.overdue, ...sources.due.today],
+    plannedIds,
+  );
+  // The first tab with something on it: an empty Inbox in front of a full Projects tab reads as nothing to do.
+  const firstWithWork: DrawerTab =
+    dueCount > 0
+      ? "due"
+      : open(sources.inbox, plannedIds) > 0
+        ? "inbox"
+        : sources.projects.some((g) => open(g.tasks, plannedIds) > 0)
+          ? "projects"
+          : sources.areas.some((g) => open(g.tasks, plannedIds) > 0)
+            ? "areas"
+            : "inbox";
+  const [tab, setTab] = useDrawerTab(firstWithWork);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Bumped by a drawer event asking for focus; the effect below lands it once the tab has rendered.
@@ -62,7 +86,8 @@ export function SourcesDrawer({ day, today }: Props) {
 
   useEffect(() => {
     function onDrawer(e: Event) {
-      const detail = (e as CustomEvent<{ tab?: DrawerTab; focus?: boolean }>).detail ?? {};
+      const detail =
+        (e as CustomEvent<{ tab?: DrawerTab; focus?: boolean }>).detail ?? {};
       if (detail.tab) setTab(detail.tab);
       if (detail.focus) {
         wantFocus.current = true;
@@ -77,11 +102,17 @@ export function SourcesDrawer({ day, today }: Props) {
   useEffect(() => {
     if (!wantFocus.current) return;
     wantFocus.current = false;
-    listRef.current?.querySelector<HTMLButtonElement>("button[data-plan]")?.focus();
+    listRef.current
+      ?.querySelector<HTMLButtonElement>("button[data-plan]")
+      ?.focus();
   }, [focusToken, tab]);
 
   async function send(method: "POST" | "DELETE", taskId: number) {
-    const res = await fetch("/api/plan", { method, headers: JSON_HEADERS, body: JSON.stringify({ date: day.date, taskId }) });
+    const res = await fetch("/api/plan", {
+      method,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ date: day.date, taskId }),
+    });
     if (!res.ok) {
       setError("Could not change the plan");
       return;
@@ -91,7 +122,11 @@ export function SourcesDrawer({ day, today }: Props) {
     window.dispatchEvent(new Event("sb:plan-changed"));
   }
   const patch = async (id: number, body: Record<string, unknown>) => {
-    const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) });
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    });
     if (res.ok) window.dispatchEvent(new Event("sb:tasks-changed"));
     else setError("Could not save that change");
   };
@@ -99,7 +134,11 @@ export function SourcesDrawer({ day, today }: Props) {
   function onAddKey(e: KeyboardEvent<HTMLButtonElement>, taskId: number) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const buttons = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>("button[data-plan]") ?? []);
+    const buttons = Array.from(
+      listRef.current?.querySelectorAll<HTMLButtonElement>(
+        "button[data-plan]",
+      ) ?? [],
+    );
     const next = buttons[buttons.indexOf(e.currentTarget) + 1];
     void send("POST", taskId);
     next?.focus();
@@ -107,7 +146,9 @@ export function SourcesDrawer({ day, today }: Props) {
 
   function row(task: TaskDTO) {
     const planned = plannedIds.has(task.id);
-    const label = planned ? `Take ${task.title} off the plan` : `Plan ${task.title} for ${dayWord(day.date, today)}`;
+    const label = planned
+      ? `Take ${task.title} off the plan`
+      : `Plan ${task.title} for ${dayWord(day.date, today)}`;
     return (
       <TaskRow
         key={task.id}
@@ -122,14 +163,20 @@ export function SourcesDrawer({ day, today }: Props) {
             data-plan
             aria-label={label}
             className={`focus-ring shrink-0 mt-0.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors duration-100 ${
-              planned ? "bg-violet text-on-violet" : "border border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong"
+              planned
+                ? "bg-violet text-on-violet"
+                : "border border-hairline text-fg-muted hover:text-fg hover:border-hairline-strong"
             }`}
             onClick={() => void send(planned ? "DELETE" : "POST", task.id)}
             onKeyDown={(e) => {
               if (!planned) onAddKey(e, task.id);
             }}
           >
-            {planned ? <Check className="w-3.5 h-3.5" aria-hidden /> : <Plus className="w-3.5 h-3.5" aria-hidden />}
+            {planned ? (
+              <Check className="w-3.5 h-3.5" aria-hidden />
+            ) : (
+              <Plus className="w-3.5 h-3.5" aria-hidden />
+            )}
             <span className="sr-only">{label}</span>
           </button>
         }
@@ -138,13 +185,23 @@ export function SourcesDrawer({ day, today }: Props) {
           e.dataTransfer.setData(TASK_DRAG_MIME, String(task.id));
           e.dataTransfer.effectAllowed = "move";
         }}
-        onToggle={() => void patch(task.id, { status: task.status === "done" ? "open" : "done" })}
+        onToggle={() =>
+          void patch(task.id, {
+            status: task.status === "done" ? "open" : "done",
+          })
+        }
         onRename={(title) => void patch(task.id, { title })}
         onDue={(value) => void patch(task.id, { dueDate: value })}
         onEstimate={(m) => void patch(task.id, { estimateMinutes: m })}
-        onPriority={(priority: TaskPriority) => void patch(task.id, { priority })}
+        onPriority={(priority: TaskPriority) =>
+          void patch(task.id, { priority })
+        }
         onDrop={() => void patch(task.id, { status: "dropped" })}
-        onDelete={() => void fetch(`/api/tasks/${task.id}`, { method: "DELETE" }).then(() => window.dispatchEvent(new Event("sb:tasks-changed")))}
+        onDelete={() =>
+          void fetch(`/api/tasks/${task.id}`, { method: "DELETE" }).then(() =>
+            window.dispatchEvent(new Event("sb:tasks-changed")),
+          )
+        }
         onPlan={() => void send(planned ? "DELETE" : "POST", task.id)}
         planLabel={day.date === today ? undefined : "Plan for this day"}
       />
@@ -155,12 +212,25 @@ export function SourcesDrawer({ day, today }: Props) {
     if (list.length === 0) return <p className={EMPTY}>{emptyText}</p>;
     // A container with nothing left to plan sinks below the ones that still want work — the
     // same reading as the number beside its name.
-    const ordered = [...list].sort((a, b) => Number(open(b.tasks, plannedIds) > 0) - Number(open(a.tasks, plannedIds) > 0));
+    const ordered = [...list].sort(
+      (a, b) =>
+        Number(open(b.tasks, plannedIds) > 0) -
+        Number(open(a.tasks, plannedIds) > 0),
+    );
     return ordered.map((g) => (
-      <details key={g.container.id} role="group" open={g.tasks.length > 0} className="flex flex-col gap-1">
+      <details
+        key={g.container.id}
+        role="group"
+        open={g.tasks.length > 0}
+        className="flex flex-col gap-1"
+      >
         <summary className="focus-ring cursor-pointer flex items-center gap-2 rounded-sm px-1 py-1">
-          <span className="font-doc text-[15px] text-fg">{g.container.name}</span>
-          <span className="font-mono text-[11px] text-fg-faint">{open(g.tasks, plannedIds)}</span>
+          <span className="font-doc text-[15px] text-fg">
+            {g.container.name}
+          </span>
+          <span className="font-mono text-[11px] text-fg-faint">
+            {open(g.tasks, plannedIds)}
+          </span>
         </summary>
         {g.tasks.length > 0 && <List>{g.tasks.map(row)}</List>}
       </details>
@@ -172,9 +242,16 @@ export function SourcesDrawer({ day, today }: Props) {
     if (!q) return <p className={EMPTY}>Type to search every open task</p>;
     const homes: { key: string; name: string; tasks: TaskDTO[] }[] = [
       { key: "inbox", name: "Inbox", tasks: sources.inbox },
-      ...[...sources.projects, ...sources.areas].map((g) => ({ key: `${g.container.kind}:${g.container.id}`, name: g.container.name, tasks: g.tasks })),
+      ...[...sources.projects, ...sources.areas].map((g) => ({
+        key: `${g.container.kind}:${g.container.id}`,
+        name: g.container.name,
+        tasks: g.tasks,
+      })),
     ]
-      .map((h) => ({ ...h, tasks: h.tasks.filter((t) => t.title.toLowerCase().includes(q)) }))
+      .map((h) => ({
+        ...h,
+        tasks: h.tasks.filter((t) => t.title.toLowerCase().includes(q)),
+      }))
       .filter((h) => h.tasks.length > 0);
     if (homes.length === 0) return <p className={EMPTY}>Nothing matches</p>;
     return homes.map((h) => (
@@ -188,10 +265,18 @@ export function SourcesDrawer({ day, today }: Props) {
   function body() {
     switch (tab) {
       case "inbox":
-        return sources.inbox.length ? <List>{sources.inbox.map(row)}</List> : <p className={EMPTY}>Nothing in the inbox</p>;
+        return sources.inbox.length ? (
+          <List>{sources.inbox.map(row)}</List>
+        ) : (
+          <p className={EMPTY}>Nothing in the inbox</p>
+        );
       case "due": {
         const due = [...sources.due.overdue, ...sources.due.today];
-        return due.length ? <List>{due.map(row)}</List> : <p className={EMPTY}>Nothing due</p>;
+        return due.length ? (
+          <List>{due.map(row)}</List>
+        ) : (
+          <p className={EMPTY}>Nothing due</p>
+        );
       }
       case "projects":
         return groups(sources.projects, "No active projects");
@@ -200,13 +285,26 @@ export function SourcesDrawer({ day, today }: Props) {
       case "search":
         return (
           <>
-            <Input type="search" size="sm" aria-label="Search open tasks" placeholder="Search open tasks" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+            <Input
+              type="search"
+              size="sm"
+              aria-label="Search open tasks"
+              placeholder="Search open tasks"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+            />
             {searchResults()}
           </>
         );
     }
   }
 
+  // Every open task the drawer could show; with none, the tabs would only spell out five zeros.
+  const empty =
+    sources.inbox.length === 0 &&
+    sources.projects.every((g) => g.tasks.length === 0) &&
+    sources.areas.every((g) => g.tasks.length === 0);
   const counts: Record<DrawerTab, number | null> = {
     inbox: open(sources.inbox, plannedIds),
     due: dueCount,
@@ -218,11 +316,16 @@ export function SourcesDrawer({ day, today }: Props) {
   function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
     const i = TABS.findIndex((t) => t.id === tab);
     if (e.key === "ArrowRight") setTab(TABS[(i + 1) % TABS.length].id);
-    else if (e.key === "ArrowLeft") setTab(TABS[(i - 1 + TABS.length) % TABS.length].id);
+    else if (e.key === "ArrowLeft")
+      setTab(TABS[(i - 1 + TABS.length) % TABS.length].id);
     else return;
     e.preventDefault();
     const tablist = e.currentTarget;
-    requestAnimationFrame(() => (tablist.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus());
+    requestAnimationFrame(() =>
+      (
+        tablist.querySelector('[aria-selected="true"]') as HTMLElement | null
+      )?.focus(),
+    );
   }
 
   return (
@@ -239,29 +342,49 @@ export function SourcesDrawer({ day, today }: Props) {
         if (id) void send("DELETE", id);
       }}
     >
-      <div role="tablist" aria-label="Sources" className="flex items-center gap-1 flex-wrap" onKeyDown={onTabKey}>
-        {TABS.map((t) => (
-          <Chip
-            key={t.id}
-            id={tabId(t.id)}
-            role="tab"
-            aria-selected={tab === t.id}
-            aria-controls={PANEL_ID}
-            tabIndex={tab === t.id ? 0 : -1}
-            active={tab === t.id}
-            onClick={() => setTab(t.id)}
-          >
-            {/* Label and count are one string: a lone "Inbox" text node would collide with the
+      {empty ? (
+        <p className="text-[13px] text-fg-faint m-0">
+          Nothing to plan yet. Add tasks from the Inbox or a project.
+        </p>
+      ) : (
+        <div
+          role="tablist"
+          aria-label="Sources"
+          className="flex items-center gap-1 flex-wrap"
+          onKeyDown={onTabKey}
+        >
+          {TABS.map((t) => (
+            <Chip
+              key={t.id}
+              id={tabId(t.id)}
+              role="tab"
+              aria-selected={tab === t.id}
+              aria-controls={PANEL_ID}
+              tabIndex={tab === t.id ? 0 : -1}
+              active={tab === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {/* Label and count are one string: a lone "Inbox" text node would collide with the
                 search results' own Inbox heading. */}
-            {counts[t.id] === null ? t.label : `${t.label} ${counts[t.id]}`}
-          </Chip>
-        ))}
-      </div>
+              {counts[t.id] === null ? t.label : `${t.label} ${counts[t.id]}`}
+            </Chip>
+          ))}
+        </div>
+      )}
       {/* Focusable in its own right: the tab strip is a single stop, so the panel behind it
           needs one of its own for the keyboard to reach a list that only scrolls. */}
-      <div ref={listRef} role="tabpanel" id={PANEL_ID} aria-labelledby={tabId(tab)} tabIndex={0} className="focus-ring rounded-sm flex flex-col gap-2">
-        {body()}
-      </div>
+      {!empty && (
+        <div
+          ref={listRef}
+          role="tabpanel"
+          id={PANEL_ID}
+          aria-labelledby={tabId(tab)}
+          tabIndex={0}
+          className="focus-ring rounded-sm flex flex-col gap-2"
+        >
+          {body()}
+        </div>
+      )}
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
     </aside>
   );

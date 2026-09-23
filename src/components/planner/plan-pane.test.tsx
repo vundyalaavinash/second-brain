@@ -28,7 +28,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     due: { overdue: [], today: [base] },
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
-    sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
+    sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: { id: 10, name: "Launch", slug: "launch", kind: "project" }, tasks: [c] }], areas: [] },
     capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
     ...over,
   };
@@ -226,5 +226,13 @@ describe("PlanPane", () => {
     const dt = { types: ["application/x-sb-task"], getData: () => String(c.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
     fireEvent.drop(screen.getByRole("list", { name: "Plan" }), { dataTransfer: dt });
     await waitFor(() => expect(posts.map((p) => [p.method, p.body])).toEqual([["POST", { date: TODAY, taskId: c.id }]]));
+  });
+
+  it("shows no ritual when the morning has nothing to offer", async () => {
+    stubPlan();
+    const quiet = day({ plan: [], unfinishedYesterday: [], sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] } });
+    render(<PlanPane day={quiet} today={TODAY} onRefresh={vi.fn()} />);
+    expect(await screen.findByText(/Nothing planned\./)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
   });
 });

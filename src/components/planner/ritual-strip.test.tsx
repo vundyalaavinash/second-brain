@@ -23,12 +23,14 @@ const task = (title: string, dueDate: string | null = null): TaskDTO => ({
 const late = task("Late", "2026-09-20");
 const due = task("Due", TODAY);
 const left = task("Left over");
+/** A project with something still to plan, so the morning's last step has a reason to exist. */
+const PROJECT = { container: { id: 10, name: "Launch", slug: "launch", kind: "project" as const }, tasks: [task("Ship it")] };
 
 function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   return {
     date: TODAY, plan: [], unfinishedYesterday: [left], due: { overdue: [late], today: [due] }, meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
-    sources: { inbox: [], due: { overdue: [late], today: [due] }, projects: [], areas: [] },
+    sources: { inbox: [], due: { overdue: [late], today: [due] }, projects: [PROJECT], areas: [] },
     capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
     ...over,
   };
@@ -80,7 +82,7 @@ describe("RitualStrip", () => {
 
   it("leaves the due step out when nothing is due", () => {
     stub();
-    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] };
+    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [PROJECT], areas: [] };
     render(<RitualStrip day={day({ sources: empty })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Plan all" })).toBeNull();
@@ -93,7 +95,7 @@ describe("RitualStrip", () => {
     await waitFor(() => expect(posts).toHaveLength(2));
 
     // Everything due is on the plan now, so the reloaded day carries none of it.
-    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] };
+    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [PROJECT], areas: [] };
     rerender(<RitualStrip day={day({ unfinishedYesterday: [], sources: empty })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
     const steps = screen.getAllByRole("listitem");
     expect(steps).toHaveLength(2);

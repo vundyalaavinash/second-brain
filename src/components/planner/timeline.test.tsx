@@ -64,4 +64,16 @@ describe("Timeline", () => {
     const { container } = render(<Timeline date="2019-01-07" meetings={[{ ...sync, startsAt: "2019-01-07T10:00:00", endsAt: "2019-01-07T11:00:00" }]} />);
     expect(nowLine(container)).toBeNull();
   });
+
+  it("covers the working hours, widened only to hold a meeting outside them", () => {
+    const { container, unmount } = render(<Timeline date={DATE} meetings={[]} workHours="09:00-18:00" />);
+    const labels = () => Array.from(container.querySelectorAll("span.font-mono")).map((el) => el.textContent).filter((t) => /^\d\d:00$/.test(t ?? ""));
+    expect(labels()[0]).toBe("09:00");
+    expect(labels().at(-1)).toBe("18:00");
+    unmount();
+    const early = { ...sync, startsAt: `${DATE}T07:30:00`, endsAt: `${DATE}T08:00:00` };
+    const { container: c2 } = render(<Timeline date={DATE} meetings={[early]} workHours="09:00-18:00" />);
+    const first = Array.from(c2.querySelectorAll("span.font-mono")).map((el) => el.textContent).find((t) => /^\d\d:00$/.test(t ?? ""));
+    expect(first).toBe("07:00");
+  });
 });
