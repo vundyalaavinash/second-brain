@@ -13,6 +13,8 @@ export const TASK_DRAG_MIME = "application/x-sb-task";
 /** A task dragged off the plan, to be dropped on the drawer. */
 export const PLAN_DRAG_MIME = "application/x-sb-plan";
 const JSON_HEADERS = { "content-type": "application/json" };
+const PANEL_ID = "sources-panel";
+const tabId = (tab: DrawerTab) => `sources-tab-${tab}`;
 const EMPTY = "text-[13px] text-fg-faint m-0 px-1";
 const TABS: { id: DrawerTab; label: string }[] = [
   { id: "inbox", label: "Inbox" },
@@ -47,7 +49,7 @@ function groupCount(groups: SourceGroupDTO[], plannedIds: Set<number>): number {
  * app's task rows in their compact form with an add button in front; a planned task keeps
  * its row, dimmed, with a check that takes it off again.
  */
-export function SourcesDrawer({ day, today, onRefresh }: Props) {
+export function SourcesDrawer({ day, today }: Props) {
   const { sources } = day;
   const plannedIds = useMemo(() => new Set(day.plan.map((t) => t.id)), [day.plan]);
   const dueCount = open([...sources.due.overdue, ...sources.due.today], plannedIds);
@@ -86,8 +88,8 @@ export function SourcesDrawer({ day, today, onRefresh }: Props) {
       return;
     }
     setError(null);
+    // The plan pane listens for this and reloads the day for both of us.
     window.dispatchEvent(new Event("sb:plan-changed"));
-    onRefresh();
   }
   const patch = async (id: number, body: Record<string, unknown>) => {
     const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) });
@@ -157,7 +159,7 @@ export function SourcesDrawer({ day, today, onRefresh }: Props) {
       <details key={g.container.id} role="group" open={g.tasks.length > 0} className="flex flex-col gap-1">
         <summary className="focus-ring cursor-pointer flex items-center gap-2 rounded-sm px-1 py-1">
           <span className="font-doc text-[15px] text-fg">{g.container.name}</span>
-          <span className="font-mono text-[11px] text-fg-faint">{g.tasks.length}</span>
+          <span className="font-mono text-[11px] text-fg-faint">{open(g.tasks, plannedIds)}</span>
         </summary>
         {g.tasks.length > 0 && <List>{g.tasks.map(row)}</List>}
       </details>
@@ -167,16 +169,15 @@ export function SourcesDrawer({ day, today, onRefresh }: Props) {
   function searchResults() {
     const q = query.trim().toLowerCase();
     if (!q) return <p className={EMPTY}>Type to search every open task</p>;
-    const homes: { name: string; tasks: TaskDTO[] }[] = [
-      { name: "Inbox", tasks: sources.inbox },
-      ...sources.projects.map((g) => ({ name: g.container.name, tasks: g.tasks })),
-      ...sources.areas.map((g) => ({ name: g.container.name, tasks: g.tasks })),
+    const homes: { key: string; name: string; tasks: TaskDTO[] }[] = [
+      { key: "inbox", name: "Inbox", tasks: sources.inbox },
+      ...[...sources.projects, ...sources.areas].map((g) => ({ key: `${g.container.kind}:${g.container.id}`, name: g.container.name, tasks: g.tasks })),
     ]
       .map((h) => ({ ...h, tasks: h.tasks.filter((t) => t.title.toLowerCase().includes(q)) }))
       .filter((h) => h.tasks.length > 0);
     if (homes.length === 0) return <p className={EMPTY}>Nothing matches</p>;
     return homes.map((h) => (
-      <div key={h.name} className="flex flex-col gap-1">
+      <div key={h.key} className="flex flex-col gap-1">
         <span className="micro px-1">{h.name}</span>
         <List>{h.tasks.map(row)}</List>
       </div>
@@ -231,20 +232,31 @@ export function SourcesDrawer({ day, today, onRefresh }: Props) {
         if (e.dataTransfer.types.includes(PLAN_DRAG_MIME)) e.preventDefault();
       }}
       onDrop={(e) => {
+        if (!e.dataTransfer.types.includes(PLAN_DRAG_MIME)) return;
+        e.preventDefault();
         const id = Number(e.dataTransfer.getData(PLAN_DRAG_MIME));
         if (id) void send("DELETE", id);
       }}
     >
       <div role="tablist" aria-label="Sources" className="flex items-center gap-1 flex-wrap" onKeyDown={onTabKey}>
         {TABS.map((t) => (
-          <Chip key={t.id} role="tab" aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1} active={tab === t.id} onClick={() => setTab(t.id)}>
+          <Chip
+            key={t.id}
+            id={tabId(t.id)}
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={PANEL_ID}
+            tabIndex={tab === t.id ? 0 : -1}
+            active={tab === t.id}
+            onClick={() => setTab(t.id)}
+          >
             {/* Label and count are one string: a lone "Inbox" text node would collide with the
                 search results' own Inbox heading. */}
             {counts[t.id] === null ? t.label : `${t.label} ${counts[t.id]}`}
           </Chip>
         ))}
       </div>
-      <div ref={listRef} className="flex flex-col gap-2">
+      <div ref={listRef} role="tabpanel" id={PANEL_ID} aria-labelledby={tabId(tab)} className="flex flex-col gap-2">
         {body()}
       </div>
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}

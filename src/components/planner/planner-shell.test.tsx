@@ -85,7 +85,8 @@ describe("PlannerShell", () => {
 
   it("points each tab at the panel the views are rendered in", () => {
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
-    const panel = screen.getByRole("tabpanel");
+    // Named for its own tab: the day view's drawer brings a second tablist and panel of its own.
+    const panel = screen.getByRole("tabpanel", { name: "Day" });
     expect(panel.getAttribute("aria-labelledby")).toBe(viewTabs()[0].id);
     for (const tab of viewTabs()) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
   });

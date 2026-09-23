@@ -116,7 +116,11 @@ export function PlanPane({ day, today, onRefresh }: Props) {
           e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
           e.dataTransfer.effectAllowed = "move";
         }}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          // Only a task or another plan row may land here; everything else keeps its own drop.
+          const types = e.dataTransfer?.types;
+          if (types?.includes(TASK_DRAG_MIME) || types?.includes(PLAN_DRAG_MIME)) e.preventDefault();
+        }}
         onRowDrop={(e) => handleRowDrop(task.id, e)}
       />
     );

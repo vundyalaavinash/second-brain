@@ -91,7 +91,7 @@ describe("SourcesDrawer", () => {
     render(<SourcesDrawer day={d} today={TODAY} onRefresh={vi.fn()} />);
     fireEvent.click(screen.getByRole("tab", { name: /Projects/ }));
     const groups = screen.getAllByRole("group");
-    expect(groups.map((g) => g.querySelector("summary")?.textContent)).toEqual(["Launch3", "Idle0"]);
+    expect(groups.map((g) => g.querySelector("summary")?.textContent)).toEqual(["Launch2", "Idle0"]);
     expect((groups[1] as HTMLDetailsElement).open).toBe(false);
   });
 
@@ -134,6 +134,14 @@ describe("SourcesDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
     expect(screen.getByRole("menuitem", { name: "Plan for this day" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Plan for today" })).toBeNull();
+  });
+
+  it("takes a plan row dropped on it off the plan", async () => {
+    const posts = stubPlan();
+    render(<SourcesDrawer day={day()} today={TODAY} onRefresh={vi.fn()} />);
+    const dt = { types: ["application/x-sb-plan"], getData: () => String(planned.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
+    fireEvent.drop(screen.getByRole("complementary", { name: "Sources" }), { dataTransfer: dt });
+    await waitFor(() => expect(posts).toEqual([{ url: "/api/plan", method: "DELETE", body: { date: TODAY, taskId: 5 } }]));
   });
 
   it("plans on Enter and moves focus to the next row", async () => {
