@@ -197,7 +197,7 @@ describe("PlanPane", () => {
 
   it("blocks a planned task at the next five minutes, and only on the day in hand", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(`${TODAY}T10:31:00`));
+    vi.setSystemTime(new Date(`${TODAY}T10:34:00`));
     try {
       const posts = stubPlan();
       render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);

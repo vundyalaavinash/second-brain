@@ -9,7 +9,7 @@ import { blockLength, capacityTone } from "@/lib/capacity";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
-import { minutesToIso, snap } from "./block-math";
+import { minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
 import { PLAN_DRAG_MIME, PLAN_MINUTES_MIME } from "./drag-mime";
@@ -35,6 +35,11 @@ const RITUAL_MOTION = {
 } as const;
 
 /** The clock as minutes since local midnight, for a block that starts "now". */
+/** The next five-minute mark after now: 10:30 and 10:34 both start at 10:35. */
+function nextSlot(minutes: number): number {
+  return Math.ceil((minutes + 1) / SNAP_MINUTES) * SNAP_MINUTES;
+}
+
 function nowMinutes(): number {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
@@ -217,7 +222,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onDelete={() => remove(task.id)}
         onPlan={() => void unplan(task.id)}
         // "Now" only means something on the day being lived through; other days are placed by hand.
-        onBlockNow={day.date === today ? () => patch(task.id, { scheduledAt: minutesToIso(today, snap(nowMinutes() + 4)) }) : undefined}
+        onBlockNow={day.date === today ? () => patch(task.id, { scheduledAt: minutesToIso(today, nextSlot(nowMinutes())) }) : undefined}
         onUnblock={() => patch(task.id, { scheduledAt: null })}
         planned
         draggable
