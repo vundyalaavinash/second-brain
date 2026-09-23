@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
@@ -58,6 +58,10 @@ interface Props {
   planned?: boolean;
   /** The week column's row: stacked, two-line title, no grip or priority chip. */
   compact?: boolean;
+  /** Sits in front of the checkbox: the sources drawer puts its add-to-plan button there. */
+  leading?: ReactNode;
+  /** Extra classes for the row itself, e.g. dimming one that is already on a plan. */
+  className?: string;
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
@@ -66,7 +70,7 @@ interface Props {
 
 export function TaskRow({
   task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
-  planLabel = "Plan for today", planned, compact, draggable, onDragStart, onDragOver, onRowDrop,
+  planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onRowDrop,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -417,7 +421,8 @@ export function TaskRow({
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.
   if (compact) {
     return (
-      <li {...rowProps} className="hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors">
+      <li {...rowProps} className={`hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors ${className}`}>
+        {leading}
         {checkbox}
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
@@ -429,7 +434,8 @@ export function TaskRow({
   }
 
   return (
-    <li {...rowProps} className="hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors">
+    <li {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
+      {leading}
       <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
         <GripVertical className="w-3.5 h-3.5" />
       </span>

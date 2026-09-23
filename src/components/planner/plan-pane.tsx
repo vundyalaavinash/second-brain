@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type DragEvent } from "react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { addDaysLocal } from "../activity/format";
 import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
 import { count } from "./open-meeting";
+import { PLAN_DRAG_MIME, TASK_DRAG_MIME } from "./sources-drawer";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SAVE_ERROR = "Could not save that change";
@@ -18,10 +19,11 @@ interface Props {
   onRefresh: () => void;
 }
 
+/** The day's plan, and the only place tasks land: the drawer beside it holds everything else. */
 export function PlanPane({ day, today, onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
-  const due = [...day.due.overdue, ...day.due.today];
+  const [over, setOver] = useState(false);
 
   // Everything that moves a task or a plan entry says so; the pane reloads the whole day
   // rather than guessing which half of it changed.
@@ -37,24 +39,52 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     };
   }, [onRefresh]);
 
-  async function send(url: string, method: string, body?: unknown, event = "sb:tasks-changed") {
+  /** Answers whether the request went through, so a two-step drop can stop after a failed first half. */
+  async function send(url: string, method: string, body?: unknown, event = "sb:tasks-changed"): Promise<boolean> {
     const res = await fetch(url, { method, headers: body ? JSON_HEADERS : undefined, body: body ? JSON.stringify(body) : undefined });
     if (!res.ok) {
       setError(SAVE_ERROR);
-      return;
+      return false;
     }
     setError(null);
     window.dispatchEvent(new Event(event));
+    return true;
   }
 
   const patch = (id: number, body: Record<string, unknown>) => void send(`/api/tasks/${id}`, "PATCH", body);
   const remove = (id: number) => void send(`/api/tasks/${id}`, "DELETE");
-  const plan = (taskId: number) => void send("/api/plan", "POST", { date: day.date, taskId }, "sb:plan-changed");
   const unplan = (taskId: number) => void send("/api/plan", "DELETE", { date: day.date, taskId }, "sb:plan-changed");
   const reorder = (taskIds: number[]) => void send("/api/plan", "PATCH", { date: day.date, taskIds }, "sb:plan-changed");
   const carryOver = () => void send("/api/plan/carry-over", "POST", { from: addDaysLocal(day.date, -1), to: day.date }, "sb:plan-changed");
 
-  function handleRowDrop(overId: number) {
+  /** A task dragged in from the drawer: planned first, then moved to where it was dropped. */
+  async function planAt(taskId: number, index: number) {
+    if (day.plan.some((t) => t.id === taskId)) return;
+    if (!(await send("/api/plan", "POST", { date: day.date, taskId }, "sb:plan-changed"))) return;
+    const ids = day.plan.map((t) => t.id);
+    // The POST already put it last, so only a drop above the end needs an order.
+    if (index >= ids.length) return;
+    ids.splice(index, 0, taskId);
+    await send("/api/plan", "PATCH", { date: day.date, taskIds: ids }, "sb:plan-changed");
+  }
+
+  function droppedTaskId(e: DragEvent<HTMLElement>): number | null {
+    if (!e.dataTransfer?.types.includes(TASK_DRAG_MIME)) return null;
+    e.preventDefault();
+    return Number(e.dataTransfer.getData(TASK_DRAG_MIME)) || null;
+  }
+
+  function handleRowDrop(overId: number, e: DragEvent<HTMLLIElement>) {
+    setOver(false);
+    const incoming = droppedTaskId(e);
+    if (incoming !== null) {
+      // The list behind the row would otherwise plan it a second time, at the end.
+      e.stopPropagation();
+      const index = day.plan.findIndex((t) => t.id === overId);
+      setDragId(null);
+      if (index !== -1) void planAt(incoming, index);
+      return;
+    }
     const ids = day.plan.map((t) => t.id);
     const from = ids.indexOf(dragId ?? -1);
     const to = ids.indexOf(overId);
@@ -65,7 +95,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     reorder(ids);
   }
 
-  function row(task: TaskDTO, planned: boolean) {
+  function row(task: TaskDTO) {
     return (
       <TaskRow
         key={task.id}
@@ -77,13 +107,17 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onPriority={(priority: TaskPriority) => patch(task.id, { priority })}
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
-        onPlan={() => (planned ? unplan(task.id) : plan(task.id))}
-        planLabel={day.date === today ? undefined : "Plan for this day"}
-        planned={planned}
-        draggable={planned}
-        onDragStart={planned ? () => setDragId(task.id) : undefined}
-        onDragOver={planned ? (e) => e.preventDefault() : undefined}
-        onRowDrop={planned ? () => handleRowDrop(task.id) : undefined}
+        onPlan={() => unplan(task.id)}
+        planned
+        draggable
+        onDragStart={(e) => {
+          setDragId(task.id);
+          // The drawer accepts this one to take the task off the plan again.
+          e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onRowDrop={(e) => handleRowDrop(task.id, e)}
       />
     );
   }
@@ -101,18 +135,28 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </div>
       )}
 
-      {day.plan.length === 0 ? (
-        <p className="text-[13px] text-fg-faint m-0">Nothing planned. Use Plan for today on any task, or add one below with +</p>
-      ) : (
-        <List>{day.plan.map((t) => row(t, true))}</List>
-      )}
+      {day.plan.length === 0 && <p className="text-[13px] text-fg-faint m-0">Nothing planned. Drag a task in from the sources beside this, or use Plan for today on any task</p>}
 
-      <span className="micro mt-1">Due</span>
-      {due.length === 0 ? (
-        <p className="text-[13px] text-fg-faint m-0">Nothing due</p>
-      ) : (
-        <List>{due.map((t) => row(t, false))}</List>
-      )}
+      <List
+        aria-label="Plan"
+        className={`border rounded-md transition-colors duration-100 ${over ? "border-violet" : "border-transparent"} ${day.plan.length === 0 ? "min-h-11" : ""}`}
+        onDragOver={(e) => {
+          if (!e.dataTransfer?.types.includes(TASK_DRAG_MIME)) return;
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={(e) => {
+          // Moving between two rows leaves one and enters another: the list itself is still under the cursor.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+        }}
+        onDrop={(e) => {
+          setOver(false);
+          const incoming = droppedTaskId(e);
+          if (incoming !== null) void planAt(incoming, day.plan.length);
+        }}
+      >
+        {day.plan.map(row)}
+      </List>
 
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
     </section>

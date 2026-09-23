@@ -1,6 +1,7 @@
 import type {
   AnchorHTMLAttributes,
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   MouseEventHandler,
   ReactNode,
@@ -209,8 +210,9 @@ export function EmptyState({ icon: Icon, text, action }: { icon: LucideIcon; tex
 }
 
 /** The list container and its row. Rows are edge-to-edge, separated by a hairline. */
-export function List({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <ul role="list" className={`list-none m-0 p-0 ${className}`}>{children}</ul>;
+// The rest of the props reach the <ul>: a list that names itself, or takes a drop, says so here.
+export function List({ children, className = "", ...props }: HTMLAttributes<HTMLUListElement> & { children: ReactNode; className?: string }) {
+  return <ul role="list" className={`list-none m-0 p-0 ${className}`} {...props}>{children}</ul>;
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {

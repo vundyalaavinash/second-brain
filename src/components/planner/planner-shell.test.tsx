@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { PlannerShell } from "./planner-shell";
 import { usePlanDate } from "@/lib/plan-date";
 import type { PlannerDayDTO } from "@/lib/dto";
@@ -23,6 +23,11 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
   };
 }
 
+/** The view tabs, not the source drawer's: the day view nests a tablist of its own. */
+function viewTabs(): HTMLElement[] {
+  return within(screen.getByRole("tablist", { name: "Planner views" })).getAllByRole("tab");
+}
+
 /** The prompt bar's view of the open plan, read through the same hook the bar uses. */
 function PlanDateProbe() {
   return <span data-testid="plan-date">{usePlanDate() ?? "none"}</span>;
@@ -34,7 +39,7 @@ function readPlanDate(): string {
 }
 
 function tabs(): { label: string; selected: string | null }[] {
-  return screen.getAllByRole("tab").map((t) => ({ label: t.textContent ?? "", selected: t.getAttribute("aria-selected") }));
+  return viewTabs().map((t) => ({ label: t.textContent ?? "", selected: t.getAttribute("aria-selected") }));
 }
 
 afterEach(() => {
@@ -81,8 +86,8 @@ describe("PlannerShell", () => {
   it("points each tab at the panel the views are rendered in", () => {
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
     const panel = screen.getByRole("tabpanel");
-    expect(panel.getAttribute("aria-labelledby")).toBe(screen.getByRole("tab", { name: "Day" }).id);
-    for (const tab of screen.getAllByRole("tab")) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
+    expect(panel.getAttribute("aria-labelledby")).toBe(viewTabs()[0].id);
+    for (const tab of viewTabs()) expect(tab.getAttribute("aria-controls")).toBe(panel.id);
   });
 
   it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {
