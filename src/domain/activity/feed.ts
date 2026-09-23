@@ -2,7 +2,7 @@ import ICAL from "ical.js";
 import type { DB } from "@/db/client";
 import type { MeetingStatus } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { calendarEvents } from "@/db/schema";
+import { calendarEvents, settings } from "@/db/schema";
 import { getSetting, setSetting } from "@/domain/settings";
 import { addDays } from "./report";
 import { joinUrlFrom, localDay, replaceCalendarEvents, type CalendarEventInput } from "./calendar";
@@ -59,11 +59,12 @@ export function normalizeFeedUrl(raw: string): string {
 export function setFeedUrl(db: DB, raw: string): FeedState {
   const url = normalizeFeedUrl(raw);
   const previous = getSetting(db, FEED_URL_KEY, "");
-  if (url !== previous) db.delete(calendarEvents).where(eq(calendarEvents.source, "feed")).run();
-  setSetting(db, FEED_URL_KEY, url);
-  setSetting(db, ERROR_KEY, "");
-  setSetting(db, SYNCED_AT_KEY, "");
-  setSetting(db, COUNT_KEY, "0");
+  db.transaction((tx) => {
+    if (url !== previous) tx.delete(calendarEvents).where(eq(calendarEvents.source, "feed")).run();
+    for (const [key, value] of [[FEED_URL_KEY, url], [ERROR_KEY, ""], [SYNCED_AT_KEY, ""], [COUNT_KEY, "0"]] as const) {
+      tx.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } }).run();
+    }
+  });
   return getFeedState(db);
 }
 
