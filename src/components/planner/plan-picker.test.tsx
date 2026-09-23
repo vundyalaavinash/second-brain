@@ -156,6 +156,7 @@ describe("PlanPicker", () => {
     stub();
     render(<PlanPicker day={day()} today={TODAY} />);
     field().focus();
+    fireEvent.focus(field());
     const options = within(screen.getByRole("listbox")).getAllByRole("option");
     fireEvent.mouseDown(options[0]);
     expect(document.activeElement).toBe(field());
