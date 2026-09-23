@@ -16,6 +16,7 @@ const task: TaskDTO = {
 
 interface ExtraProps {
   onPlan?: () => void;
+  onEstimate?: (minutes: number | null) => void;
   onPlanDate?: (date: string) => void;
   planFrom?: string;
   planLabel?: string;
@@ -159,5 +160,32 @@ describe("TaskRow compact", () => {
     // The due date moves under the title, still in mono; the priority chip is dropped.
     expect(screen.getByRole("button", { name: "Fri 18" }).className).toContain("font-mono");
     expect(screen.queryByText("High")).toBeNull();
+  });
+});
+
+describe("TaskRow estimate", () => {
+  it("shows the estimate, offers presets and a free field, and clears", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: 90 });
+    const chip = screen.getByRole("button", { name: "Estimate 1h 30m" });
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "25m" }));
+    expect(onEstimate).toHaveBeenLastCalledWith(25);
+    fireEvent.click(screen.getByRole("button", { name: "Estimate 1h 30m" }));
+    const field = screen.getByRole("spinbutton", { name: "Minutes" });
+    fireEvent.change(field, { target: { value: "50" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onEstimate).toHaveBeenLastCalledWith(50);
+    fireEvent.click(screen.getByRole("button", { name: "Estimate 1h 30m" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "No estimate" }));
+    expect(onEstimate).toHaveBeenLastCalledWith(null);
+  });
+
+  it("reads est when there is none, and hides without a handler", () => {
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: null });
+    expect(screen.getByRole("button", { name: "Estimate: none" }).textContent).toBe("est");
+    cleanup();
+    renderRow({}, { ...task, estimateMinutes: 30 });
+    expect(screen.queryByRole("button", { name: /Estimate/ })).toBeNull();
   });
 });

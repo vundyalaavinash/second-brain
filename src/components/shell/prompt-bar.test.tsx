@@ -171,6 +171,16 @@ describe("PromptBar", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("reads the estimate back in the task chip", () => {
+    mount();
+    const input = field();
+    fireEvent.change(input, { target: { value: "+ Write ~25m" } });
+    const estimate = screen.getByText("~25m");
+    expect(estimate.parentElement?.textContent).toBe("Task~25m");
+    fireEvent.change(input, { target: { value: "+ Write" } });
+    expect(screen.queryByText("~25m")).toBeNull();
+  });
+
   it("opens the prompt menu on a leading slash and inserts the chosen word", () => {
     mount();
     const input = field();

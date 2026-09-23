@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { WeekView } from "./week-view";
 import { PatchTaskBody } from "@/lib/validation";
 import type { PlannerWeekDTO, TaskDTO } from "@/lib/dto";
@@ -21,7 +21,7 @@ function week(): PlannerWeekDTO {
     start: START,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
-      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes: 0 } };
+      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes: date === START ? 75 : 0 } };
     }),
   };
 }
@@ -64,6 +64,11 @@ describe("WeekView", () => {
     const { fetchMock } = mount();
     fireEvent.drop(column("Wed"), { dataTransfer: { getData: () => "" } });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says what each day already holds against the time it has", () => {
+    mount();
+    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
   });
 
   it("plans from the week on screen rather than from today", () => {

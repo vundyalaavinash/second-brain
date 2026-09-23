@@ -3,6 +3,7 @@
 import { useEffect, useState, type DragEvent } from "react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
+import { capacityTone } from "@/lib/capacity";
 import { addDaysLocal } from "../activity/format";
 import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
@@ -11,6 +12,8 @@ import { PLAN_DRAG_MIME, TASK_DRAG_MIME } from "./sources-drawer";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SAVE_ERROR = "Could not save that change";
+/** How full the day reads at a glance; the header line says it in words. */
+const BAR_CLASS = { ok: "bg-violet", warn: "bg-warn", danger: "bg-danger" } as const;
 
 interface Props {
   day: PlannerDayDTO;
@@ -104,6 +107,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onToggle={() => patch(task.id, { status: task.status === "done" ? "open" : "done" })}
         onRename={(title) => patch(task.id, { title })}
         onDue={(value) => patch(task.id, { dueDate: value })}
+        onEstimate={(m) => patch(task.id, { estimateMinutes: m })}
         onPriority={(priority: TaskPriority) => patch(task.id, { priority })}
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
@@ -126,9 +130,17 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     );
   }
 
+  const capacity = day.capacity;
+  const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
+  const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
+
   return (
     <section className="pane p-4 flex flex-col gap-3">
       <span className="micro">Plan</span>
+
+      <div className="h-1 rounded-full bg-layer-2 overflow-hidden" aria-hidden>
+        <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }} />
+      </div>
 
       {day.unfinishedYesterday.length > 0 && (
         <div className="flex items-center gap-3 rounded-md bg-layer-2 border border-hairline px-3 py-2">

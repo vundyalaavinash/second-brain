@@ -142,6 +142,7 @@ export function SourcesDrawer({ day, today }: Props) {
         onToggle={() => void patch(task.id, { status: task.status === "done" ? "open" : "done" })}
         onRename={(title) => void patch(task.id, { title })}
         onDue={(value) => void patch(task.id, { dueDate: value })}
+        onEstimate={(m) => void patch(task.id, { estimateMinutes: m })}
         onPriority={(priority: TaskPriority) => void patch(task.id, { priority })}
         onDrop={() => void patch(task.id, { status: "dropped" })}
         onDelete={() => void fetch(`/api/tasks/${task.id}`, { method: "DELETE" }).then(() => window.dispatchEvent(new Event("sb:tasks-changed")))}

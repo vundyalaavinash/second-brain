@@ -161,6 +161,13 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
     );
   }
 
+  function setEstimate(id: number, estimateMinutes: number | null) {
+    void mutate(
+      (prev) => prev.map((t) => (t.id === id ? { ...t, estimateMinutes } : t)),
+      () => fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ estimateMinutes }) }),
+    );
+  }
+
   function setPriority(id: number, priority: TaskPriority) {
     void mutate(
       (prev) => prev.map((t) => (t.id === id ? { ...t, priority } : t)),
@@ -253,6 +260,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
               onToggle={() => toggle(task)}
               onRename={(title) => rename(task.id, title)}
               onDue={(value) => setDue(task.id, value)}
+              onEstimate={(m) => setEstimate(task.id, m)}
               onPriority={(priority) => setPriority(task.id, priority)}
               onDrop={() => drop(task.id)}
               onDelete={() => remove(task.id)}
@@ -282,6 +290,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
                   onToggle={() => toggle(task)}
                   onRename={(title) => rename(task.id, title)}
                   onDue={(value) => setDue(task.id, value)}
+                  onEstimate={(m) => setEstimate(task.id, m)}
                   onPriority={(priority) => setPriority(task.id, priority)}
                   onDrop={() => drop(task.id)}
                   onDelete={() => remove(task.id)}

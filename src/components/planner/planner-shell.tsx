@@ -7,6 +7,7 @@ import type { PlannerCalendarDTO, PlannerDayDTO, PlannerMeetingsDTO, PlannerWeek
 import { setPlanDate } from "@/lib/plan-date";
 import { Crumb } from "../shell/crumb";
 import { addDaysLocal } from "../activity/format";
+import { CapacityLine } from "./capacity-line";
 import { DateHeader } from "./date-header";
 import { DayView } from "./day-view";
 import { MeetingsView, dayOf } from "./meetings-view";
@@ -119,6 +120,17 @@ export function PlannerShell(props: Props) {
     })();
   }, [meetingWindow]);
 
+  // The capacity is reckoned server-side, so new hours are saved and then read back whole.
+  const saveHours = useCallback(
+    (workHours: string) => {
+      void (async () => {
+        const res = await fetch("/api/settings/planner", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workHours }) });
+        if (res.ok) refreshDay();
+      })();
+    },
+    [refreshDay],
+  );
+
   const calendar: PlannerCalendarDTO | null = day?.calendar ?? meetings?.calendar ?? null;
   // Meetings is not navigated by date, so it keeps the header's numeral and drops the arrows.
   const meetingCounts = meetings && {
@@ -134,7 +146,7 @@ export function PlannerShell(props: Props) {
         <DateHeader
           date={day.date}
           unit="day"
-          summary={`${day.plan.length} planned, ${day.due.overdue.length + day.due.today.length} due, ${count(day.meetings.length, "meeting")}`}
+          summary={<CapacityLine capacity={day.capacity} planned={day.plan.length} meetings={day.meetings.length} onHours={saveHours} />}
           prevHref={`/planner?date=${addDaysLocal(day.date, -1)}`}
           nextHref={`/planner?date=${addDaysLocal(day.date, 1)}`}
           todayHref="/planner"

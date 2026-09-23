@@ -13,6 +13,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowUp, FileText, Link2, Search, Square } from "lucide-react";
+import { formatMinutes } from "@/lib/capacity";
 import { detectIntent, type Intent } from "@/lib/intent";
 import { useCapture } from "@/lib/use-capture";
 import { useCurrentContainer } from "@/lib/current-container";
@@ -344,6 +345,8 @@ export function PromptBar({
         <span className="shrink-0 mt-0.5 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-hairline text-[12px] text-fg-muted">
           <mode.icon className="w-3.5 h-3.5" aria-hidden />
           {mode.label}
+          {/* The parser's reading of "~25m", so the size is seen before the task is filed. */}
+          {intent.kind === "task" && intent.estimateMinutes !== null && <span className="font-mono text-[11px] text-fg-faint">~{formatMinutes(intent.estimateMinutes)}</span>}
         </span>
         {multiline ? (
           <textarea

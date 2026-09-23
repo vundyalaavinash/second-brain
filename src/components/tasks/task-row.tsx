@@ -10,6 +10,7 @@ import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { titleCase } from "@/lib/format";
 import { addDaysLocal, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
+import { EstimateChip } from "./estimate-chip";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -43,6 +44,8 @@ interface Props {
   onToggle: () => void;
   onRename: (title: string) => void;
   onDue: (value: string | null) => void;
+  /** Shows the estimate chip. Left out where an estimate cannot be saved. */
+  onEstimate?: (minutes: number | null) => void;
   onPriority: (priority: TaskPriority) => void;
   onDrop: () => void;
   onDelete: () => void;
@@ -69,7 +72,7 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
+  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
   planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onRowDrop,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
@@ -427,6 +430,7 @@ export function TaskRow({
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
           {dueNode}
+          {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} compact />}
         </span>
         {actions}
       </li>
@@ -452,6 +456,7 @@ export function TaskRow({
         </Chip>
       )}
       {dueNode}
+      {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
       {actions}
     </li>
   );
