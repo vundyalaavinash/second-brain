@@ -85,11 +85,12 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
       window.removeEventListener("pointercancel", onCancel);
       detachResize.current = null;
     }
-    /** Ends the session and hands the height back to the layout, before anything is written:
-     * a resize that changes nothing, or that fails, leaves no dragged pixels behind. */
+    /** Ends the session and puts the layout's own height back, before anything is written: a
+     * resize that changes nothing, or that fails, leaves no dragged pixels behind. React
+     * believes the node still holds the prop's height, so it has to be written back by hand. */
     function finish() {
       detach();
-      if (block) block.style.height = "";
+      if (block) block.style.height = `${height * pxPerMin}px`;
       setResizing(false);
     }
     function onMove(ev: MouseEvent) {

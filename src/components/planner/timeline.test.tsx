@@ -200,7 +200,7 @@ describe("Timeline", () => {
     fireEvent.pointerMove(window, { clientY: 220 });
     fireEvent.pointerUp(window, { clientY: 200 });
     expect(posts).toEqual([]);
-    expect(block.style.height).toBe("");
+    expect(block.style.height).toBe("45px");
   });
 
   it("completes a block in place and dims a done one", async () => {
