@@ -1,0 +1,134 @@
+"use client";
+
+import { useState, type KeyboardEvent, type PointerEvent } from "react";
+import type { PlanTaskDTO } from "@/lib/dto";
+import { formatMinutes } from "@/lib/capacity";
+import { formatClock } from "../activity/format";
+import { blockEnd, isoToMinutes, minutesToIso, snap } from "./block-math";
+
+interface Props {
+  task: PlanTaskDTO;
+  date: string;
+  /** Pixel geometry from the layout, in minutes from the column's start. */
+  top: number;
+  height: number;
+  col: number;
+  cols: number;
+  pxPerMin: number;
+  onPatch: (id: number, body: Record<string, unknown>) => Promise<boolean>;
+  /** Moving from the pointer: the timeline owns the ghost, the block only reports. */
+  onDragStart: (e: PointerEvent<HTMLDivElement>) => void;
+}
+
+const MOVE = 15;
+const FINE = 5;
+const MIN_LENGTH = 5;
+const MAX_LENGTH = 480;
+const DEFAULT_LENGTH = 25;
+
+/**
+ * A planned task on the timeline: the title, the hours, an estimate, a checkbox that finishes
+ * it where it sits. Arrows move it, Alt and arrows resize it, Backspace takes it off the
+ * timeline (the task stays on the plan). Done blocks stay, dimmed and struck through.
+ */
+export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatch, onDragStart }: Props) {
+  const [resizing, setResizing] = useState(false);
+  const start = task.scheduledAt!;
+  const end = blockEnd({ scheduledAt: start, estimateMinutes: task.estimateMinutes });
+  const done = task.status === "done";
+  const name = `${task.title}, ${formatClock(start)} to ${formatClock(end)}`;
+
+  async function move(deltaMinutes: number) {
+    const next = Math.max(0, Math.min(24 * 60 - FINE, snap(isoToMinutes(start) + deltaMinutes)));
+    if (await onPatch(task.id, { scheduledAt: minutesToIso(date, next) })) {
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: `Moved to ${formatClock(minutesToIso(date, next))}` } }));
+    }
+  }
+
+  async function resize(deltaMinutes: number) {
+    const next = Math.max(MIN_LENGTH, Math.min(MAX_LENGTH, (task.estimateMinutes ?? DEFAULT_LENGTH) + deltaMinutes));
+    await onPatch(task.id, { estimateMinutes: next });
+  }
+
+  function onKey(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return;
+    const step = e.shiftKey ? FINE : MOVE;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const sign = e.key === "ArrowDown" ? 1 : -1;
+      if (e.altKey) void resize(sign * FINE);
+      else void move(sign * step);
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      void onPatch(task.id, { scheduledAt: null });
+    }
+  }
+
+  // Resizing by pointer: the bottom edge follows the pointer in 5-minute steps and writes the
+  // estimate once on release. The element is caught before the handler returns, because React
+  // clears `currentTarget` the moment it does.
+  function onResizeDown(e: PointerEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const block = e.currentTarget.parentElement as HTMLElement | null;
+    const startY = e.clientY;
+    const startLen = task.estimateMinutes ?? DEFAULT_LENGTH;
+    const lengthAt = (y: number) => Math.max(MIN_LENGTH, Math.min(MAX_LENGTH, snap(startLen + (y - startY) / pxPerMin)));
+    setResizing(true);
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (block) block.style.height = `${lengthAt(ev.clientY) * pxPerMin}px`;
+    };
+    const onUp = (ev: globalThis.PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setResizing(false);
+      const next = lengthAt(ev.clientY);
+      if (next !== startLen) void onPatch(task.id, { estimateMinutes: next });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label={name}
+      tabIndex={0}
+      data-task-block={task.id}
+      onKeyDown={onKey}
+      onPointerDown={done ? undefined : onDragStart}
+      className={`focus-ring absolute rounded-md border-l-2 border-violet bg-violet-dim overflow-hidden select-none ${done ? "opacity-50" : ""} ${resizing ? "cursor-ns-resize" : "cursor-grab"}`}
+      style={{
+        top: top * pxPerMin,
+        height: height * pxPerMin,
+        left: `calc(3.5rem + (100% - 3.5rem) * ${col / cols})`,
+        width: `calc((100% - 3.5rem) / ${cols} - 4px)`,
+      }}
+    >
+      <div className="p-2 flex flex-col gap-0.5 h-full pointer-events-none">
+        <span className="flex items-center gap-2 min-w-0">
+          <input
+            type="checkbox"
+            aria-label={`Done: ${task.title}`}
+            checked={done}
+            onChange={() => void onPatch(task.id, { status: done ? "open" : "done" })}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="focus-ring accent-violet w-3.5 h-3.5 shrink-0 pointer-events-auto"
+          />
+          <span className={`truncate text-[13px] ${done ? "line-through text-fg-muted" : ""}`}>{task.title}</span>
+        </span>
+        <span className="font-mono text-[11px] text-fg-faint">
+          {formatClock(start)}–{formatClock(end)} · {formatMinutes(task.estimateMinutes ?? DEFAULT_LENGTH)}
+        </span>
+      </div>
+      {!done && (
+        <button
+          type="button"
+          aria-label={`Resize ${task.title}`}
+          onPointerDown={onResizeDown}
+          className="focus-ring absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize pointer-events-auto"
+        />
+      )}
+    </div>
+  );
+}

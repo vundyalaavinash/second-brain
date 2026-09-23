@@ -5,6 +5,9 @@ import type { PlannerDayDTO } from "@/lib/dto";
 import { PlanPane } from "./plan-pane";
 import { Timeline } from "./timeline";
 
+const JSON_HEADERS = { "content-type": "application/json" };
+const SAVE_ERROR = "Could not save that change";
+
 /**
  * Two columns from 1100 px: the timeline on the left, the plan on the right. Below that they
  * stack with the plan first: a phone plans, it does not read a timeline. The plan is written
@@ -23,13 +26,24 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** What the timeline's blocks write with; the plan pane reloads the day off the event. */
+  async function patchTask(id: number, body: Record<string, unknown>): Promise<boolean> {
+    const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) });
+    if (!res.ok) {
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: SAVE_ERROR } }));
+      return false;
+    }
+    window.dispatchEvent(new Event("sb:tasks-changed"));
+    return true;
+  }
+
   return (
     <div className="grid grid-cols-1 min-[1100px]:grid-cols-[1fr_1fr] min-[1400px]:grid-cols-[5fr_4fr] gap-6 items-start">
       <div className="min-[1100px]:order-2">
         <PlanPane day={day} today={today} onRefresh={onRefresh} />
       </div>
       <div className="min-[1100px]:order-1">
-        <Timeline date={day.date} meetings={day.meetings} workHours={day.capacity.workHours} />
+        <Timeline date={day.date} meetings={day.meetings} tasks={day.plan} onPatchTask={patchTask} workHours={day.capacity.workHours} />
       </div>
     </div>
   );

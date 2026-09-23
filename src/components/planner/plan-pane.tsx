@@ -4,13 +4,13 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { capacityTone } from "@/lib/capacity";
+import { blockLength, capacityTone } from "@/lib/capacity";
 import { addDaysLocal } from "../activity/format";
 import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
-import { PLAN_DRAG_MIME } from "./drag-mime";
+import { PLAN_DRAG_MIME, PLAN_MINUTES_MIME } from "./drag-mime";
 import { PlanPicker } from "./plan-picker";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -184,8 +184,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         draggable
         onDragStart={(e) => {
           setDragId(task.id);
-          // The timeline accepts this one to give the task a block.
+          // The timeline accepts this one to give the task a block; the length beside it sizes
+          // the ghost the timeline draws under the cursor.
           e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
+          e.dataTransfer.setData(PLAN_MINUTES_MIME, String(blockLength(task)));
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
