@@ -63,9 +63,9 @@ describe("RitualStrip", () => {
       { date: TODAY, taskId: due.id },
     ]));
     const drawerEvents: unknown[] = [];
-    window.addEventListener("sb:planner-drawer", (e) => drawerEvents.push((e as CustomEvent).detail));
+    window.addEventListener("sb:plan-picker", (e) => drawerEvents.push((e as CustomEvent).detail));
     fireEvent.click(screen.getByRole("button", { name: "Open projects" }));
-    expect(drawerEvents).toEqual([{ tab: "projects", focus: true }]);
+    expect(drawerEvents).toEqual([{ filter: "projects", focus: true }]);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onDone).toHaveBeenCalled();
     expect(localStorage.getItem(ritualDoneKey(TODAY))).toBe("1");

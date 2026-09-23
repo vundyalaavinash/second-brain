@@ -94,13 +94,13 @@ export function RitualStrip({ day, today, onStarted, onDone }: Props) {
   }
   function openProjects() {
     onStarted();
-    window.dispatchEvent(new CustomEvent("sb:planner-drawer", { detail: { tab: "projects", focus: true } }));
+    window.dispatchEvent(new CustomEvent("sb:plan-picker", { detail: { filter: "projects", focus: true } }));
   }
 
   const copy: Record<StepId, { title: string; detail: string; action: { label: string; run: () => void }; skipLabel: string }> = {
     carry: { title: "Carry over", detail: `${morning.carried} unfinished from yesterday`, action: { label: "Carry over", run: () => void carryOver() }, skipLabel: "Skip" },
     due: { title: "Review what is due", detail: `${morning.overdue} overdue, ${morning.dueToday} due ${day.date === today ? "today" : "that day"}`, action: { label: "Plan all", run: () => void planAll() }, skipLabel: "Skip" },
-    projects: { title: "Pick from projects", detail: "Open the Projects tab and add what moves them forward", action: { label: "Open projects", run: openProjects }, skipLabel: "Done" },
+    projects: { title: "Pick from projects", detail: "Browse your projects and add what moves them forward", action: { label: "Open projects", run: openProjects }, skipLabel: "Done" },
   };
 
   return (

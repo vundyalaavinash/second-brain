@@ -114,27 +114,13 @@ describe("PlanPane", () => {
     expect(fill.style.width).toBe("100%");
   });
 
-  it("accepts a dragged task at the end and between rows", async () => {
-    const posts = stubPlan();
-    render(<PlanPane day={day({ plan: [{ ...a, planId: 1 }, { ...b, planId: 2 }] })} today={TODAY} onRefresh={vi.fn()} />);
-    const dt = { types: ["application/x-sb-task"], getData: () => String(c.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
-    const list = screen.getByRole("list", { name: "Plan" });
-    fireEvent.dragOver(list, { dataTransfer: dt });
-    expect(list.className).toMatch(/border-violet/);
-    fireEvent.drop(screen.getByText(b.title).closest("li")!, { dataTransfer: dt });
-    await waitFor(() => expect(posts.map((p) => [p.method, p.body])).toEqual([
-      ["POST", { date: TODAY, taskId: c.id }],
-      ["PATCH", { date: TODAY, taskIds: [a.id, c.id, b.id] }],
-    ]));
-  });
-
   it("opens today's empty plan with the ritual, and not another day's", async () => {
     stubPlan();
     render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
     expect(await screen.findByRole("list", { name: "Plan the day" })).toBeTruthy();
     cleanup();
     render(<PlanPane day={day({ plan: [], date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
-    expect(await screen.findByText(/Nothing planned\. Add from the sources on the right, or press p on any task/)).toBeTruthy();
+    expect(await screen.findByText(/Nothing planned\. Add a task below, or press p on any task/)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
   });
 
@@ -201,31 +187,12 @@ describe("PlanPane", () => {
     }
   });
 
-  it("marks the row a dragged task would land above, and lets go of it again", () => {
-    stubPlan();
-    render(<PlanPane day={day({ plan: [{ ...a, planId: 1 }, { ...b, planId: 2 }] })} today={TODAY} onRefresh={vi.fn()} />);
-    const dt = { types: ["application/x-sb-task"], getData: () => String(c.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
-    const row = screen.getByText(b.title).closest("li")!;
-    fireEvent.dragOver(row, { dataTransfer: dt });
-    expect(row.className).toMatch(/border-t border-violet/);
-    fireEvent.dragLeave(screen.getByRole("list", { name: "Plan" }), { dataTransfer: dt });
-    expect(row.className).not.toMatch(/border-t border-violet/);
-  });
-
   it("sends a plan row dropped on the list's own area to the end", async () => {
     const posts = stubPlan();
     render(<PlanPane day={day({ plan: [{ ...a, planId: 1 }, { ...b, planId: 2 }] })} today={TODAY} onRefresh={vi.fn()} />);
     const dt = { types: ["application/x-sb-plan"], getData: () => String(a.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
     fireEvent.drop(screen.getByRole("list", { name: "Plan" }), { dataTransfer: dt });
     await waitFor(() => expect(posts).toEqual([{ url: "/api/plan", method: "PATCH", body: { date: TODAY, taskIds: [b.id, a.id] } }]));
-  });
-
-  it("plans a task dropped past the last row without reordering", async () => {
-    const posts = stubPlan();
-    render(<PlanPane day={day({ plan: [{ ...a, planId: 1 }] })} today={TODAY} onRefresh={vi.fn()} />);
-    const dt = { types: ["application/x-sb-task"], getData: () => String(c.id), setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
-    fireEvent.drop(screen.getByRole("list", { name: "Plan" }), { dataTransfer: dt });
-    await waitFor(() => expect(posts.map((p) => [p.method, p.body])).toEqual([["POST", { date: TODAY, taskId: c.id }]]));
   });
 
   it("shows no ritual when the morning has nothing to offer", async () => {

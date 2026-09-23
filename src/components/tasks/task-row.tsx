@@ -14,7 +14,7 @@ import { EstimateChip } from "./estimate-chip";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function formatShortDate(day: string): string {
+export function formatShortDate(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
   const date = new Date(y, m - 1, d);
   return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()}`;

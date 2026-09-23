@@ -10,7 +10,8 @@ import { Button, List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
-import { PLAN_DRAG_MIME, TASK_DRAG_MIME } from "./sources-drawer";
+import { PLAN_DRAG_MIME } from "./drag-mime";
+import { PlanPicker } from "./plan-picker";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SAVE_ERROR = "Could not save that change";
@@ -38,13 +39,11 @@ interface Props {
   onRefresh: () => void;
 }
 
-/** The day's plan, and the only place tasks land: the drawer beside it holds everything else. */
+/** The day's plan, and the picker under it that feeds it: everything else is a row menu away. */
 export function PlanPane({ day, today, onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
-  // The row a dragged task would land above, so the list can mark the exact index.
-  const [overId, setOverId] = useState<number | null>(null);
   // The morning ritual belongs to today alone. Whether it was already walked through lives in
   // the browser, so the answer is null until the effect has read it and the strip's place stays
   // empty for that first frame rather than flashing a ritual the day is already past.
@@ -130,22 +129,6 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     if (!(await send("/api/plan", "DELETE", { date: day.date, taskId }, "sb:plan-changed"))) refocus.current = null;
   }
 
-  /** A task dragged in from the drawer: planned first, then moved to where it was dropped. */
-  async function planAt(taskId: number, index: number) {
-    if (day.plan.some((t) => t.id === taskId)) return;
-    // One announcement for the whole move, so the day is read back once rather than twice.
-    if (!(await send("/api/plan", "POST", { date: day.date, taskId }, null))) return;
-    const ids = day.plan.map((t) => t.id);
-    // The POST already put it last, so only a drop above the end needs an order.
-    if (index >= ids.length) {
-      window.dispatchEvent(new Event("sb:plan-changed"));
-      return;
-    }
-    ids.splice(index, 0, taskId);
-    // The task is on the plan either way; a failed reorder still has to be read back.
-    if (!(await send("/api/plan", "PATCH", { date: day.date, taskIds: ids }, "sb:plan-changed"))) window.dispatchEvent(new Event("sb:plan-changed"));
-  }
-
   /** The plan row carried by a drag, when that is what the drag holds. */
   function draggedPlanId(e: DragEvent<HTMLElement>): number | null {
     if (!e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) return null;
@@ -153,28 +136,14 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     return Number(e.dataTransfer.getData(PLAN_DRAG_MIME)) || null;
   }
 
-  function droppedTaskId(e: DragEvent<HTMLElement>): number | null {
-    if (!e.dataTransfer?.types.includes(TASK_DRAG_MIME)) return null;
-    e.preventDefault();
-    return Number(e.dataTransfer.getData(TASK_DRAG_MIME)) || null;
-  }
-
   function clearDrag() {
     setOver(false);
-    setOverId(null);
   }
 
   function handleRowDrop(rowId: number, e: DragEvent<HTMLLIElement>) {
     // A row drop means "here", never "at the end": the list behind it must not answer as well.
     e.stopPropagation();
     clearDrag();
-    const incoming = droppedTaskId(e);
-    if (incoming !== null) {
-      const index = day.plan.findIndex((t) => t.id === rowId);
-      setDragId(null);
-      if (index !== -1) void planAt(incoming, index);
-      return;
-    }
     const ids = day.plan.map((t) => t.id);
     const from = ids.indexOf(dragId ?? -1);
     const to = ids.indexOf(rowId);
@@ -201,8 +170,6 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         key={task.id}
         task={task}
         today={today}
-        // The hairline sits on the row a drop would push down, so the gap it lands in is named.
-        className={overId === task.id ? "border-t border-violet" : ""}
         as={reduce ? undefined : motion.li}
         rowProps={reduce ? undefined : ROW_MOTION}
         onToggle={() => patch(task.id, { status: task.status === "done" ? "open" : "done" })}
@@ -217,21 +184,13 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         draggable
         onDragStart={(e) => {
           setDragId(task.id);
-          // The drawer accepts this one to take the task off the plan again.
+          // The timeline accepts this one to give the task a block.
           e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
-          // Only a task or another plan row may land here; everything else keeps its own drop.
-          const types = e.dataTransfer?.types;
-          if (types?.includes(TASK_DRAG_MIME)) {
-            e.preventDefault();
-            setOverId(task.id);
-          } else if (types?.includes(PLAN_DRAG_MIME)) e.preventDefault();
-        }}
-        onDragLeave={(e) => {
-          // Off the row and not into one of its own children: the gap it named is no longer the target.
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOverId((id) => (id === task.id ? null : id));
+          // Only another plan row may land here; everything else keeps its own drop.
+          if (e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) e.preventDefault();
         }}
         onRowDrop={(e) => handleRowDrop(task.id, e)}
       />
@@ -280,7 +239,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </AnimatePresence>
       )}
       {!showRitual && day.plan.length === 0 && ritual !== null && (
-        <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add from the sources on the right, or press p on any task.</p>
+        <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add a task below, or press p on any task.</p>
       )}
 
       <List
@@ -288,9 +247,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         aria-label="Plan"
         className={`border rounded-md transition-[colors,padding] duration-100 ${over ? "border-violet pb-6" : "border-transparent"} ${day.plan.length === 0 ? "min-h-11" : ""}`}
         onDragOver={(e) => {
-          const types = e.dataTransfer?.types;
-          // A task from the drawer lands at the end; a plan row dropped here moves last.
-          if (!types?.includes(TASK_DRAG_MIME) && !types?.includes(PLAN_DRAG_MIME)) return;
+          // A plan row dropped on the list's own area moves last.
+          if (!e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) return;
           e.preventDefault();
           setOver(true);
         }}
@@ -300,11 +258,6 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         }}
         onDrop={(e) => {
           clearDrag();
-          const incoming = droppedTaskId(e);
-          if (incoming !== null) {
-            void planAt(incoming, day.plan.length);
-            return;
-          }
           const moved = draggedPlanId(e);
           setDragId(null);
           if (moved !== null) moveToEnd(moved);
@@ -312,6 +265,8 @@ export function PlanPane({ day, today, onRefresh }: Props) {
       >
         {reduce ? day.plan.map(row) : <AnimatePresence initial={false}>{day.plan.map(row)}</AnimatePresence>}
       </List>
+
+      <PlanPicker day={day} today={today} />
 
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
     </section>
