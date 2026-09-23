@@ -97,6 +97,8 @@ describe("plannerDay", () => {
     expect(day.sources.due.overdue.map((x) => x.id)).toEqual([late.id]);
     expect(day.sources.due.today).toEqual([]); // already planned
     expect(day.sources.projects.map((g) => [g.container.name, g.tasks.length])).toEqual([["Launch", 2], ["Idle", 0]]);
+    // A group carries the name its heading needs and nothing more: no counts, no progress.
+    expect(day.sources.projects[0].container).toEqual({ id: project.id, name: "Launch", slug: project.slug, kind: "project" });
     expect(day.sources.areas.map((g) => [g.container.name, g.tasks.map((x) => x.id)])).toEqual([["Health", [todayTask.id]]]);
     expect(day.capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, unestimated: 0, workHours: "09:00-18:00" });
     void empty;

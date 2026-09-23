@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import type { PlannerCalendarDTO, PlannerDayDTO, PlannerMeetingsDTO, PlannerWeekDTO } from "@/lib/dto";
@@ -34,6 +34,10 @@ const TABS: { view: PlannerView; label: string; href: string }[] = [
 const TAB = "focus-ring relative rounded-full h-7 px-3 flex items-center text-[12.5px] transition-colors duration-150";
 
 const CRUMB: Record<PlannerView, string> = { day: "Planner", week: "Week", meetings: "Meetings" };
+
+/** One interaction often moves a task and the plan in the same breath; the day is ~a quarter
+ * of a megabyte, so the two events are let to settle into one request. */
+const DAY_REFRESH_MS = 50;
 
 /** The one panel the tabs speak for: each view is a route, so only the open one is ever rendered. */
 const PANEL_ID = "planner-panel";
@@ -92,12 +96,29 @@ export function PlannerShell(props: Props) {
     return () => setPlanDate(null);
   }, [selectedDate]);
 
+  // A trailing timer coalesces a burst of change events, and a monotonic request id keeps a
+  // day that was asked for earlier from landing on top of a newer one.
+  const dayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dayRequest = useRef(0);
+  // A pending refresh belongs to the date it was asked for; moving to another day drops it.
+  useEffect(() => () => {
+    if (dayTimer.current) clearTimeout(dayTimer.current);
+  }, [dayDate]);
+
   const refreshDay = useCallback(() => {
     if (!dayDate) return;
-    void (async () => {
-      const res = await fetch(`/api/planner/day?date=${dayDate}`);
-      if (res.ok) setDay((await res.json()) as PlannerDayDTO);
-    })();
+    if (dayTimer.current) clearTimeout(dayTimer.current);
+    dayTimer.current = setTimeout(() => {
+      dayTimer.current = null;
+      const request = ++dayRequest.current;
+      void (async () => {
+        const res = await fetch(`/api/planner/day?date=${dayDate}`);
+        if (!res.ok) return;
+        const body = (await res.json()) as PlannerDayDTO;
+        // A slower earlier request answering last would put the day back as it was.
+        if (request === dayRequest.current) setDay(body);
+      })();
+    }, DAY_REFRESH_MS);
   }, [dayDate]);
 
   const refreshWeek = useCallback(() => {

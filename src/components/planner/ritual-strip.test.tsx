@@ -86,6 +86,24 @@ describe("RitualStrip", () => {
     expect(screen.queryByRole("button", { name: "Plan all" })).toBeNull();
   });
 
+  it("keeps a finished due step on the strip after the day comes back without it", async () => {
+    const posts = stub();
+    const { rerender } = render(<RitualStrip day={day({ unfinishedYesterday: [] })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Plan all" }));
+    await waitFor(() => expect(posts).toHaveLength(2));
+
+    // Everything due is on the plan now, so the reloaded day carries none of it.
+    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] };
+    rerender(<RitualStrip day={day({ unfinishedYesterday: [], sources: empty })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
+    const steps = screen.getAllByRole("listitem");
+    expect(steps).toHaveLength(2);
+    expect(steps[0].textContent).toContain("Review what is due");
+    // Struck through with the check, not gone: the walk keeps the shape it started with.
+    expect(steps[0].querySelector(".line-through")).toBeTruthy();
+    expect(steps[0].querySelector(".text-violet")).toBeTruthy();
+    expect(steps[1].getAttribute("aria-current")).toBe("step");
+  });
+
   it("plans the oldest overdue first, then what falls due on the day", async () => {
     const posts = stub();
     const older = task("Older", "2026-09-18");

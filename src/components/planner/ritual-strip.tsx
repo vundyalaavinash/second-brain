@@ -26,16 +26,27 @@ interface Props {
  * ordered list; the current step carries aria-current, finished ones a check.
  */
 export function RitualStrip({ day, today, onStarted, onDone }: Props) {
-  // Overdue first, oldest deadline leading, then what falls due on the day itself.
-  const dueTasks = [
-    ...[...day.sources.due.overdue].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")),
-    ...day.sources.due.today,
-  ];
-  const steps: StepId[] = [
-    ...(day.unfinishedYesterday.length ? (["carry"] as StepId[]) : []),
-    ...(dueTasks.length ? (["due"] as StepId[]) : []),
-    "projects",
-  ];
+  // The morning the strip opened on, latched: acting on a step reloads the day, and a step
+  // whose work is now done must strike itself through rather than disappear mid-walk.
+  const [morning] = useState(() => {
+    // Overdue first, oldest deadline leading, then what falls due on the day itself.
+    const dueTasks = [
+      ...[...day.sources.due.overdue].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")),
+      ...day.sources.due.today,
+    ];
+    return {
+      dueTasks,
+      carried: day.unfinishedYesterday.length,
+      overdue: day.sources.due.overdue.length,
+      dueToday: day.sources.due.today.length,
+      steps: [
+        ...(day.unfinishedYesterday.length ? (["carry"] as StepId[]) : []),
+        ...(dueTasks.length ? (["due"] as StepId[]) : []),
+        "projects" as StepId,
+      ],
+    };
+  });
+  const { dueTasks, steps } = morning;
   const [finished, setFinished] = useState<StepId[]>([]);
   const [error, setError] = useState<string | null>(null);
   const current = steps.find((s) => !finished.includes(s));
@@ -79,8 +90,8 @@ export function RitualStrip({ day, today, onStarted, onDone }: Props) {
   }
 
   const copy: Record<StepId, { title: string; detail: string; action: { label: string; run: () => void }; skipLabel: string }> = {
-    carry: { title: "Carry over", detail: `${day.unfinishedYesterday.length} unfinished from yesterday`, action: { label: "Carry over", run: () => void carryOver() }, skipLabel: "Skip" },
-    due: { title: "Review what is due", detail: `${day.sources.due.overdue.length} overdue, ${day.sources.due.today.length} due ${day.date === today ? "today" : "that day"}`, action: { label: "Plan all", run: () => void planAll() }, skipLabel: "Skip" },
+    carry: { title: "Carry over", detail: `${morning.carried} unfinished from yesterday`, action: { label: "Carry over", run: () => void carryOver() }, skipLabel: "Skip" },
+    due: { title: "Review what is due", detail: `${morning.overdue} overdue, ${morning.dueToday} due ${day.date === today ? "today" : "that day"}`, action: { label: "Plan all", run: () => void planAll() }, skipLabel: "Skip" },
     projects: { title: "Pick from projects", detail: "Open the Projects tab and add what moves them forward", action: { label: "Open projects", run: openProjects }, skipLabel: "Done" },
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ElementType, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { GripVertical, MoreHorizontal } from "lucide-react";
@@ -68,12 +68,18 @@ interface Props {
   draggable?: boolean;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
+  onDragLeave?: (e: DragEvent<HTMLLIElement>) => void;
   onRowDrop?: (e: DragEvent<HTMLLIElement>) => void;
+  /** What the row renders as. The plan list hands in `motion.li` for its layout animation. */
+  as?: ElementType;
+  /** Extra props for that element — motion's `layout`, `initial`, `exit` and the rest. */
+  rowProps?: Record<string, unknown>;
 }
 
 export function TaskRow({
   task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
-  planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onRowDrop,
+  planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
+  as, rowProps: extraRowProps,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -220,6 +226,7 @@ export function TaskRow({
   ) : (
     <button
       type="button"
+      data-title
       className={`focus-ring text-left min-w-0 text-[13.5px] ${compact ? "w-full line-clamp-2" : "flex-1 truncate"} ${
         done ? "line-through text-fg-faint" : ""
       }`}
@@ -443,16 +450,29 @@ export function TaskRow({
     if (target.isContentEditable || target instanceof HTMLTextAreaElement) return;
     if (target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio") return;
     e.preventDefault();
+    // The row has claimed the letter: the window's `g p` chord must not read it as a jump too.
+    e.stopPropagation();
     planFromKey();
   }
 
-  const rowProps = { role: "listitem" as const, draggable, onDragStart, onDragOver, onDrop: onRowDrop, onKeyDown: onRowKeyDown };
+  const Row = (as ?? "li") as ElementType;
+  const rowProps = {
+    role: "listitem" as const,
+    "data-task-id": task.id,
+    draggable,
+    onDragStart,
+    onDragOver,
+    onDragLeave,
+    onDrop: onRowDrop,
+    onKeyDown: onRowKeyDown,
+    ...extraRowProps,
+  };
 
   // A column of the week is a seventh of the page: the compact row stacks the due date under
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.
   if (compact) {
     return (
-      <li {...rowProps} className={`hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors ${className}`}>
+      <Row {...rowProps} className={`hairline-row group flex items-start gap-2 px-2 py-2 min-w-0 hover:bg-layer-2 transition-colors ${className}`}>
         {leading}
         {checkbox}
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -461,12 +481,12 @@ export function TaskRow({
           {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} compact />}
         </span>
         {actions}
-      </li>
+      </Row>
     );
   }
 
   return (
-    <li {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
+    <Row {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
       {leading}
       <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
         <GripVertical className="w-3.5 h-3.5" />
@@ -486,6 +506,6 @@ export function TaskRow({
       {dueNode}
       {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
       {actions}
-    </li>
+    </Row>
   );
 }

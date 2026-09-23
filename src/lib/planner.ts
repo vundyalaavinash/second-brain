@@ -6,11 +6,11 @@ import { listContainers } from "@/domain/containers";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { parseMeta } from "@/domain/items";
-import { serializeContainers, serializeMeeting, serializePlanTask, serializeTask } from "./api";
+import { serializeMeeting, serializePlanTask, serializeTask } from "./api";
 import { freeMinutes, plannedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
 import { getWorkHours } from "./work-hours";
-import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO } from "./dto";
+import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
 export function plannerCalendar(db: DB): PlannerCalendarDTO {
@@ -18,17 +18,24 @@ export function plannerCalendar(db: DB): PlannerCalendarDTO {
   return { calendarsSeen: helper.calendarsSeen, permission: helper.permissions?.calendar ?? false };
 }
 
+/** How many of a group's tasks are not on the day's plan: the number its heading shows. */
+function unplannedIn(tasks: TaskDTO[], plannedIds: Set<number>): number {
+  return tasks.reduce((n, t) => n + (plannedIds.has(t.id) ? 0 : 1), 0);
+}
+
 /** Open tasks grouped by home: inbox (no container), then every active project and area. A task
  * in an archived container is in no group; it still shows under `due` when it is dated. */
 export function plannerSources(db: DB, date: string, plannedIds: Set<number>): PlannerSourcesDTO {
   const open = listTasks(db, { status: "open" }).map(serializeTask);
   const unplanned = open.filter((t) => !plannedIds.has(t.id));
-  const groups = (kind: "project" | "area"): SourceGroupDTO[] => {
-    const containers = serializeContainers(db, listContainers(db, { kind, status: "active" }));
-    return containers
-      .map((container) => ({ container, tasks: open.filter((t) => t.containerId === container.id) }))
-      .sort((a, b) => (b.tasks.length > 0 ? 1 : 0) - (a.tasks.length > 0 ? 1 : 0));
-  };
+  // A group heading needs a name and nothing else, so the rows are turned into refs here rather
+  // than through `serializeContainers`, which would count every container's items to say it.
+  const groups = (kind: "project" | "area"): SourceGroupDTO[] =>
+    listContainers(db, { kind, status: "active" })
+      .map((c) => ({ container: { id: c.id, name: c.name, slug: c.slug, kind: c.kind }, tasks: open.filter((t) => t.containerId === c.id) }))
+      // Sorted by what the heading counts — the tasks still to plan — so a container whose work
+      // is all on the day's plan sinks with the empty ones.
+      .sort((a, b) => Number(unplannedIn(b.tasks, plannedIds) > 0) - Number(unplannedIn(a.tasks, plannedIds) > 0));
   return {
     inbox: open.filter((t) => t.containerId === null).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     due: partitionDue(unplanned.filter((t) => t.dueDate !== null && t.dueDate <= date), date),

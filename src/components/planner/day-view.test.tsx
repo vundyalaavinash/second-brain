@@ -71,6 +71,27 @@ describe("DayView", () => {
     expect(screen.getByRole("tab", { name: /Inbox/ })).toBeTruthy();
   });
 
+  it("writes the plan first, then the timeline, then the sources", () => {
+    atWidth(false);
+    mount();
+    const plan = screen.getByRole("list", { name: "Plan" });
+    const timeline = screen.getByRole("region", { name: "Timeline" });
+    const sources = screen.getByRole("complementary", { name: "Sources" });
+    // Tab order is document order: the day's own work comes before the calendar beside it.
+    expect(plan.compareDocumentPosition(timeline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(timeline.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("moves into the sources with the drawer key where they are already on the page", () => {
+    atWidth(false);
+    mount();
+    drawer();
+    // Nothing to toggle at this width, so the key only hands over the keyboard.
+    expect(overlay()).toBeNull();
+    expect(document.activeElement?.getAttribute("role")).toBe("tab");
+    expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
+  });
+
   it("opens and closes the sources over the plan with the drawer key", () => {
     atWidth(true);
     mount();

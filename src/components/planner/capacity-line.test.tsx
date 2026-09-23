@@ -22,6 +22,21 @@ describe("CapacityLine", () => {
     expect(status.textContent).toContain("(2 unestimated)");
     expect(status.querySelector(".text-warn")).toBeTruthy();
     expect(status.getAttribute("title")).toBe("Plan is 30m over the free time");
+    // Colour alone never carries it: the phrase is in the status for a reader that sees neither.
+    expect(status.querySelector(".sr-only")?.textContent).toBe(". Plan is 30m over the free time");
+  });
+
+  it("says nothing extra while the plan fits", () => {
+    render(<CapacityLine capacity={base} planned={3} meetings={0} onHours={vi.fn()} />);
+    expect(screen.getByRole("status").querySelector(".sr-only")).toBeNull();
+  });
+
+  it("names the hours panel as the dialog the chip promises", () => {
+    render(<CapacityLine capacity={base} planned={0} meetings={0} onHours={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Hours 09:00-18:00" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("dialog");
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Working hours" })).toBeTruthy();
   });
 
   it("goes to danger past a quarter over", () => {

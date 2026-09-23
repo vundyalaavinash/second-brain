@@ -27,7 +27,6 @@ const TABS: { id: DrawerTab; label: string }[] = [
 interface Props {
   day: PlannerDayDTO;
   today: string;
-  onRefresh: () => void;
 }
 
 /** The day's own name in the add button: "today" on today, the date otherwise. */
@@ -154,8 +153,9 @@ export function SourcesDrawer({ day, today }: Props) {
 
   function groups(list: SourceGroupDTO[], emptyText: string) {
     if (list.length === 0) return <p className={EMPTY}>{emptyText}</p>;
-    // A container with nothing left in it sinks below the ones that still want work.
-    const ordered = [...list].sort((a, b) => Number(b.tasks.length > 0) - Number(a.tasks.length > 0));
+    // A container with nothing left to plan sinks below the ones that still want work — the
+    // same reading as the number beside its name.
+    const ordered = [...list].sort((a, b) => Number(open(b.tasks, plannedIds) > 0) - Number(open(a.tasks, plannedIds) > 0));
     return ordered.map((g) => (
       <details key={g.container.id} role="group" open={g.tasks.length > 0} className="flex flex-col gap-1">
         <summary className="focus-ring cursor-pointer flex items-center gap-2 rounded-sm px-1 py-1">
@@ -257,7 +257,9 @@ export function SourcesDrawer({ day, today }: Props) {
           </Chip>
         ))}
       </div>
-      <div ref={listRef} role="tabpanel" id={PANEL_ID} aria-labelledby={tabId(tab)} className="flex flex-col gap-2">
+      {/* Focusable in its own right: the tab strip is a single stop, so the panel behind it
+          needs one of its own for the keyboard to reach a list that only scrolls. */}
+      <div ref={listRef} role="tabpanel" id={PANEL_ID} aria-labelledby={tabId(tab)} tabIndex={0} className="focus-ring rounded-sm flex flex-col gap-2">
         {body()}
       </div>
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}

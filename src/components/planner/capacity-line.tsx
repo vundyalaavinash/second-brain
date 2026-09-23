@@ -26,6 +26,8 @@ export function CapacityLine({ capacity, planned, meetings, onHours }: Props) {
       <span role="status" title={title} className="font-mono text-[12px] text-fg-muted">
         {planned} planned · <span className={CAPACITY_TONE_CLASS[tone]}>{formatMinutes(capacity.plannedMinutes)}</span> of {formatMinutes(capacity.freeMinutes)} free
         {capacity.unestimated > 0 && ` (${capacity.unestimated} unestimated)`} · {count(meetings, "meeting")}
+        {/* The tone says it in colour and the title on hover; a reader that has neither hears it. */}
+        {title && <span className="sr-only">. {title}</span>}
       </span>
       <HoursChip workHours={capacity.workHours} onChange={onHours} />
     </span>
@@ -100,7 +102,7 @@ export function HoursChip({ workHours, onChange }: { workHours: string; onChange
         {workHours}
       </button>
       {open && (
-        <div ref={panel} className="panel absolute right-0 top-full mt-1 rounded-md p-2 flex flex-col gap-1 z-50 w-48">
+        <div ref={panel} role="dialog" aria-label="Working hours" className="panel absolute right-0 top-full mt-1 rounded-md p-2 flex flex-col gap-1 z-50 w-48">
           <label className="text-[11.5px] text-fg-muted" htmlFor={fieldId}>
             Working hours
           </label>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { capacityTone } from "@/lib/capacity";
@@ -15,6 +16,20 @@ const JSON_HEADERS = { "content-type": "application/json" };
 const SAVE_ERROR = "Could not save that change";
 /** How full the day reads at a glance; the header line says it in words. */
 const BAR_CLASS = { ok: "bg-violet", warn: "bg-warn", danger: "bg-danger" } as const;
+/** Spec §7: rows settle in 200 ms, the ritual folds away on a spring. */
+const ROW_MOTION = {
+  layout: true,
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.2 },
+};
+const RITUAL_MOTION = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: "auto", opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: { type: "spring", stiffness: 420, damping: 38, mass: 0.6 },
+} as const;
 
 interface Props {
   day: PlannerDayDTO;
@@ -28,12 +43,20 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
+  // The row a dragged task would land above, so the list can mark the exact index.
+  const [overId, setOverId] = useState<number | null>(null);
   // The morning ritual belongs to today alone. Whether it was already walked through lives in
   // the browser, so the answer is null until the effect has read it and the strip's place stays
   // empty for that first frame rather than flashing a ritual the day is already past.
   const [ritual, setRitual] = useState<boolean | null>(null);
   // Latched by the strip's first action: from then on a plan that gains tasks does not end it.
   const [started, setStarted] = useState(false);
+  const reduce = useReducedMotion();
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const headingRef = useRef<HTMLSpanElement | null>(null);
+  // Where the keyboard should land once the day the unplan asked for has come back: the id of
+  // the row that will take the departing one's place, or 0 for the pane's own heading.
+  const refocus = useRef<number | null>(null);
 
   useEffect(() => {
     let done = false;
@@ -71,33 +94,62 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     };
   }, [onRefresh]);
 
+  // A row unplanned from the keyboard takes the focus with it. The new plan is here, so the
+  // neighbour noted before the request takes it over — no state, only the DOM call.
+  useEffect(() => {
+    const id = refocus.current;
+    if (id === null) return;
+    refocus.current = null;
+    if (id === 0) headingRef.current?.focus();
+    else listRef.current?.querySelector<HTMLElement>(`[data-task-id="${id}"] button[data-title]`)?.focus();
+  }, [day.plan]);
+
   /** Answers whether the request went through, so a two-step drop can stop after a failed first half. */
-  async function send(url: string, method: string, body?: unknown, event = "sb:tasks-changed"): Promise<boolean> {
+  async function send(url: string, method: string, body?: unknown, event: string | null = "sb:tasks-changed"): Promise<boolean> {
     const res = await fetch(url, { method, headers: body ? JSON_HEADERS : undefined, body: body ? JSON.stringify(body) : undefined });
     if (!res.ok) {
       setError(SAVE_ERROR);
       return false;
     }
     setError(null);
-    window.dispatchEvent(new Event(event));
+    if (event) window.dispatchEvent(new Event(event));
     return true;
   }
 
   const patch = (id: number, body: Record<string, unknown>) => void send(`/api/tasks/${id}`, "PATCH", body);
   const remove = (id: number) => void send(`/api/tasks/${id}`, "DELETE");
-  const unplan = (taskId: number) => void send("/api/plan", "DELETE", { date: day.date, taskId }, "sb:plan-changed");
   const reorder = (taskIds: number[]) => void send("/api/plan", "PATCH", { date: day.date, taskIds }, "sb:plan-changed");
   const carryOver = () => void send("/api/plan/carry-over", "POST", { from: addDaysLocal(day.date, -1), to: day.date }, "sb:plan-changed");
+
+  /** Takes a task off the plan and says where the keyboard goes once the day comes back. */
+  async function unplan(taskId: number) {
+    const ids = day.plan.map((t) => t.id);
+    const i = ids.indexOf(taskId);
+    // Next, else previous, else nothing is left and the pane's heading holds the place.
+    refocus.current = i === -1 ? null : (ids[i + 1] ?? ids[i - 1] ?? 0);
+    if (!(await send("/api/plan", "DELETE", { date: day.date, taskId }, "sb:plan-changed"))) refocus.current = null;
+  }
 
   /** A task dragged in from the drawer: planned first, then moved to where it was dropped. */
   async function planAt(taskId: number, index: number) {
     if (day.plan.some((t) => t.id === taskId)) return;
-    if (!(await send("/api/plan", "POST", { date: day.date, taskId }, "sb:plan-changed"))) return;
+    // One announcement for the whole move, so the day is read back once rather than twice.
+    if (!(await send("/api/plan", "POST", { date: day.date, taskId }, null))) return;
     const ids = day.plan.map((t) => t.id);
     // The POST already put it last, so only a drop above the end needs an order.
-    if (index >= ids.length) return;
+    if (index >= ids.length) {
+      window.dispatchEvent(new Event("sb:plan-changed"));
+      return;
+    }
     ids.splice(index, 0, taskId);
     await send("/api/plan", "PATCH", { date: day.date, taskIds: ids }, "sb:plan-changed");
+  }
+
+  /** The plan row carried by a drag, when that is what the drag holds. */
+  function draggedPlanId(e: DragEvent<HTMLElement>): number | null {
+    if (!e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) return null;
+    e.preventDefault();
+    return Number(e.dataTransfer.getData(PLAN_DRAG_MIME)) || null;
   }
 
   function droppedTaskId(e: DragEvent<HTMLElement>): number | null {
@@ -106,24 +158,39 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     return Number(e.dataTransfer.getData(TASK_DRAG_MIME)) || null;
   }
 
-  function handleRowDrop(overId: number, e: DragEvent<HTMLLIElement>) {
+  function clearDrag() {
     setOver(false);
+    setOverId(null);
+  }
+
+  function handleRowDrop(rowId: number, e: DragEvent<HTMLLIElement>) {
+    // A row drop means "here", never "at the end": the list behind it must not answer as well.
+    e.stopPropagation();
+    clearDrag();
     const incoming = droppedTaskId(e);
     if (incoming !== null) {
-      // The list behind the row would otherwise plan it a second time, at the end.
-      e.stopPropagation();
-      const index = day.plan.findIndex((t) => t.id === overId);
+      const index = day.plan.findIndex((t) => t.id === rowId);
       setDragId(null);
       if (index !== -1) void planAt(incoming, index);
       return;
     }
     const ids = day.plan.map((t) => t.id);
     const from = ids.indexOf(dragId ?? -1);
-    const to = ids.indexOf(overId);
+    const to = ids.indexOf(rowId);
     setDragId(null);
-    if (dragId === null || dragId === overId || from === -1 || to === -1) return;
+    if (dragId === null || dragId === rowId || from === -1 || to === -1) return;
     ids.splice(from, 1);
     ids.splice(to, 0, dragId);
+    reorder(ids);
+  }
+
+  /** A plan row dropped on the list's own area rather than on a row: it goes last. */
+  function moveToEnd(id: number) {
+    const ids = day.plan.map((t) => t.id);
+    const from = ids.indexOf(id);
+    if (from === -1 || from === ids.length - 1) return;
+    ids.splice(from, 1);
+    ids.push(id);
     reorder(ids);
   }
 
@@ -133,6 +200,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         key={task.id}
         task={task}
         today={today}
+        // The hairline sits on the row a drop would push down, so the gap it lands in is named.
+        className={overId === task.id ? "border-t border-violet" : ""}
+        as={reduce ? undefined : motion.li}
+        rowProps={reduce ? undefined : ROW_MOTION}
         onToggle={() => patch(task.id, { status: task.status === "done" ? "open" : "done" })}
         onRename={(title) => patch(task.id, { title })}
         onDue={(value) => patch(task.id, { dueDate: value })}
@@ -140,7 +211,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onPriority={(priority: TaskPriority) => patch(task.id, { priority })}
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
-        onPlan={() => unplan(task.id)}
+        onPlan={() => void unplan(task.id)}
         planned
         draggable
         onDragStart={(e) => {
@@ -152,7 +223,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onDragOver={(e) => {
           // Only a task or another plan row may land here; everything else keeps its own drop.
           const types = e.dataTransfer?.types;
-          if (types?.includes(TASK_DRAG_MIME) || types?.includes(PLAN_DRAG_MIME)) e.preventDefault();
+          if (types?.includes(TASK_DRAG_MIME)) {
+            e.preventDefault();
+            setOverId(task.id);
+          } else if (types?.includes(PLAN_DRAG_MIME)) e.preventDefault();
         }}
         onRowDrop={(e) => handleRowDrop(task.id, e)}
       />
@@ -165,10 +239,15 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
+  const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
 
   return (
     <section className="pane p-4 flex flex-col gap-3">
-      <span className="micro">Plan</span>
+      {/* Takes focus when the last plan row is unplanned from the keyboard, so the keyboard
+        * stays in the pane rather than falling back to the document. */}
+      <span ref={headingRef} tabIndex={-1} className="focus-ring micro rounded-sm self-start">
+        Plan
+      </span>
 
       <div className="h-1 rounded-full bg-layer-2 overflow-hidden" aria-hidden>
         <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }} />
@@ -183,30 +262,49 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </div>
       )}
 
-      {showRitual && <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />}
+      {reduce ? (
+        showRitual && ritualStrip
+      ) : (
+        <AnimatePresence initial={false}>
+          {showRitual && (
+            <motion.div key="ritual" className="overflow-hidden" {...RITUAL_MOTION}>
+              {ritualStrip}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
       {!showRitual && day.plan.length === 0 && ritual !== null && (
         <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add from the sources on the right, or press p on any task.</p>
       )}
 
       <List
+        ref={listRef}
         aria-label="Plan"
         className={`border rounded-md transition-colors duration-100 ${over ? "border-violet" : "border-transparent"} ${day.plan.length === 0 ? "min-h-11" : ""}`}
         onDragOver={(e) => {
-          if (!e.dataTransfer?.types.includes(TASK_DRAG_MIME)) return;
+          const types = e.dataTransfer?.types;
+          // A task from the drawer lands at the end; a plan row dropped here moves last.
+          if (!types?.includes(TASK_DRAG_MIME) && !types?.includes(PLAN_DRAG_MIME)) return;
           e.preventDefault();
           setOver(true);
         }}
         onDragLeave={(e) => {
           // Moving between two rows leaves one and enters another: the list itself is still under the cursor.
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) clearDrag();
         }}
         onDrop={(e) => {
-          setOver(false);
+          clearDrag();
           const incoming = droppedTaskId(e);
-          if (incoming !== null) void planAt(incoming, day.plan.length);
+          if (incoming !== null) {
+            void planAt(incoming, day.plan.length);
+            return;
+          }
+          const moved = draggedPlanId(e);
+          setDragId(null);
+          if (moved !== null) moveToEnd(moved);
         }}
       >
-        {day.plan.map(row)}
+        {reduce ? day.plan.map(row) : <AnimatePresence initial={false}>{day.plan.map(row)}</AnimatePresence>}
       </List>
 
       {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}

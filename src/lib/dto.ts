@@ -109,7 +109,8 @@ export interface ContainerDTO {
 }
 
 export interface SourceGroupDTO {
-  container: ContainerDTO;
+  /** Only what the drawer heading needs: a group carries no counts of its own. */
+  container: ContainerRefDTO;
   tasks: TaskDTO[];
 }
 

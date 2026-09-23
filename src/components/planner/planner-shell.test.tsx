@@ -3,14 +3,14 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { PlannerShell } from "./planner-shell";
 import { usePlanDate } from "@/lib/plan-date";
-import type { PlannerDayDTO } from "@/lib/dto";
+import type { PlannerDayDTO, PlanTaskDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: () => {} }), usePathname: () => "/planner" }));
 
 const CALENDAR = { calendarsSeen: 2, permission: true };
 
-function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
+function day(calendar: PlannerDayDTO["calendar"] = CALENDAR, over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   return {
     date: "2026-09-22",
     plan: [],
@@ -20,6 +20,7 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR): PlannerDayDTO {
     calendar,
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
     capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00" },
+    ...over,
   };
 }
 
@@ -64,7 +65,22 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   nav.push.mockClear();
+  try {
+    localStorage.clear();
+  } catch {
+    /* jsdom without storage */
+  }
 });
+
+const planTask = (id: number, title: string): PlanTaskDTO => ({
+  id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
+  estimateMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+});
+const dayCalls = (fetchMock: ReturnType<typeof stubRoutes>) =>
+  (fetchMock.mock.calls as unknown as FetchCall[]).filter(([input]) => String(input).startsWith("/api/planner/day"));
+/** How many tasks the header says are planned — the only place the loaded day shows itself. */
+const plannedCount = () => screen.getByRole("status").textContent?.split(" ")[0];
+const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("PlannerShell", () => {
   it("names the three views and marks the open one", () => {
@@ -148,6 +164,45 @@ describe("PlannerShell", () => {
     } finally {
       window.removeEventListener("sb:toast", onToast);
     }
+  });
+
+  it("reads the day back once when two changes land in the same interaction", async () => {
+    const fetchMock = stubRoutes({ "/api/planner/day": () => Response.json(day()) });
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+    fireEvent(window, new Event("sb:plan-changed"));
+    fireEvent(window, new Event("sb:tasks-changed"));
+
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(1));
+    // Well past the window: nothing follows the one request the pair earned.
+    await settle(120);
+    expect(dayCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it("keeps the newest day when an earlier request answers last", async () => {
+    const bodies = [day(CALENDAR, { plan: [planTask(1, "One")] }), day(CALENDAR, { plan: [planTask(1, "One"), planTask(2, "Two")] })];
+    const gates: (() => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (!String(input).startsWith("/api/planner/day")) return new Response(null, { status: 404 });
+        const body = bodies[gates.length];
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return Response.json(body);
+      }),
+    );
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+
+    fireEvent(window, new Event("sb:plan-changed"));
+    await waitFor(() => expect(gates).toHaveLength(1));
+    fireEvent(window, new Event("sb:plan-changed"));
+    await waitFor(() => expect(gates).toHaveLength(2));
+
+    // The newer day lands first; the older one, held up on the wire, arrives behind it.
+    gates[1]();
+    await waitFor(() => expect(plannedCount()).toBe("2"));
+    gates[0]();
+    await settle(20);
+    expect(plannedCount()).toBe("2");
   });
 
   it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {

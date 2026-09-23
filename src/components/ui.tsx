@@ -211,8 +211,8 @@ export function EmptyState({ icon: Icon, text, action }: { icon: LucideIcon; tex
 
 /** The list container and its row. Rows are edge-to-edge, separated by a hairline. */
 // The rest of the props reach the <ul>: a list that names itself, or takes a drop, says so here.
-export function List({ children, className = "", ...props }: HTMLAttributes<HTMLUListElement> & { children: ReactNode; className?: string }) {
-  return <ul role="list" className={`list-none m-0 p-0 ${className}`} {...props}>{children}</ul>;
+export function List({ children, className = "", ref, ...props }: HTMLAttributes<HTMLUListElement> & { children: ReactNode; className?: string; ref?: Ref<HTMLUListElement> }) {
+  return <ul ref={ref} role="list" className={`list-none m-0 p-0 ${className}`} {...props}>{children}</ul>;
 }
 
 export function Row({ children, className = "" }: { children: ReactNode; className?: string }) {
