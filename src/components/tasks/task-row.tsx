@@ -185,7 +185,7 @@ export function TaskRow({
       );
     } else if (onPlanDate) {
       onPlanDate(planFrom);
-      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: planFrom === today ? "Planned for today" : `Planned for ${planFrom}` } }));
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: planFrom === today ? "Planned for today" : `Planned for ${formatShortDate(planFrom)}` } }));
     }
   }
 
@@ -431,11 +431,17 @@ export function TaskRow({
     </>
   );
 
-  // `p` plans the task under the cursor, unless a field on the row is taking the letter itself.
+  // `p` plans the task under the cursor, unless something on the row is taking the letter itself.
   function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
     if (e.key !== "p" || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (!onPlan && !onPlanDate) return;
+    // The actions menu and the estimate popover are portalled to the body: their keys still
+    // bubble up this React tree, but they are not the row and must not plan it.
+    const target = e.target as HTMLElement | null;
+    if (!target || !e.currentTarget.contains(target)) return;
+    // Only fields that take a letter keep it: the checkbox is an input that does not.
+    if (target.isContentEditable || target instanceof HTMLTextAreaElement) return;
+    if (target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio") return;
     e.preventDefault();
     planFromKey();
   }

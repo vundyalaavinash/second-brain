@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { TaskRow } from "./task-row";
 import type { TaskDTO } from "@/lib/dto";
 
@@ -40,6 +40,12 @@ function renderRow(extra: ExtraProps = {}, row: TaskDTO = task) {
     </ul>,
   );
   return handlers;
+}
+
+/** The portalled menu panel, which lives outside the row's own DOM subtree. */
+function openMenuPanel(): HTMLElement {
+  fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+  return screen.getByRole("menu");
 }
 
 function openMenu(): HTMLElement {
@@ -248,11 +254,37 @@ describe("TaskRow keyboard planning", () => {
     }
   });
 
-  it("plans for the first offered day when the day is the caller's to choose", () => {
+  it("plans for the first offered day when the day is the caller's to choose, and names it", () => {
     const onPlanDate = vi.fn();
-    renderRow({ onPlanDate, planFrom: "2026-09-25" }, { ...task, title: "Write" });
-    fireEvent.keyDown(screen.getByRole("button", { name: "Write" }), { key: "p" });
-    expect(onPlanDate).toHaveBeenCalledWith("2026-09-25");
+    const toasts: unknown[] = [];
+    const listen = (e: Event) => toasts.push((e as CustomEvent).detail);
+    window.addEventListener("sb:toast", listen);
+    try {
+      renderRow({ onPlanDate, planFrom: "2026-09-25" }, { ...task, title: "Write" });
+      fireEvent.keyDown(screen.getByRole("button", { name: "Write" }), { key: "p" });
+      expect(onPlanDate).toHaveBeenCalledWith("2026-09-25");
+      // The day is said the way the row says every other date, not as a raw ISO string.
+      expect(toasts).toEqual([{ text: "Planned for Fri 25" }]);
+    } finally {
+      window.removeEventListener("sb:toast", listen);
+    }
+  });
+
+  it("plans from the checkbox, which takes no letters of its own", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan }, { ...task, title: "Write" });
+    const box = screen.getByRole("checkbox", { name: "Write" });
+    box.focus();
+    fireEvent.keyDown(box, { key: "p" });
+    expect(onPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores p raised inside the portalled actions menu", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan });
+    const item = within(openMenuPanel()).getByRole("menuitem", { name: "Rename" });
+    fireEvent.keyDown(item, { key: "p" });
+    expect(onPlan).not.toHaveBeenCalled();
   });
 
   it("ignores p while the title is being edited", () => {

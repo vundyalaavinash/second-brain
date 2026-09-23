@@ -154,4 +154,10 @@ describe("SourcesDrawer", () => {
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Plan Ship it for today");
   });
+  it("plans a task from its row with the keyboard", async () => {
+    const posts = stubPlan();
+    render(<SourcesDrawer day={day()} today={TODAY} onRefresh={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Late one" }), { key: "p" });
+    await waitFor(() => expect(posts).toEqual([{ url: "/api/plan", method: "POST", body: { date: TODAY, taskId: late.id } }]));
+  });
 });

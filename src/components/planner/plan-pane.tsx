@@ -29,8 +29,11 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
   // The morning ritual belongs to today alone. Whether it was already walked through lives in
-  // the browser, so the read waits for the effect rather than running during the render.
-  const [ritual, setRitual] = useState(day.date === today);
+  // the browser, so the answer is null until the effect has read it and the strip's place stays
+  // empty for that first frame rather than flashing a ritual the day is already past.
+  const [ritual, setRitual] = useState<boolean | null>(null);
+  // Latched by the strip's first action: from then on a plan that gains tasks does not end it.
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     let done = false;
@@ -39,8 +42,20 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     } catch {
       /* no storage: the strip simply shows */
     }
-    if (done) queueMicrotask(() => setRitual(false));
-  }, [day.date]);
+    queueMicrotask(() => setRitual(day.date === today && !done));
+  }, [day.date, today]);
+
+  // A task planned from the drawer before the ritual began says the morning is already under
+  // way: the strip stands aside, and stays away for the rest of the day.
+  useEffect(() => {
+    if (ritual !== true || started || day.plan.length === 0) return;
+    try {
+      localStorage.setItem(ritualDoneKey(day.date), "1");
+    } catch {
+      /* no storage: the strip returns on the next load */
+    }
+    queueMicrotask(() => setRitual(false));
+  }, [ritual, started, day.plan.length, day.date]);
 
   // Everything that moves a task or a plan entry says so; the pane reloads the whole day
   // rather than guessing which half of it changed.
@@ -144,8 +159,9 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     );
   }
 
-  // An empty plan on today, not yet walked through: the strip takes over the carry-over line too.
-  const showRitual = ritual && day.plan.length === 0;
+  // Today, not yet walked through, and either still empty or mid-ritual: the strip takes over
+  // the carry-over line too.
+  const showRitual = ritual === true && (started || day.plan.length === 0);
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
@@ -167,12 +183,10 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         </div>
       )}
 
-      {day.plan.length === 0 &&
-        (showRitual ? (
-          <RitualStrip day={day} today={today} onDone={() => setRitual(false)} />
-        ) : (
-          <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add from the sources on the right, or press p on any task.</p>
-        ))}
+      {showRitual && <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />}
+      {!showRitual && day.plan.length === 0 && ritual !== null && (
+        <p className="text-[13px] text-fg-faint m-0">Nothing planned. Add from the sources on the right, or press p on any task.</p>
+      )}
 
       <List
         aria-label="Plan"

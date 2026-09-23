@@ -104,6 +104,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           </ul>
         )}
 
+        {/* The column's own day leads the "Plan for" list, so `p` plans for the day on screen. */}
         {day.due.length > 0 && (
           <List>
             {day.due.map((task: TaskDTO) => (
@@ -119,7 +120,7 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
                 onDrop={() => patch(task.id, { status: "dropped" })}
                 onDelete={() => remove(task.id)}
                 onPlanDate={(date) => planOn(task.id, date)}
-                planFrom={week.start}
+                planFrom={day.date}
                 compact
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData(TASK_MIME, String(task.id))}

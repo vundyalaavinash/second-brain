@@ -46,11 +46,13 @@ describe("RitualStrip", () => {
   it("walks carry over, due, and projects, then reports done", async () => {
     const posts = stub();
     const onDone = vi.fn();
-    render(<RitualStrip day={day()} today={TODAY} onDone={onDone} />);
+    const onStarted = vi.fn();
+    render(<RitualStrip day={day()} today={TODAY} onStarted={onStarted} onDone={onDone} />);
     const steps = screen.getAllByRole("listitem");
     expect(steps).toHaveLength(3);
     expect(steps[0].getAttribute("aria-current")).toBe("step");
     fireEvent.click(screen.getByRole("button", { name: "Carry over" }));
+    expect(onStarted).toHaveBeenCalled();
     await waitFor(() => expect(posts[0]).toMatchObject({ url: "/api/plan/carry-over", body: { from: "2026-09-22", to: TODAY } }));
     await waitFor(() => expect(steps[1].getAttribute("aria-current")).toBe("step"));
     fireEvent.click(screen.getByRole("button", { name: "Plan all" }));
@@ -69,10 +71,27 @@ describe("RitualStrip", () => {
 
   it("skips steps, and leaves out carry over when yesterday left nothing", () => {
     stub();
-    render(<RitualStrip day={day({ unfinishedYesterday: [] })} today={TODAY} onDone={vi.fn()} />);
+    render(<RitualStrip day={day({ unfinishedYesterday: [] })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Carry over" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(screen.getAllByRole("listitem")[1].getAttribute("aria-current")).toBe("step");
+  });
+
+  it("leaves the due step out when nothing is due", () => {
+    stub();
+    const empty = { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] };
+    render(<RitualStrip day={day({ sources: empty })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Plan all" })).toBeNull();
+  });
+
+  it("plans the oldest overdue first, then what falls due on the day", async () => {
+    const posts = stub();
+    const older = task("Older", "2026-09-18");
+    const sources = { inbox: [], due: { overdue: [late, older], today: [due] }, projects: [], areas: [] };
+    render(<RitualStrip day={day({ unfinishedYesterday: [], sources })} today={TODAY} onStarted={vi.fn()} onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Plan all" }));
+    await waitFor(() => expect(posts.map((p) => (p.body as { taskId: number }).taskId)).toEqual([older.id, late.id, due.id]));
   });
 });

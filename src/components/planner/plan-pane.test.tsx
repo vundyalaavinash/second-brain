@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, act, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act, waitFor, within } from "@testing-library/react";
 import { PlanPane } from "./plan-pane";
 import { CarryOverBody } from "@/lib/validation";
 import type { PlannerDayDTO, PlanTaskDTO, TaskDTO } from "@/lib/dto";
@@ -128,14 +128,35 @@ describe("PlanPane", () => {
     ]));
   });
 
-  it("opens today's empty plan with the ritual, and not another day's", () => {
+  it("opens today's empty plan with the ritual, and not another day's", async () => {
     stubPlan();
     render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
-    expect(screen.getByRole("list", { name: "Plan the day" })).toBeTruthy();
+    expect(await screen.findByRole("list", { name: "Plan the day" })).toBeTruthy();
     cleanup();
     render(<PlanPane day={day({ plan: [], date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
+    expect(await screen.findByText(/Nothing planned\. Add from the sources on the right, or press p on any task/)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
-    expect(screen.getByText(/Nothing planned\. Add from the sources on the right, or press p on any task/)).toBeTruthy();
+  });
+
+  it("keeps the ritual up once a step has run, though the plan has gained a task", async () => {
+    stubPlan();
+    const { rerender } = render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
+    await screen.findByRole("list", { name: "Plan the day" });
+    fireEvent.click(screen.getByRole("button", { name: "Carry over" }));
+    await waitFor(() => expect(within(screen.getByRole("list", { name: "Plan the day" })).getAllByRole("listitem")[1].getAttribute("aria-current")).toBe("step"));
+    // The carry-over landed and the day reloaded with it: the ritual is mid-walk, so it stays.
+    rerender(<PlanPane day={day({ plan: [planned] })} today={TODAY} onRefresh={vi.fn()} />);
+    const steps = within(screen.getByRole("list", { name: "Plan the day" })).getAllByRole("listitem");
+    expect(steps[1].getAttribute("aria-current")).toBe("step");
+  });
+
+  it("stands aside for the day when the plan filled itself before the ritual began", async () => {
+    stubPlan();
+    const { rerender } = render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
+    await screen.findByRole("list", { name: "Plan the day" });
+    rerender(<PlanPane day={day({ plan: [planned] })} today={TODAY} onRefresh={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull());
+    expect(localStorage.getItem("sb:ritual-done:" + TODAY)).toBe("1");
   });
 
   it("does not bring the ritual back once it was done today", async () => {
