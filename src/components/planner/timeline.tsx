@@ -96,6 +96,19 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     };
   }, []);
 
+  // A time chip on a plan row asks for its block: the column brings it into view and hands it
+  // the keyboard, so the arrows move it straight away.
+  useEffect(() => {
+    function onFocusBlock(e: Event) {
+      const taskId = (e as CustomEvent<{ taskId: number }>).detail?.taskId;
+      const block = document.querySelector<HTMLElement>(`[data-task-block="${taskId}"]`);
+      block?.scrollIntoView?.({ block: "center" });
+      block?.focus();
+    }
+    window.addEventListener("sb:timeline-focus", onFocusBlock);
+    return () => window.removeEventListener("sb:timeline-focus", onFocusBlock);
+  }, []);
+
   const allDay = meetings.filter((m) => m.allDay);
   const timed = meetings.filter((m) => !m.allDay);
   // A dropped task keeps its hour in the database but gives up its place on the column.

@@ -203,6 +203,24 @@ describe("Timeline", () => {
     expect(block.style.height).toBe("45px");
   });
 
+  it("brings the block a row asked for into view and hands it the keyboard", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
+    // jsdom lays nothing out, so the scroll is only observed, not performed.
+    const into = vi.fn();
+    block.scrollIntoView = into;
+    window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: blocked.id } }));
+    expect(into).toHaveBeenCalledWith({ block: "center" });
+    expect(document.activeElement).toBe(block);
+  });
+
+  it("does nothing for a task with no block on the column", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const before = document.activeElement;
+    window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: 999 } }));
+    expect(document.activeElement).toBe(before);
+  });
+
   it("completes a block in place and dims a done one", async () => {
     const posts = stubPatch();
     render(<Timeline date={DATE} meetings={[]} tasks={[{ ...blocked, status: "done" }]} onPatchTask={patchTask} workHours="09:00-18:00" />);

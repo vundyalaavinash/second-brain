@@ -62,6 +62,17 @@ describe("WeekView", () => {
     expect(PatchTaskBody.safeParse(body).success).toBe(true);
   });
 
+  it("marks a day that has time blocked on it", () => {
+    const w = week();
+    w.days[1].capacity.blockedMinutes = 80;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    const dot = within(column("Tue")).getByRole("img", { name: "1h 20m blocked" });
+    expect(dot.getAttribute("title")).toBe("1h 20m blocked");
+    // A day with nothing blocked carries no dot at all.
+    expect(within(column("Wed")).queryByRole("img", { name: /blocked/ })).toBeNull();
+  });
+
   it("ignores a drop that carries no task", () => {
     const { fetchMock } = mount();
     fireEvent.drop(column("Wed"), { dataTransfer: { getData: () => "" } });

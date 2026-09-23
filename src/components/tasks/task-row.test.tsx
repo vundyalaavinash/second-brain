@@ -16,6 +16,8 @@ const task: TaskDTO = {
 
 interface ExtraProps {
   onPlan?: () => void;
+  onBlockNow?: () => void;
+  onUnblock?: () => void;
   onEstimate?: (minutes: number | null) => void;
   onPlanDate?: (date: string) => void;
   planFrom?: string;
@@ -293,5 +295,58 @@ describe("TaskRow keyboard planning", () => {
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "p" });
     expect(onPlan).not.toHaveBeenCalled();
+  });
+});
+
+describe("TaskRow blocks", () => {
+  it("shows the block time, offers Block now and Take off the timeline, and answers n", () => {
+    const onBlockNow = vi.fn();
+    const onUnblock = vi.fn();
+    const focus: unknown[] = [];
+    const listen = (e: Event) => focus.push((e as CustomEvent).detail);
+    window.addEventListener("sb:timeline-focus", listen);
+    try {
+      renderRow({ onBlockNow, onUnblock }, { ...task, scheduledAt: "2026-09-16T10:30:00" });
+      fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
+      expect(focus).toEqual([{ taskId: task.id }]);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Take off the timeline" }));
+      expect(onUnblock).toHaveBeenCalled();
+      const title = screen.getByRole("button", { name: task.title });
+      title.focus();
+      fireEvent.keyDown(title, { key: "n" });
+      expect(onBlockNow).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("sb:timeline-focus", listen);
+    }
+  });
+
+  it("keeps the chip and the unblock item away from a task with no block", () => {
+    renderRow({ onBlockNow: vi.fn(), onUnblock: vi.fn() });
+    expect(screen.queryByRole("button", { name: /^Blocked at/ })).toBeNull();
+    const items = within(openMenuPanel()).getAllByRole("menuitem").map((el) => el.textContent);
+    expect(items).toContain("Block now");
+    expect(items).not.toContain("Take off the timeline");
+  });
+
+  it("leaves n alone where the row cannot block anything", () => {
+    const onPlan = vi.fn();
+    renderRow({ onPlan }, { ...task, title: "Write" });
+    const title = screen.getByRole("button", { name: "Write" });
+    fireEvent.keyDown(title, { key: "n" });
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps the n it handled from reaching the window", () => {
+    const seen: string[] = [];
+    const onKey = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", onKey);
+    try {
+      renderRow({ onBlockNow: vi.fn() }, { ...task, title: "Write" });
+      fireEvent.keyDown(screen.getByRole("button", { name: "Write" }), { key: "n" });
+      expect(seen).toEqual([]);
+    } finally {
+      window.removeEventListener("keydown", onKey);
+    }
   });
 });

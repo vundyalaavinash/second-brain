@@ -85,6 +85,15 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
         </span>
         <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
           {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
+          {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
+          {day.capacity.blockedMinutes > 0 && (
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-violet ml-1 align-middle"
+              title={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+              aria-label={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+              role="img"
+            />
+          )}
         </span>
 
         {day.meetings.length > 0 && (

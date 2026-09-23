@@ -195,6 +195,57 @@ describe("PlanPane", () => {
     await waitFor(() => expect(posts).toEqual([{ url: "/api/plan", method: "PATCH", body: { date: TODAY, taskIds: [b.id, a.id] } }]));
   });
 
+  it("blocks a planned task at the next five minutes, and only on the day in hand", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${TODAY}T10:31:00`));
+    try {
+      const posts = stubPlan();
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
+      await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T10:35:00` } }]));
+
+      // Another day has no "now" on it: the item is not offered at all.
+      cleanup();
+      render(<PlanPane day={day({ date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      expect(screen.queryByRole("menuitem", { name: "Block now" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("takes a blocked row off the timeline without taking it off the plan", async () => {
+    const posts = stubPlan();
+    render(<PlanPane day={day({ plan: [{ ...planned, scheduledAt: `${TODAY}T10:30:00` }] })} today={TODAY} onRefresh={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Take off the timeline" }));
+    await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: null } }]));
+  });
+
+  it("sorts the plan by its blocks from the pane's own menu", async () => {
+    const posts = stubPlan();
+    const onRefresh = vi.fn();
+    render(<PlanPane day={day()} today={TODAY} onRefresh={onRefresh} />);
+    const trigger = screen.getByRole("button", { name: "Plan actions" });
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Sort by time" }));
+    await waitFor(() => expect(posts).toEqual([{ url: "/api/plan/sort", method: "POST", body: { date: TODAY } }]));
+    // The route only reorders: the pane hears its own announcement and reads the day back.
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  it("closes the pane menu on Escape and hands the keyboard back to its button", () => {
+    stubPlan();
+    render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Plan actions" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Plan actions" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Plan actions" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("shows no ritual when the morning has nothing to offer", async () => {
     stubPlan();
     const quiet = day({ plan: [], unfinishedYesterday: [], sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] } });

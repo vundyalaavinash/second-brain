@@ -8,7 +8,7 @@ import type { TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { titleCase } from "@/lib/format";
-import { addDaysLocal, WEEKDAYS } from "../activity/format";
+import { addDaysLocal, formatClock, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 import { EstimateChip } from "./estimate-chip";
 
@@ -35,7 +35,8 @@ function planDays(from: string, today: string): { date: string; label: string }[
 
 const MENU_ITEM_FOCUSABLE = '[role="menuitem"], [role="menuitemradio"]';
 
-const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-layer-2 transition-colors duration-100";
+/** Shared with the plan pane, whose header menu is the same small thing. */
+export const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-layer-2 transition-colors duration-100";
 const MENU_ITEM_DANGER = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-danger hover:bg-danger/10 transition-colors duration-100";
 
 interface Props {
@@ -52,6 +53,10 @@ interface Props {
   onMove?: (dir: "up" | "down") => void;
   /** Puts the task on a plan, or takes it off again when `planned`. The caller decides which. */
   onPlan?: () => void;
+  /** Gives the task a block starting now. Only offered where "now" falls on the day in hand. */
+  onBlockNow?: () => void;
+  /** Takes the task's block off the timeline; the task stays on the plan. */
+  onUnblock?: () => void;
   /** Offered instead of `onPlan` when the day is the caller's to choose. */
   onPlanDate?: (date: string) => void;
   /** The first of the seven days the "Plan for" list offers. Defaults to today. */
@@ -77,7 +82,7 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, planFrom = today,
+  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, planFrom = today,
   planLabel = "Plan for today", planned, compact, leading, className = "", draggable, onDragStart, onDragOver, onDragLeave, onRowDrop,
   as, rowProps: extraRowProps,
 }: Props) {
@@ -273,6 +278,18 @@ export function TaskRow({
     )
   );
 
+  // Where the task sits on the timeline, and the one press that goes and looks at it.
+  const blockNode = task.scheduledAt && (
+    <button
+      type="button"
+      aria-label={`Blocked at ${formatClock(task.scheduledAt)}`}
+      onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id } }))}
+      className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
+    >
+      {formatClock(task.scheduledAt)}
+    </button>
+  );
+
   const actions = (
     <>
       {done ? (
@@ -369,6 +386,32 @@ export function TaskRow({
                     {planned ? "Remove from plan" : planLabel}
                   </button>
                 )}
+                {onBlockNow && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      closeMenu();
+                      onBlockNow();
+                    }}
+                  >
+                    Block now
+                  </button>
+                )}
+                {onUnblock && task.scheduledAt && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      closeMenu();
+                      onUnblock();
+                    }}
+                  >
+                    Take off the timeline
+                  </button>
+                )}
                 <div role="group" aria-label="Priority" className="flex items-center gap-1 px-2 py-1">
                   <span className="text-[11px] text-fg-faint mr-0.5">Priority</span>
                   {(["low", "normal", "high"] as const).map((p) => (
@@ -438,10 +481,14 @@ export function TaskRow({
     </>
   );
 
-  // `p` plans the task under the cursor, unless something on the row is taking the letter itself.
+  // `p` plans the task under the cursor and `n` blocks it out now, unless something on the row
+  // is taking the letter itself.
   function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
-    if (e.key !== "p" || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (!onPlan && !onPlanDate) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const plans = e.key === "p" && (!!onPlan || !!onPlanDate);
+    // A finished task is not blocked out: the menu has no such item either, being closed to it.
+    const blocks = e.key === "n" && !!onBlockNow && !done;
+    if (!plans && !blocks) return;
     // The actions menu and the estimate popover are portalled to the body: their keys still
     // bubble up this React tree, but they are not the row and must not plan it.
     const target = e.target as HTMLElement | null;
@@ -452,7 +499,8 @@ export function TaskRow({
     e.preventDefault();
     // The row has claimed the letter: the window's `g p` chord must not read it as a jump too.
     e.stopPropagation();
-    planFromKey();
+    if (blocks) onBlockNow?.();
+    else planFromKey();
   }
 
   const Row = (as ?? "li") as ElementType;
@@ -479,7 +527,12 @@ export function TaskRow({
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
           {dueNode}
-          {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} compact />}
+          {(onEstimate || blockNode) && (
+            <span className="flex items-center gap-2">
+              {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} compact />}
+              {blockNode}
+            </span>
+          )}
         </span>
         {actions}
       </Row>
@@ -506,6 +559,7 @@ export function TaskRow({
       )}
       {dueNode}
       {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
+      {blockNode}
       {actions}
     </Row>
   );

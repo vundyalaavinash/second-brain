@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { MoreHorizontal } from "lucide-react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { blockLength, capacityTone } from "@/lib/capacity";
 import { addDaysLocal } from "../activity/format";
-import { Button, List } from "../ui";
-import { TaskRow } from "../tasks/task-row";
+import { Button, IconButton, List } from "../ui";
+import { MENU_ITEM, TaskRow } from "../tasks/task-row";
+import { minutesToIso, snap } from "./block-math";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
 import { PLAN_DRAG_MIME, PLAN_MINUTES_MIME } from "./drag-mime";
@@ -32,6 +34,12 @@ const RITUAL_MOTION = {
   transition: { type: "spring", stiffness: 420, damping: 38, mass: 0.6 },
 } as const;
 
+/** The clock as minutes since local midnight, for a block that starts "now". */
+function nowMinutes(): number {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
 interface Props {
   day: PlannerDayDTO;
   /** The day the app is being used on, for the row's own "today" reckoning. */
@@ -48,11 +56,14 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   // the browser, so the answer is null until the effect has read it and the strip's place stays
   // empty for that first frame rather than flashing a ritual the day is already past.
   const [ritual, setRitual] = useState<boolean | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   // Latched by the strip's first action: from then on a plan that gains tasks does not end it.
   const [started, setStarted] = useState(false);
   const reduce = useReducedMotion();
   const listRef = useRef<HTMLUListElement | null>(null);
   const headingRef = useRef<HTMLSpanElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
   // Where the keyboard should land once the day the unplan asked for has come back: the id of
   // the row that will take the departing one's place, or 0 for the pane's own heading.
   const refocus = useRef<number | null>(null);
@@ -93,6 +104,30 @@ export function PlanPane({ day, today, onRefresh }: Props) {
     };
   }, [onRefresh]);
 
+  // The header menu is a plain panel beside its button: Escape and a click away close it, and
+  // the keyboard goes back where it came from.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function close() {
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (menuButtonRef.current?.contains(target) || menuPanelRef.current?.contains(target)) return;
+      close();
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [menuOpen]);
+
   // A row unplanned from the keyboard takes the focus with it. The new plan is here, so the
   // neighbour noted before the request takes it over — no state, only the DOM call.
   useEffect(() => {
@@ -119,6 +154,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const remove = (id: number) => void send(`/api/tasks/${id}`, "DELETE");
   const reorder = (taskIds: number[]) => void send("/api/plan", "PATCH", { date: day.date, taskIds }, "sb:plan-changed");
   const carryOver = () => void send("/api/plan/carry-over", "POST", { from: addDaysLocal(day.date, -1), to: day.date }, "sb:plan-changed");
+  const sortByTime = () => void send("/api/plan/sort", "POST", { date: day.date }, "sb:plan-changed");
 
   /** Takes a task off the plan and says where the keyboard goes once the day comes back. */
   async function unplan(taskId: number) {
@@ -180,6 +216,9 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         onDrop={() => patch(task.id, { status: "dropped" })}
         onDelete={() => remove(task.id)}
         onPlan={() => void unplan(task.id)}
+        // "Now" only means something on the day being lived through; other days are placed by hand.
+        onBlockNow={day.date === today ? () => patch(task.id, { scheduledAt: minutesToIso(today, snap(nowMinutes() + 4)) }) : undefined}
+        onUnblock={() => patch(task.id, { scheduledAt: null })}
         planned
         draggable
         onDragStart={(e) => {
@@ -206,18 +245,52 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
+  const blockedFill = capacity.plannedMinutes > 0 ? Math.min(100, (capacity.blockedMinutes / capacity.plannedMinutes) * 100) : 0;
   const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
 
   return (
     <section className="pane p-4 flex flex-col gap-3">
       {/* Takes focus when the last plan row is unplanned from the keyboard, so the keyboard
         * stays in the pane rather than falling back to the document. */}
-      <span ref={headingRef} tabIndex={-1} className="focus-ring micro rounded-sm self-start">
-        Plan
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span ref={headingRef} tabIndex={-1} className="focus-ring micro rounded-sm">
+          Plan
+        </span>
+        <span className="relative shrink-0">
+          <IconButton
+            label="Plan actions"
+            icon={MoreHorizontal}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(e) => {
+              menuButtonRef.current = e.currentTarget;
+              setMenuOpen((v) => !v);
+            }}
+          />
+          {menuOpen && (
+            <div ref={menuPanelRef} role="menu" aria-label="Plan actions" className="panel absolute right-0 top-full mt-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-40 z-50">
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM}
+                onClick={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                  sortByTime();
+                }}
+              >
+                Sort by time
+              </button>
+            </div>
+          )}
+        </span>
+      </div>
 
       <div className="h-1 rounded-full bg-layer-2 overflow-hidden" aria-hidden>
-        <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }} />
+        <div className={`h-full rounded-full transition-[width] duration-300 ${BAR_CLASS[tone]}`} style={{ width: `${fill}%` }}>
+          {/* How much of what is planned has a place on the timeline, brighter inside the fill. */}
+          {blockedFill > 0 && <div className="h-full rounded-full bg-violet-bright" style={{ width: `${blockedFill}%` }} />}
+        </div>
       </div>
 
       {day.unfinishedYesterday.length > 0 && !showRitual && (

@@ -25,7 +25,9 @@ export function CapacityLine({ capacity, planned, meetings, onHours }: Props) {
     <span className="flex items-center gap-3 flex-wrap justify-end">
       <span role="status" title={title} className="font-mono text-[12px] text-fg-muted">
         {planned} planned · <span className={CAPACITY_TONE_CLASS[tone]}>{formatMinutes(capacity.plannedMinutes)}</span> of {formatMinutes(capacity.freeMinutes)} free
-        {capacity.unestimated > 0 && ` (${capacity.unestimated} unestimated)`} · {count(meetings, "meeting")}
+        {capacity.unestimated > 0 && ` (${capacity.unestimated} unestimated)`}
+        {/* How much of the plan has a place on the timeline; nothing blocked says nothing. */}
+        {capacity.blockedMinutes > 0 && <> · {formatMinutes(capacity.blockedMinutes)} blocked</>} · {count(meetings, "meeting")}
         {/* The tone says it in colour and the title on hover; a reader that has neither hears it. */}
         {title && <span className="sr-only">. {title}</span>}
       </span>
