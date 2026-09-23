@@ -1,6 +1,8 @@
 import ICAL from "ical.js";
 import type { DB } from "@/db/client";
 import type { MeetingStatus } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { calendarEvents } from "@/db/schema";
 import { getSetting, setSetting } from "@/domain/settings";
 import { addDays } from "./report";
 import { joinUrlFrom, localDay, replaceCalendarEvents, type CalendarEventInput } from "./calendar";
@@ -16,8 +18,10 @@ const PAST_DAYS = 30;
 const AHEAD_DAYS = 60;
 /** Feeds are small; a link that takes longer than this is not answering. */
 const FETCH_TIMEOUT_MS = 20_000;
-/** A runaway rule ends here rather than in a spin. */
-const MAX_OCCURRENCES = 2000;
+/** Steps a rule may be walked from its first date to the window; a daily meeting from 2018 needs a few thousand. */
+const MAX_STEPS = 200_000;
+/** Occurrences kept per feed: past this the calendar is not one a person reads. */
+const MAX_OCCURRENCES = 5000;
 /** Calendar bodies are capped the way the helper caps them. */
 const NOTES_CAP = 4000;
 
@@ -47,18 +51,19 @@ export function normalizeFeedUrl(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed === "") return "";
   const url = new URL(trimmed.replace(/^webcal:\/\//i, "https://"));
-  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("The link must start with https:// or webcal://");
+  if (url.protocol !== "https:") throw new Error("The link must start with https:// or webcal://");
   return url.toString();
 }
 
+/** A new link, or none, starts from nothing: the old feed's meetings go with it. */
 export function setFeedUrl(db: DB, raw: string): FeedState {
   const url = normalizeFeedUrl(raw);
+  const previous = getSetting(db, FEED_URL_KEY, "");
+  if (url !== previous) db.delete(calendarEvents).where(eq(calendarEvents.source, "feed")).run();
   setSetting(db, FEED_URL_KEY, url);
   setSetting(db, ERROR_KEY, "");
-  if (url === "") {
-    setSetting(db, SYNCED_AT_KEY, "");
-    setSetting(db, COUNT_KEY, "0");
-  }
+  setSetting(db, SYNCED_AT_KEY, "");
+  setSetting(db, COUNT_KEY, "0");
   return getFeedState(db);
 }
 
@@ -83,6 +88,20 @@ function statusOf(comp: ICAL.Component): MeetingStatus {
   return "none";
 }
 
+/**
+ * A timed value whose TZID the feed never defined is floating, which ical.js would read as
+ * the server's wall clock; UTC is the honest reading. All-day values stay floating on purpose:
+ * that is what puts them on their own local day.
+ */
+function asInstant(t: ICAL.Time): ICAL.Time {
+  if (!t.isDate && t.zone === ICAL.Timezone.localTimezone) {
+    const u = t.clone();
+    u.zone = ICAL.Timezone.utcTimezone;
+    return u;
+  }
+  return t;
+}
+
 function occurrenceInput(ev: ICAL.Event, start: ICAL.Time, end: ICAL.Time, externalId: string, calendarTitle: string): CalendarEventInput {
   const comp = ev.component;
   const description = ev.description ?? "";
@@ -93,8 +112,8 @@ function occurrenceInput(ev: ICAL.Event, start: ICAL.Time, end: ICAL.Time, exter
   return {
     externalId,
     title: ev.summary ?? "",
-    startsAt: start.toJSDate().toISOString(),
-    endsAt: end.toJSDate().toISOString(),
+    startsAt: asInstant(start).toJSDate().toISOString(),
+    endsAt: asInstant(end).toJSDate().toISOString(),
     attendees: attendees.length,
     hasCallLink: joinUrl !== null,
     organizer: personName(comp.getFirstProperty("organizer")),
@@ -114,11 +133,8 @@ function occurrenceInput(ev: ICAL.Event, start: ICAL.Time, end: ICAL.Time, exter
  * one it only names is read as UTC (Outlook always ships its VTIMEZONEs).
  */
 export function parseCalendarFeed(ics: string, window: FeedWindow): { calendarTitle: string; events: CalendarEventInput[] } {
+  // VTIMEZONEs are found through the component tree, so nothing is registered process-wide.
   const root = new ICAL.Component(ICAL.parse(ics));
-  for (const tz of root.getAllSubcomponents("vtimezone")) {
-    const tzid = text(tz, "tzid");
-    if (tzid && !ICAL.TimezoneService.has(tzid)) ICAL.TimezoneService.register(tz);
-  }
   const calendarTitle = text(root, "x-wr-calname") || "Calendar feed";
   const masters: ICAL.Component[] = [];
   const exceptions = new Map<string, ICAL.Component[]>();
@@ -134,26 +150,30 @@ export function parseCalendarFeed(ics: string, window: FeedWindow): { calendarTi
   const from = window.from.getTime();
   const to = window.to.getTime();
   const events: CalendarEventInput[] = [];
-  const overlaps = (s: ICAL.Time, e: ICAL.Time) => e.toJSDate().getTime() > from && s.toJSDate().getTime() < to;
+  // Admission is by overlap, but the row's day is its start: a block that began before the
+  // window is stored outside the purge range, the same shape the helper has.
+  const overlaps = (s: ICAL.Time, e: ICAL.Time) => asInstant(e).toJSDate().getTime() > from && asInstant(s).toJSDate().getTime() < to;
 
   for (const comp of masters) {
     if (text(comp, "status").toUpperCase() === "CANCELLED") continue;
-    const ev = new ICAL.Event(comp);
-    for (const ex of exceptions.get(ev.uid) ?? []) ev.relateException(ex);
+    // Without an explicit list ical.js relates every override in the file to every series,
+    // whatever its UID; strict mode keeps each series to its own.
+    const ev = new ICAL.Event(comp, { exceptions: exceptions.get(text(comp, "uid")) ?? [], strictExceptions: true });
     if (!ev.isRecurring()) {
       if (overlaps(ev.startDate, ev.endDate)) events.push(occurrenceInput(ev, ev.startDate, ev.endDate, `feed:${ev.uid}`, calendarTitle));
       continue;
     }
     const it = ev.iterator();
     let next: ICAL.Time | null;
-    let seen = 0;
-    while ((next = it.next()) && seen++ < MAX_OCCURRENCES) {
-      if (next.toJSDate().getTime() >= to) break;
+    let steps = 0;
+    while ((next = it.next()) && steps++ < MAX_STEPS) {
+      if (asInstant(next).toJSDate().getTime() >= to) break;
       const d = ev.getOccurrenceDetails(next);
       if (text(d.item.component, "status").toUpperCase() === "CANCELLED") continue;
       if (!overlaps(d.startDate, d.endDate)) continue;
-      const id = `feed:${ev.uid}:${d.recurrenceId.toJSDate().toISOString()}`;
+      const id = `feed:${ev.uid}:${asInstant(d.recurrenceId).toJSDate().toISOString()}`;
       events.push(occurrenceInput(d.item, d.startDate, d.endDate, id, calendarTitle));
+      if (events.length >= MAX_OCCURRENCES) break;
     }
   }
   return { calendarTitle, events };

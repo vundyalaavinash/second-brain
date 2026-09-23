@@ -5,7 +5,7 @@ import { CalendarSync, RefreshCw } from "lucide-react";
 import type { CalendarFeedDTO } from "@/lib/dto";
 import { Button, Input } from "../ui";
 
-const URL = "/api/settings/calendar";
+const FEED_URL = "/api/settings/calendar";
 const JSON_HEADERS = { "content-type": "application/json" };
 
 /** "just now", "4 min ago", "2 h ago", else the date: enough to trust or doubt a sync. */
@@ -32,7 +32,7 @@ export function CalendarFeed({ onSynced }: { onSynced?: () => void }) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(URL, { cache: "no-store" });
+        const res = await fetch(FEED_URL, { cache: "no-store" });
         if (res.ok && !cancelled) setState((await res.json()) as CalendarFeedDTO);
       } catch {
         /* the row simply stays hidden */
@@ -43,7 +43,7 @@ export function CalendarFeed({ onSynced }: { onSynced?: () => void }) {
     };
   }, []);
 
-  async function send(init: RequestInit, url = URL) {
+  async function send(init: RequestInit, url = FEED_URL) {
     setBusy(true);
     setProblem(null);
     try {
@@ -88,7 +88,7 @@ export function CalendarFeed({ onSynced }: { onSynced?: () => void }) {
           {linked && value.trim() === "" ? "Remove link" : "Save link"}
         </Button>
         {linked && (
-          <Button size="sm" icon={RefreshCw} disabled={busy} onClick={() => void send({ method: "POST" }, `${URL}/sync`)}>
+          <Button size="sm" icon={RefreshCw} disabled={busy} onClick={() => void send({ method: "POST" }, `${FEED_URL}/sync`)}>
             Sync now
           </Button>
         )}

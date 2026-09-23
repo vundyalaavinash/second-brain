@@ -34,13 +34,18 @@ describe("calendar feed api", () => {
     expect(saved.status).toBe(200);
     const body = (await saved.json()) as { feedUrl: string; count: number; sync: { state: string } };
     expect(body.feedUrl).toBe("https://example.com/cal.ics");
-    expect(body.count).toBe(7);
+    expect(body.count).toBe(11);
     expect(body.sync.state).toBe("ok");
     expect(fetched).toEqual(["https://example.com/cal.ics"]);
 
-    const again = (await (await r.sync.POST()).json()) as { sync: { state: string } };
+    const again = (await (await r.sync.POST(json("POST", "/api/settings/calendar/sync"))).json()) as { sync: { state: string } };
     expect(again.sync.state).toBe("ok");
     expect(fetched).toHaveLength(2);
+
+    const foreign = new Request("http://localhost/api/settings/calendar/sync", { method: "POST", headers: { origin: "https://evil.example" } });
+    expect((await r.sync.POST(foreign)).status).toBe(403);
+    const foreignPatch = new Request("http://localhost/api/settings/calendar", { method: "PATCH", headers: { "content-type": "application/json", origin: "https://evil.example" }, body: JSON.stringify({ feedUrl: "" }) });
+    expect((await r.calendar.PATCH(foreignPatch)).status).toBe(403);
 
     const cleared = (await (await r.calendar.PATCH(json("PATCH", "/api/settings/calendar", { feedUrl: "" }))).json()) as { feedUrl: string; sync: { state: string } };
     expect(cleared).toMatchObject({ feedUrl: "", sync: { state: "off" } });

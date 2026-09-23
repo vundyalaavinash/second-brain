@@ -169,7 +169,6 @@ export interface RecorderStatusDTO {
   missing: string[];
 }
 
-/** The two auto-record switches, as `/api/settings/meetings` answers them. */
 /** A published calendar link and the state of its last sync. */
 export interface CalendarFeedDTO {
   feedUrl: string;
@@ -180,6 +179,7 @@ export interface CalendarFeedDTO {
   sync?: { state: "off" } | { state: "ok"; count: number; syncedAt: string } | { state: "error"; error: string };
 }
 
+/** The two auto-record switches in the Meetings header. */
 export interface MeetingSettingsDTO {
   autoRecord: boolean;
   autoRecordNeedsCallLink: boolean;

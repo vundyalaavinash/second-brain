@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { getFeedState, setFeedUrl, syncCalendarFeed } from "@/domain/activity";
-import { errorResponse } from "@/lib/api";
+import { crossSite, errorResponse, forbidden } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,8 @@ export async function GET(): Promise<Response> {
 /** Saving a link syncs it straight away, so the answer already says whether it worked. */
 export async function PATCH(req: Request): Promise<Response> {
   try {
+    // The server fetches whatever link is saved: no other site gets to choose it.
+    if (crossSite(req)) return forbidden();
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     const db = getDb();

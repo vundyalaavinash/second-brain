@@ -15,7 +15,8 @@ import { getEmbedProvider } from "./providers";
 const g = globalThis as unknown as {
   __sbWorker?: JobWorker;
   __sbBackupInterval?: NodeJS.Timeout;
-  __sbAutoStartInterval?: NodeJS.Timeout; __sbFeedInterval?: NodeJS.Timeout;
+  __sbAutoStartInterval?: NodeJS.Timeout;
+  __sbFeedInterval?: NodeJS.Timeout;
   __sbShutdownHooked?: boolean;
 };
 
