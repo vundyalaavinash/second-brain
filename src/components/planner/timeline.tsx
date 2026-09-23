@@ -29,7 +29,11 @@ export function hourRange(meetings: TimelineMeeting[], workHours?: string): { da
     const from = new Date(m.startsAt);
     const to = new Date(m.endsAt);
     dayStart = Math.min(dayStart, from.getHours());
-    dayEnd = Math.max(dayEnd, to.getMinutes() > 0 ? to.getHours() + 1 : to.getHours());
+    // One that runs past midnight ends on a later date, where its hours read as small numbers.
+    // The column runs to the end of the day instead, so the span is clipped at midnight rather
+    // than left as a stub below the last hour the column covers.
+    const over = todayLocal(to) > todayLocal(from);
+    dayEnd = Math.max(dayEnd, over ? 24 : to.getMinutes() > 0 ? to.getHours() + 1 : to.getHours());
   }
   return { dayStart, dayEnd: Math.max(dayEnd, dayStart + 1) };
 }
@@ -180,6 +184,12 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     const m = move.current;
     if (!m) return;
+    // The button came back up somewhere the column never heard about: the move is over.
+    if (e.buttons === 0) {
+      move.current = null;
+      setGhost(null);
+      return;
+    }
     const delta = e.clientY - m.startY;
     if (!m.moved && Math.abs(delta) < DRAG_SLOP) return;
     m.moved = true;

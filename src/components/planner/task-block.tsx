@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { PlanTaskDTO } from "@/lib/dto";
 import { formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
@@ -33,6 +33,10 @@ const DEFAULT_LENGTH = 25;
  */
 export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatch, onDragStart }: Props) {
   const [resizing, setResizing] = useState(false);
+  // A resize in flight, as the one call that takes its window listeners off again. Held in a
+  // ref so a block that goes away mid-drag — the day reloading under it — leaves none behind.
+  const detachResize = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachResize.current?.(), []);
   const start = task.scheduledAt!;
   const end = blockEnd({ scheduledAt: start, estimateMinutes: task.estimateMinutes });
   const done = task.status === "done";
@@ -74,19 +78,39 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
     const startY = e.clientY;
     const startLen = task.estimateMinutes ?? DEFAULT_LENGTH;
     const lengthAt = (y: number) => Math.max(MIN_LENGTH, Math.min(MAX_LENGTH, snap(startLen + (y - startY) / pxPerMin)));
-    setResizing(true);
-    const onMove = (ev: globalThis.PointerEvent) => {
-      if (block) block.style.height = `${lengthAt(ev.clientY) * pxPerMin}px`;
-    };
-    const onUp = (ev: globalThis.PointerEvent) => {
+
+    function detach() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      detachResize.current = null;
+    }
+    /** Ends the session and hands the height back to the layout, before anything is written:
+     * a resize that changes nothing, or that fails, leaves no dragged pixels behind. */
+    function finish() {
+      detach();
+      if (block) block.style.height = "";
       setResizing(false);
+    }
+    function onMove(ev: MouseEvent) {
+      if (block) block.style.height = `${lengthAt(ev.clientY) * pxPerMin}px`;
+    }
+    function onUp(ev: MouseEvent) {
       const next = lengthAt(ev.clientY);
+      finish();
       if (next !== startLen) void onPatch(task.id, { estimateMinutes: next });
-    };
+    }
+    // A cancelled pointer — a touch turning into a scroll, the window losing it — ends the
+    // session without writing anything.
+    function onCancel() {
+      finish();
+    }
+
+    detachResize.current = detach;
+    setResizing(true);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
   }
 
   return (
@@ -121,12 +145,16 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
           {formatClock(start)}–{formatClock(end)} · {formatMinutes(task.estimateMinutes ?? DEFAULT_LENGTH)}
         </span>
       </div>
+      {/* The keyboard resizes with Alt and the arrows on the group itself, so the handle is a
+        * pointer affordance only: out of the tab order and out of the accessibility tree. */}
       {!done && (
         <button
           type="button"
-          aria-label={`Resize ${task.title}`}
+          tabIndex={-1}
+          aria-hidden
+          data-resize={task.id}
           onPointerDown={onResizeDown}
-          className="focus-ring absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize pointer-events-auto"
+          className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize pointer-events-auto"
         />
       )}
     </div>

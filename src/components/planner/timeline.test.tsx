@@ -70,13 +70,17 @@ async function patchTask(id: number, body: Record<string, unknown>): Promise<boo
   return res.ok;
 }
 
-// jsdom has no DragEvent, so testing-library builds drag events from plain Event and the
-// coordinates fall off them. A MouseEvent in its place carries clientY, which is the only
-// thing the column measures a drop by.
+// jsdom has neither DragEvent nor PointerEvent, so testing-library builds both from plain
+// Event and the coordinates fall off them. A MouseEvent in their place carries clientY, which
+// is the only thing the column and the resize handle measure by.
 beforeAll(() => {
   const w = window as unknown as Record<string, unknown>;
   if (!w.DragEvent) w.DragEvent = window.MouseEvent;
+  if (!w.PointerEvent) w.PointerEvent = window.MouseEvent;
 });
+
+/** The strip along a block's bottom edge; it is out of the accessibility tree by design. */
+const resizeHandle = (block: HTMLElement) => block.querySelector<HTMLElement>("[data-resize]")!;
 
 /** The now line is the only violet rule on the column. */
 const nowLine = (root: HTMLElement) => root.querySelector(".border-violet");
@@ -159,6 +163,44 @@ describe("Timeline", () => {
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { estimateMinutes: 50 } }));
     fireEvent.keyDown(block, { key: "Backspace" });
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: null } }));
+  });
+
+  it("runs the column to midnight for a block that crosses it", () => {
+    const late = { ...blocked, scheduledAt: `${DATE}T23:50:00`, estimateMinutes: null };
+    const { container } = render(<Timeline date={DATE} meetings={[]} tasks={[late]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const labels = Array.from(container.querySelectorAll("span.font-mono")).map((el) => el.textContent).filter((t) => /^\d\d:00$/.test(t ?? ""));
+    expect(labels.at(-1)).toBe("00:00");
+    expect(screen.getByRole("group", { name: "Write the note, 23:50 to 00:15" }).style.top).toBe("890px");
+  });
+
+  it("keeps the resize handle out of the tab order", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const handle = resizeHandle(screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" }));
+    expect(handle.getAttribute("tabindex")).toBe("-1");
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("drops a cancelled resize, and a later release writes nothing", () => {
+    const posts = stubPatch();
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
+    fireEvent.pointerDown(resizeHandle(block), { clientY: 200 });
+    fireEvent.pointerMove(window, { clientY: 220 });
+    expect(block.style.height).toBe("65px");
+    fireEvent.pointerCancel(window, { clientY: 220 });
+    fireEvent.pointerUp(window, { clientY: 220 });
+    expect(posts).toEqual([]);
+  });
+
+  it("hands the height back to the layout when a resize changes nothing", () => {
+    const posts = stubPatch();
+    render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
+    fireEvent.pointerDown(resizeHandle(block), { clientY: 200 });
+    fireEvent.pointerMove(window, { clientY: 220 });
+    fireEvent.pointerUp(window, { clientY: 200 });
+    expect(posts).toEqual([]);
+    expect(block.style.height).toBe("");
   });
 
   it("completes a block in place and dims a done one", async () => {
