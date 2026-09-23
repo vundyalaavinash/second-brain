@@ -4,11 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, PanelRight } from "lucide-react";
 import type { PlannerDayDTO } from "@/lib/dto";
 import { IconButton } from "../ui";
+import { useMediaQuery } from "../shell/use-media-query";
 import { PlanPane } from "./plan-pane";
 import { SourcesDrawer } from "./sources-drawer";
 import { Timeline } from "./timeline";
 
 const SOURCES_REGION = "sources-region";
+/** The widths where an open drawer floats over the page rather than sitting in the grid. */
+const OVERLAY_QUERY = "(min-width: 1100px) and (max-width: 1279px)";
 /** Escape belongs to whatever is being typed in or chosen from first. */
 const TYPING = 'input, textarea, [contenteditable="true"], [role="menu"]';
 
@@ -27,6 +30,9 @@ const REGION_OPEN =
 export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: string; onRefresh: () => void }) {
   const [open, setOpen] = useState(false);
   const regionRef = useRef<HTMLDivElement | null>(null);
+  // Only the floating form is a dialog; in the grid or in the stack it is a plain region.
+  const floating = useMediaQuery(OVERLAY_QUERY);
+  const overlay = open && floating;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -53,11 +59,11 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
     };
   }, [open]);
 
-  // Opening it hands over the keyboard: the tab already chosen takes focus.
+  // Opening the floating form hands over the keyboard: the tab already chosen takes focus.
   useEffect(() => {
-    if (!open) return;
+    if (!overlay) return;
     regionRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-  }, [open]);
+  }, [overlay]);
 
   return (
     <div className="grid grid-cols-1 min-[1100px]:grid-cols-[3fr_2fr] min-[1280px]:grid-cols-[5fr_4fr_4fr] gap-6 items-start">
@@ -73,7 +79,7 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
       <div
         ref={regionRef}
         className={open ? REGION_OPEN : REGION_CLOSED}
-        {...(open ? { role: "dialog", "aria-modal": true, "aria-label": "Sources" } : {})}
+        {...(overlay ? { role: "dialog", "aria-modal": true, "aria-label": "Sources" } : {})}
       >
         <button
           type="button"

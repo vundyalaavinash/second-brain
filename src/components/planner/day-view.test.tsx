@@ -39,6 +39,19 @@ function drawer(): void {
   });
 }
 
+/** jsdom has no layout: the tests say which width the page is at. */
+function atWidth(floating: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: floating && query.includes("1100px"),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -50,7 +63,16 @@ afterEach(() => {
 });
 
 describe("DayView", () => {
+  it("is a plain column on a wide screen, whatever the drawer key does", () => {
+    atWidth(false);
+    mount();
+    drawer();
+    expect(overlay()).toBeNull();
+    expect(screen.getByRole("tab", { name: /Inbox/ })).toBeTruthy();
+  });
+
   it("opens and closes the sources over the plan with the drawer key", () => {
+    atWidth(true);
     mount();
     expect(overlay()).toBeNull();
     drawer();
@@ -61,6 +83,7 @@ describe("DayView", () => {
   });
 
   it("gives the keyboard to the open drawer's own tab", () => {
+    atWidth(true);
     mount();
     drawer();
     expect(document.activeElement?.getAttribute("role")).toBe("tab");
@@ -68,6 +91,7 @@ describe("DayView", () => {
   });
 
   it("closes on Escape, but not while something inside is being typed in", () => {
+    atWidth(true);
     mount();
     drawer();
     fireEvent.click(within(overlay()!).getByRole("tab", { name: "Search" }));
@@ -79,6 +103,7 @@ describe("DayView", () => {
   });
 
   it("answers the drawer event: toggling, and opening on a named tab", () => {
+    atWidth(true);
     mount();
     act(() => {
       window.dispatchEvent(new CustomEvent("sb:planner-drawer", { detail: { toggle: true } }));
