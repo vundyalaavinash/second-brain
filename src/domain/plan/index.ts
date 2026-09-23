@@ -44,11 +44,12 @@ export function addToPlan(db: DB, date: string, taskId: number): void {
   db.insert(dailyPlanEntries).values({ date, taskId, sortOrder: nextSortOrder(db, date), createdAt: nowIso() }).run();
 }
 
-/** Takes the task off that day's plan. The task itself is untouched, and a task that was never
- * on the plan is a no-op, so an undo can be replayed safely. */
+/** Takes the task off that day's plan and off the timeline with it: a task holds one block, and
+ * that block belonged to the plan it is leaving. A task that was never on the plan is a no-op,
+ * so an undo can be replayed safely. */
 export function removeFromPlan(db: DB, date: string, taskId: number): void {
-  db.delete(dailyPlanEntries).where(and(eq(dailyPlanEntries.date, date), eq(dailyPlanEntries.taskId, taskId))).run();
-  db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(eq(tasks.id, taskId)).run();
+  const removed = db.delete(dailyPlanEntries).where(and(eq(dailyPlanEntries.date, date), eq(dailyPlanEntries.taskId, taskId))).run().changes;
+  if (removed > 0) db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(eq(tasks.id, taskId)).run();
 }
 
 /** Listed ids take positions 0..n-1 in order; the day's other entries follow in their current order. */
@@ -71,7 +72,8 @@ export function unfinished(db: DB, date: string): Task[] {
 }
 
 /** Adds every unfinished task of `from` to `to`, returning how many landed there. A task already
- * on `to` is left where it is and is not counted. */
+ * on `to` is left where it is and is not counted. A carried task loses its block: it was placed
+ * on the day it is leaving, and the new day has its own hours. */
 export function carryOver(db: DB, from: string, to: string): number {
   let moved = 0;
   // The reads and the inserts share the connection the transaction opened, so `db` here is
