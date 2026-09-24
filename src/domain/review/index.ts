@@ -1,12 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
+import { REVIEW_STEPS, type ReviewStep } from "@/db/enums";
 import { items, type Item } from "@/db/schema";
 import { createItem, parseMeta, updateItem } from "@/domain/items";
 import { weekLabel } from "@/lib/week";
 
-/** The four questions a review walks through, in the order it walks them. */
-export const REVIEW_STEPS = ["clear", "back", "goals", "ahead"] as const;
-export type ReviewStep = (typeof REVIEW_STEPS)[number];
+export { REVIEW_STEPS, type ReviewStep };
 
 /** What a review has answered so far. `goals` is a note per goal id, since a week can speak to
  * several goals at once where every other step is a single piece of prose. */
@@ -17,10 +16,31 @@ export type ReviewAnswers = {
   ahead?: string;
 };
 
-/** Goal titles for `renderReviewBody` to label the goals section with. Optional: a caller with
- * no titles handy still gets a readable body, just labelled by id instead of by name. */
+/**
+ * A frozen picture of the week the review was written against — done, dropped, still open,
+ * booked focus time, the projects that moved. Design §5.2: the record is the four free-text
+ * answers as its body, and a snapshot of the figures in its meta, so a review read back long
+ * after the underlying tasks and containers have moved on still says what the week actually
+ * looked like when the prose was written, not what today's live query happens to say now.
+ */
 export interface ReviewSnapshot {
-  goalTitles?: Record<string, string>;
+  done: number;
+  dropped: number;
+  slipped: number;
+  focusMinutes: number;
+  focusRuns: number;
+  meetings: number;
+  projects: { containerId: number; name: string; closed: number; percent: number }[];
+}
+
+/**
+ * What a review item's meta actually holds: the answers and the snapshot each under their own
+ * key. `reviewAnswers` reads only `.answers` — never the whole blob — so any key meta ever grows
+ * (the snapshot included) cannot leak into what a caller treats as "the answers".
+ */
+interface ReviewMeta {
+  answers?: ReviewAnswers;
+  snapshot?: ReviewSnapshot;
 }
 
 const STEP_HEADINGS: Record<ReviewStep, string> = {
@@ -29,6 +49,10 @@ const STEP_HEADINGS: Record<ReviewStep, string> = {
   goals: "Goals",
   ahead: "Look ahead",
 };
+
+function reviewMeta(item: Item): ReviewMeta {
+  return parseMeta<ReviewMeta>(item);
+}
 
 /** The week's review item, if one has been opened yet. */
 export function getReview(db: DB, week: string): Item | undefined {
@@ -59,9 +83,16 @@ export function openReview(db: DB, week: string): Item {
   }
 }
 
-/** The answers an item's meta holds, however many steps have been saved so far. */
+/** The answers an item's meta holds, however many steps have been saved so far — never anything
+ * else meta carries, the snapshot included. */
 export function reviewAnswers(item: Item): ReviewAnswers {
-  return parseMeta<ReviewAnswers>(item);
+  return reviewMeta(item).answers ?? {};
+}
+
+/** The figures the review was last saved against, if any save has carried one — undefined for a
+ * review nothing has saved a snapshot into yet. */
+export function reviewSnapshot(item: Item): ReviewSnapshot | undefined {
+  return reviewMeta(item).snapshot;
 }
 
 /** Where a review resumes: the first step with no answer yet, or the last step once every one
@@ -73,9 +104,11 @@ export function nextStep(answers: ReviewAnswers): ReviewStep {
 /**
  * The review as readable Markdown, rebuilt whole on every save rather than patched in place —
  * the source of truth is the answers in meta, and the body is only ever a rendering of them, so
- * there is never a chance for the two to say different things.
+ * there is never a chance for the two to say different things. A goal note is labelled by id: the
+ * body is not the place to resolve a goal's current title, which the snapshot in meta — not this
+ * function — is what freezes for later reading.
  */
-export function renderReviewBody(week: string, answers: ReviewAnswers, snapshot?: ReviewSnapshot): string {
+export function renderReviewBody(week: string, answers: ReviewAnswers): string {
   const lines: string[] = [`# ${weekLabel(week)}`, ""];
   for (const step of REVIEW_STEPS) {
     lines.push(`## ${STEP_HEADINGS[step]}`, "");
@@ -83,7 +116,7 @@ export function renderReviewBody(week: string, answers: ReviewAnswers, snapshot?
       const goals = answers.goals ?? {};
       const ids = Object.keys(goals);
       if (ids.length === 0) lines.push("_Nothing noted yet._");
-      else for (const id of ids) lines.push(`- **${snapshot?.goalTitles?.[id] ?? `Goal ${id}`}**: ${goals[id]}`);
+      else for (const id of ids) lines.push(`- **Goal ${id}**: ${goals[id]}`);
     } else {
       lines.push(answers[step] ?? "_Nothing noted yet._");
     }
@@ -96,17 +129,18 @@ export function renderReviewBody(week: string, answers: ReviewAnswers, snapshot?
  * Saves one step's answer and rewrites the body to match. Every step but `goals` replaces its
  * one answer outright; `goals` merges the given notes into whatever goals already had one, so
  * saving a note for goal 7 never loses the note already sitting on goal 3.
+ *
+ * `snapshot`, when given, replaces the figures frozen in meta — the caller's own read of the
+ * week at the moment of this save. Left out, whatever snapshot the item already carried survives
+ * the write untouched, so an early step's save (with no figures to hand yet) cannot erase a
+ * later one's.
  */
-export function saveReviewStep(
-  db: DB,
-  week: string,
-  step: ReviewStep,
-  value: string | Record<string, string>,
-  snapshot?: ReviewSnapshot,
-): Item {
+export function saveReviewStep(db: DB, week: string, step: ReviewStep, value: string | Record<string, string>, snapshot?: ReviewSnapshot): Item {
   const item = openReview(db, week);
-  const current = reviewAnswers(item);
+  const meta = reviewMeta(item);
+  const current = meta.answers ?? {};
   const answers: ReviewAnswers =
     step === "goals" ? { ...current, goals: { ...current.goals, ...(value as Record<string, string>) } } : { ...current, [step]: value as string };
-  return updateItem(db, item.id, { meta: answers, body: renderReviewBody(week, answers, snapshot) });
+  const nextMeta: ReviewMeta = { answers, snapshot: snapshot ?? meta.snapshot };
+  return updateItem(db, item.id, { meta: nextMeta as unknown as Record<string, unknown>, body: renderReviewBody(week, answers) });
 }

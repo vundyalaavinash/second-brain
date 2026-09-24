@@ -23,8 +23,8 @@ describe("the rest of the week", () => {
     expect(weekDays("2026-09-21")).toHaveLength(7);
     expect(weekDays("2026-09-21")[6]).toBe("2026-09-27");
   });
-  it("names the next week and labels its own", () => {
+  it("names the next week and labels its own, year included", () => {
     expect(nextWeek("2026-09-21")).toBe("2026-09-28");
-    expect(weekLabel("2026-09-21")).toMatch(/21 September/);
+    expect(weekLabel("2026-09-21")).toBe("Week of 21 September 2026");
   });
 });

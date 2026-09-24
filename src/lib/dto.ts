@@ -1,5 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome } from "@/db/enums";
-import type { ReviewStep } from "@/domain/review";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep } from "@/db/enums";
 
 export interface ContainerRefDTO {
   id: number;
@@ -426,17 +425,24 @@ export interface ReviewDTO {
     leftover: PlanTaskDTO[];
   };
   back: {
+    /** Completed inside the week, by `completedAt`. */
     done: number;
+    /** Dropped inside the week, by `droppedAt` — its own column, so editing a dropped task
+     * later can never move it into a different week's count the way `updatedAt` would. */
     dropped: number;
     /** Planned in the week and still open — the same set `clear.leftover` lists, as a count. */
     slipped: number;
     focusMinutes: number;
     focusRuns: number;
-    /** Meetings not declined and not all-day — the same rule `homePayload` counts by. */
+    /** Meetings not declined and not all-day, on the calendar day they start — the same rule
+     * and the same day-column selection `homePayload` counts by. A meeting that crosses local
+     * midnight is attributed to the day it starts, once, here as there. */
     meetings: number;
     projects: { container: ContainerRefDTO; closed: number; percent: number }[];
   };
-  /** Active goals, each with its measure. */
+  /** Active goals, each with its movement measured as of the week's own last day — or as of
+   * today when the week under review is the current one, since a week still in progress cannot
+   * yet have movement from days it hasn't reached. */
   goals: GoalDTO[];
   ahead: {
     /** Next Monday. */
@@ -445,5 +451,7 @@ export interface ReviewDTO {
     deadlines: { container: ContainerRefDTO; deadline: string }[];
     meetings: ActivityMeetingDTO[];
   };
+  /** When a step was last saved; null until the first one is — an opened-but-untouched review
+   * has nothing to call "saved" yet. */
   savedAt: string | null;
 }

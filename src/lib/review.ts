@@ -1,13 +1,13 @@
-import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { containers, tasks, type CalendarEvent, type Task } from "@/db/schema";
+import { containers, dailyPlanEntries, tasks, type CalendarEvent, type Task } from "@/db/schema";
 import { dayBounds, listMeetings } from "@/domain/activity";
 import { listContainers } from "@/domain/containers";
 import { focusSummary } from "@/domain/focus";
 import { goalsWithMeasure } from "@/domain/goals";
 import { countInbox } from "@/domain/items";
-import { listPlan, type PlanTask } from "@/domain/plan";
-import { getReview, nextStep, reviewAnswers } from "@/domain/review";
+import { type PlanTask } from "@/domain/plan";
+import { getReview, nextStep, reviewAnswers, REVIEW_STEPS } from "@/domain/review";
 import { containerProgress, listTasks } from "@/domain/tasks";
 import { localDay } from "./time";
 import { nextWeek, weekDays, weekEnd, weekLabel, weekStart } from "./week";
@@ -15,8 +15,9 @@ import { serializeGoal, serializeMeeting, serializePlanTasks, serializeTasks } f
 import type { ContainerRefDTO, ReviewDTO } from "./dto";
 
 /** A meeting a person is actually going to be at: not declined, and not all-day — the same rule
- * `homePayload` (src/lib/home.ts) counts by, so Home and the review can never disagree about the
- * same week. */
+ * `homePayload` (src/lib/home.ts) counts by. Both read `listMeetings`, which selects on the
+ * calendar day column, so a meeting crossing local midnight is attributed to the day it starts
+ * on here exactly as it is there. */
 function isCountableMeeting(ev: CalendarEvent): boolean {
   return ev.allDay !== 1 && ev.status !== "declined";
 }
@@ -30,41 +31,47 @@ function toContainerRef(c: { id: number; name: string; slug: string; kind: Conta
  * week's days it sits on — a task planned Monday and carried to Tuesday is one thing left open,
  * not two. `clear.leftover` and `back.slipped` both read this same set, as rows and as a count,
  * so the two can never drift apart the way a second query for either would risk.
+ *
+ * One query across all seven days rather than `listPlan` called once per day: the join and the
+ * `status = "open"` filter both run in SQL, and the per-task dedup is the only work left to JS.
  */
 function weekLeftover(db: DB, days: string[]): PlanTask[] {
+  const rows = db
+    .select({ task: tasks, planId: dailyPlanEntries.id, sortOrder: dailyPlanEntries.sortOrder })
+    .from(dailyPlanEntries)
+    .innerJoin(tasks, eq(tasks.id, dailyPlanEntries.taskId))
+    .where(and(inArray(dailyPlanEntries.date, days), eq(tasks.status, "open")))
+    .orderBy(asc(dailyPlanEntries.date), asc(dailyPlanEntries.sortOrder), asc(dailyPlanEntries.id))
+    .all();
   const byId = new Map<number, PlanTask>();
-  for (const day of days) {
-    for (const task of listPlan(db, day)) {
-      if (task.status === "open" && !byId.has(task.id)) byId.set(task.id, task);
-    }
+  for (const row of rows) {
+    if (!byId.has(row.task.id)) byId.set(row.task.id, { ...row.task, planId: row.planId, sortOrder: row.sortOrder });
   }
   return [...byId.values()];
 }
 
-/** Tasks completed inside `[week, end)`, by the local day `completedAt` falls on. Bounded in SQL
- * to `updatedAt >= the week's start` first — `completedAt` and `updatedAt` are written together
- * at the moment a task is completed and `updatedAt` only ever moves later after that, so nothing
- * closed inside the week can fall outside that bound — then narrowed to the exact window in JS,
- * the same two-step `measureFromLinks` (src/domain/goals/index.ts) uses for the same reason. */
+/** Tasks completed inside `[week, end)`, bounded on `completedAt` at both ends — the same two
+ * boundaries `focusSummary` (src/domain/focus/index.ts) reads its own range by. Bounding only the
+ * lower end (as an earlier version of this function did, off `updatedAt`) let a task completed
+ * weeks earlier and merely edited inside this week count as done this week; both ends closed on
+ * the field that actually answers "done when" rules that out. */
 function doneInWeek(db: DB, week: string, end: string): Task[] {
   return db
     .select()
     .from(tasks)
-    .where(and(eq(tasks.status, "done"), isNotNull(tasks.completedAt), gte(tasks.updatedAt, dayBounds(week).start)))
-    .all()
-    .filter((t) => localDay(t.completedAt!) < end);
+    .where(and(eq(tasks.status, "done"), isNotNull(tasks.completedAt), gte(tasks.completedAt, dayBounds(week).start), lt(tasks.completedAt, dayBounds(end).start)))
+    .all();
 }
 
-/** Tasks dropped inside `[week, end)`. A drop leaves no timestamp of its own — only `completedAt`
- * exists, and only `done` sets it — so `updatedAt` is read instead: `dropTask` bumps it as part
- * of the same write that sets the status, which makes it the moment the drop happened. */
+/** Tasks dropped inside `[week, end)`, bounded on `droppedAt` at both ends — its own column,
+ * set by `dropTask` and cleared by `reopenTask`/`completeTask`, so unlike `updatedAt` it cannot
+ * be moved into a different week by an unrelated later edit. */
 function droppedInWeek(db: DB, week: string, end: string): Task[] {
   return db
     .select()
     .from(tasks)
-    .where(and(eq(tasks.status, "dropped"), gte(tasks.updatedAt, dayBounds(week).start)))
-    .all()
-    .filter((t) => localDay(t.updatedAt) < end);
+    .where(and(eq(tasks.status, "dropped"), isNotNull(tasks.droppedAt), gte(tasks.droppedAt, dayBounds(week).start), lt(tasks.droppedAt, dayBounds(end).start)))
+    .all();
 }
 
 /** The projects that closed something this week, each with how many and its overall percent —
@@ -100,15 +107,24 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
   const end = nextWeek(week);
   const window = { from: week, to: end };
   const today = localDay(now.toISOString());
+  const current = week === weekStart(today);
 
   const item = getReview(db, week);
   const answers = item ? reviewAnswers(item) : {};
+  // Null until the first step is actually saved — `openReview` alone (opening the page) stamps
+  // no answer, and a review nothing has been written to has nothing to call "last saved".
+  const savedAt = item && REVIEW_STEPS.some((step) => answers[step] !== undefined) ? item.updatedAt : null;
 
   const leftover = weekLeftover(db, days);
   const doneRows = doneInWeek(db, week, end);
   const droppedRows = droppedInWeek(db, week, end);
   const focus = focusSummary(db, window, now);
   const meetings = listMeetings(db, window).filter(isCountableMeeting);
+
+  // A week's movement cannot come from days it hasn't reached yet: a week still in progress is
+  // measured as of today, and a week already closed is measured as of its own last day, never
+  // as of "now" regardless of how long ago the week was (design §5.1's "movement for the week").
+  const measureAsOf = current ? today : weekEnd(week);
 
   const ahead = end;
   const aheadEnd = nextWeek(ahead);
@@ -123,7 +139,7 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
     week,
     label: weekLabel(week),
     days,
-    current: week === weekStart(today),
+    current,
     step: nextStep(answers),
     answers,
     clear: {
@@ -139,13 +155,13 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
       meetings: meetings.length,
       projects: weekProjects(db, doneRows),
     },
-    goals: goalsWithMeasure(db, { status: "active" }, today).map(serializeGoal),
+    goals: goalsWithMeasure(db, { status: "active" }, measureAsOf).map(serializeGoal),
     ahead: {
       week: ahead,
       due: serializeTasks(db, dueSoon, aheadWindow),
       deadlines,
       meetings: aheadMeetings.map(serializeMeeting),
     },
-    savedAt: item?.updatedAt ?? null,
+    savedAt,
   };
 }

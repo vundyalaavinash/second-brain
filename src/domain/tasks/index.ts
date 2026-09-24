@@ -196,7 +196,7 @@ function setStatus(db: DB, id: number, status: TaskStatus): Task {
   return db.transaction(() => {
     const row = db
       .update(tasks)
-      .set({ status, completedAt: status === "done" ? now : null, updatedAt: now })
+      .set({ status, completedAt: status === "done" ? now : null, droppedAt: status === "dropped" ? now : null, updatedAt: now })
       .where(eq(tasks.id, id))
       .returning()
       .get();

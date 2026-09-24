@@ -1,24 +1,11 @@
-import { addDaysLocal } from "@/components/activity/format";
+import { addDaysLocal, MONTHS } from "@/components/activity/format";
 
 /**
- * No imports of its own beyond `addDaysLocal` — plain date arithmetic, exactly like `localDay`
- * in `./time`, because both the Planner's server page and the Activity client component need
- * the same Monday rule and neither can afford to pull in the domain to get it.
+ * No imports of its own beyond plain date arithmetic from `@/components/activity/format` —
+ * exactly like `localDay` in `./time` — because both the Planner's server page and the Activity
+ * client component need the same Monday rule and neither can afford to pull in the domain to
+ * get it.
  */
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 /** The Monday on or before `day`. Sunday counts as the week's last day, not the next week's first. */
 export function weekStart(day: string): string {
@@ -42,8 +29,10 @@ export function nextWeek(start: string): string {
   return addDaysLocal(start, 7);
 }
 
-/** "Week of 21 September". */
+/** "Week of 21 September 2026" — the year matters here in a way it doesn't in `formatDayHeading`:
+ * this label is also the review item's title, so two reviews a year apart must stay two distinct
+ * names in the Library rather than sharing one. */
 export function weekLabel(start: string): string {
-  const [, m, d] = start.split("-").map(Number);
-  return `Week of ${d} ${MONTHS[m - 1]}`;
+  const [y, m, d] = start.split("-").map(Number);
+  return `Week of ${d} ${MONTHS[m - 1]} ${y}`;
 }

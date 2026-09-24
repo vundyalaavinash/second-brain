@@ -45,9 +45,16 @@ function doneOn(id: number, day: string): void {
   t.db.run(`update tasks set completed_at = '${ts}', updated_at = '${ts}' where id = ${id}`);
 }
 
-/** Drops a task, then overwrites `updated_at` outright — the only timestamp a drop leaves. */
+/** Drops a task, then overwrites `dropped_at` (and `updated_at`, to match) outright. */
 function droppedOn(id: number, day: string): void {
   dropTask(t.db, id);
+  const ts = noon(day);
+  t.db.run(`update tasks set dropped_at = '${ts}', updated_at = '${ts}' where id = ${id}`);
+}
+
+/** Bumps `updated_at` alone, the way an unrelated later edit (a title change, say) would — used
+ * to prove the review no longer keys `done`/`dropped` off it. */
+function touchTask(id: number, day: string): void {
   t.db.run(`update tasks set updated_at = '${noon(day)}' where id = ${id}`);
 }
 
@@ -86,7 +93,7 @@ describe("reviewPayload", () => {
     const payload = reviewPayload(t.db, WEEK, NOW);
 
     expect(payload.week).toBe(WEEK);
-    expect(payload.label).toMatch(/21 September/);
+    expect(payload.label).toBe("Week of 21 September 2026");
     expect(payload.days).toEqual(["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27"]);
     expect(payload.current).toBe(true);
     expect(payload.step).toBe("clear");
@@ -103,9 +110,44 @@ describe("reviewPayload", () => {
     expect(payload.back.focusRuns).toBe(1);
     // The all-day holiday and the declined sync both take none of the week's meeting count.
     expect(payload.back.meetings).toBe(1);
-    expect(payload.back.projects).toEqual([{ container: { id: launch.id, name: "Launch", slug: launch.slug, kind: "project" }, closed: 1, percent: expect.any(Number) }]);
+    // Launch: one open (leftover), two done overall (shipped + before) — 2/3 rounds to 67 —
+    // but only `shipped` closed inside the reviewed week, so `closed` is 1, not 2.
+    expect(payload.back.projects).toEqual([{ container: { id: launch.id, name: "Launch", slug: launch.slug, kind: "project" }, closed: 1, percent: 67 }]);
 
-    expect(payload.goals.map((g) => g.id)).toContain(goal.id);
+    // The goal's movement is measured as of "today" (the week is current) — `shipped` closed
+    // the same day, `before` nine days earlier, outside the 7-day movement window.
+    const goalEntry = payload.goals.find((g) => g.id === goal.id);
+    expect(goalEntry).toBeDefined();
+    expect(goalEntry!.measure).toMatchObject({ open: 1, done: 2, total: 3, percent: 67, movement: 1, stalled: false });
+  });
+
+  it("is empty in every figure for a week with nothing in it", () => {
+    const payload = reviewPayload(t.db, WEEK, NOW);
+    expect(payload.clear).toEqual({ inbox: 0, leftover: [] });
+    expect(payload.back).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [] });
+    expect(payload.goals).toEqual([]);
+    expect(payload.ahead.due).toEqual([]);
+    expect(payload.ahead.deadlines).toEqual([]);
+    expect(payload.ahead.meetings).toEqual([]);
+    expect(payload.step).toBe("clear");
+    expect(payload.savedAt).toBeNull();
+  });
+
+  it("keys done and dropped on their own timestamps, never on a later edit's updated_at", () => {
+    const doneEarly = createTask(t.db, { title: "Closed in August" });
+    doneOn(doneEarly.id, "2026-08-01");
+    touchTask(doneEarly.id, "2026-09-23"); // edited inside the reviewed week, long after it closed
+
+    const droppedThisWeek = createTask(t.db, { title: "Dropped this week" });
+    droppedOn(droppedThisWeek.id, "2026-09-22");
+    touchTask(droppedThisWeek.id, "2026-11-01"); // edited well after the week
+
+    const payload = reviewPayload(t.db, WEEK, NOW);
+    // A task closed in August, merely touched during the reviewed week, is not done this week.
+    expect(payload.back.done).toBe(0);
+    // A task dropped this week stays counted here even after a later, unrelated edit moves
+    // `updated_at` into a different month entirely.
+    expect(payload.back.dropped).toBe(1);
   });
 
   it("reads meetings by the same not-declined, not-all-day rule homePayload counts by", () => {
@@ -143,8 +185,47 @@ describe("reviewPayload", () => {
     expect(payload.savedAt).not.toBeNull();
   });
 
+  it("reports savedAt as null for a review that has been opened but never saved", () => {
+    openReview(t.db, WEEK);
+    const payload = reviewPayload(t.db, WEEK, NOW);
+    expect(payload.step).toBe("clear");
+    expect(payload.savedAt).toBeNull();
+  });
+
   it("is only current for the week `now` actually falls in", () => {
     const elsewhere = reviewPayload(t.db, WEEK, new Date(2026, 9, 5, 9, 0, 0));
     expect(elsewhere.current).toBe(false);
+  });
+
+  it("measures a past week's goals as of the week's own last day, not as of now", () => {
+    const PAST_WEEK = "2026-08-03"; // a Monday, well before WEEK
+    const proj = project("Launch");
+    const goal = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
+    setGoalLinks(t.db, goal.id, [proj.id]);
+    const task = createTask(t.db, { title: "Ship", containerId: proj.id });
+    // Four days before the week's own Sunday (2026-08-09) — inside the movement window measured
+    // from the week's last day, but nearly three months before `FAR_LATER`.
+    doneOn(task.id, "2026-08-05");
+
+    const FAR_LATER = new Date(2026, 9, 20, 9, 0, 0);
+    const payload = reviewPayload(t.db, PAST_WEEK, FAR_LATER);
+    const measure = payload.goals.find((g) => g.id === goal.id)!.measure;
+    expect(measure.movement).toBe(1);
+    expect(measure.stalled).toBe(false);
+  });
+
+  it("measures the current week's goals as of today, not its not-yet-reached last day", () => {
+    const proj = project("Launch");
+    const goal = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
+    setGoalLinks(t.db, goal.id, [proj.id]);
+    const task = createTask(t.db, { title: "Ship", containerId: proj.id });
+    // Two days before the week starts: 3 days before "today" (within the movement window), but
+    // 8 days before the week's own (not-yet-reached) last day — outside it.
+    doneOn(task.id, "2026-09-19");
+
+    const NOW_MIDWEEK = new Date(2026, 8, 22, 9, 0, 0); // Tuesday of WEEK
+    const payload = reviewPayload(t.db, WEEK, NOW_MIDWEEK);
+    const measure = payload.goals.find((g) => g.id === goal.id)!.measure;
+    expect(measure.movement).toBe(1);
   });
 });

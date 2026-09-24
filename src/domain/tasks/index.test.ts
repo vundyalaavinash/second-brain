@@ -58,6 +58,14 @@ describe("tasks domain", () => {
     expect(projectProgress(t.db, 999)).toMatchObject({ open: 0, done: 0, total: 0, percent: 0, nextTask: null });
   });
 
+  it("drop sets droppedAt, reopen and complete both clear it", () => {
+    const a = createTask(t.db, { title: "A" });
+    expect(dropTask(t.db, a.id).droppedAt).not.toBeNull();
+    expect(reopenTask(t.db, a.id).droppedAt).toBeNull();
+    dropTask(t.db, a.id);
+    expect(completeTask(t.db, a.id).droppedAt).toBeNull();
+  });
+
   it("nextTask follows manual order, then earliest due date with nulls last", () => {
     const a = createTask(t.db, { title: "A", containerId: projectId, dueDate: "2026-09-30" });
     const b = createTask(t.db, { title: "B", containerId: projectId, dueDate: "2026-09-10" });

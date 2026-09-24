@@ -48,3 +48,9 @@ export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 export const FOCUS_OUTCOMES = ["completed", "stopped", "abandoned"] as const;
 export type FocusOutcome = (typeof FOCUS_OUTCOMES)[number];
+
+/** The four questions a review walks through, in the order it walks them. Kept beside the other
+ * enums, not in `@/domain/review`, so `src/lib/dto.ts` — read by client components — can name the
+ * type without a domain edge; `@/db/enums` is already the one module it imports from. */
+export const REVIEW_STEPS = ["clear", "back", "goals", "ahead"] as const;
+export type ReviewStep = (typeof REVIEW_STEPS)[number];

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
-import { REVIEW_STEPS } from "@/domain/review";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
@@ -90,12 +89,16 @@ export const FocusSettingsBody = z
   .partial()
   .strict();
 
-export const SaveReviewBody = z
-  .object({
-    week: DateString,
-    step: z.enum(REVIEW_STEPS),
-    value: z.union([z.string(), z.record(z.string(), z.string())]),
-  })
-  .strict();
+/** Ties `step` to the shape `value` must take: a piece of prose for every step but `goals`,
+ * which takes a note per goal id. A plain union of the two value types would accept a string for
+ * `goals` — silently spread into an index-keyed object by `saveReviewStep` — or a record for
+ * any other step, rendered as `[object Object]` in the body; the discriminant rules both out at
+ * the door. */
+export const SaveReviewBody = z.discriminatedUnion("step", [
+  z.object({ week: DateString, step: z.literal("clear"), value: z.string() }).strict(),
+  z.object({ week: DateString, step: z.literal("back"), value: z.string() }).strict(),
+  z.object({ week: DateString, step: z.literal("goals"), value: z.record(z.string(), z.string()) }).strict(),
+  z.object({ week: DateString, step: z.literal("ahead"), value: z.string() }).strict(),
+]);
 
 export const ReviewPlanBody = z.object({ week: DateString, taskIds: z.array(z.number().int().positive()) }).strict();
