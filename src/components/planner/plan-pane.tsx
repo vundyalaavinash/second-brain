@@ -80,10 +80,12 @@ interface Props {
   /** The day the app is being used on, for the row's own "today" reckoning. */
   today: string;
   onRefresh: () => void;
+  /** Home shows the plan without the morning ritual: spec §2 keeps the strip on the Planner. */
+  hideRitual?: boolean;
 }
 
 /** The day's plan, and the picker under it that feeds it: everything else is a row menu away. */
-export function PlanPane({ day, today, onRefresh }: Props) {
+export function PlanPane({ day, today, onRefresh, hideRitual = false }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
@@ -117,14 +119,14 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   // A task planned from the picker before the ritual began says the morning is already under
   // way: the strip stands aside, and stays away for the rest of the day.
   useEffect(() => {
-    if (ritual !== true || started || day.plan.length === 0) return;
+    if (hideRitual || ritual !== true || started || day.plan.length === 0) return;
     try {
       localStorage.setItem(ritualDoneKey(day.date), "1");
     } catch {
       /* no storage: the strip returns on the next load */
     }
     queueMicrotask(() => setRitual(false));
-  }, [ritual, started, day.plan.length, day.date]);
+  }, [hideRitual, ritual, started, day.plan.length, day.date]);
 
   // Everything that moves a task or a plan entry says so; the pane reloads the whole day
   // rather than guessing which half of it changed.
@@ -350,7 +352,7 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   // Today, not yet walked through, and either still empty or mid-ritual: the strip takes over
   // the carry-over line too.
   // A ritual with no step to offer is not shown at all; once started it runs to the end.
-  const showRitual = ritual === true && (started || (day.plan.length === 0 && ritualSteps(day).length > 0));
+  const showRitual = !hideRitual && ritual === true && (started || (day.plan.length === 0 && ritualSteps(day).length > 0));
   const capacity = day.capacity;
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);

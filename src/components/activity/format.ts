@@ -48,3 +48,12 @@ export function addDaysLocal(day: string, n: number): string {
   const [y, m, d] = day.split("-").map(Number);
   return todayLocal(new Date(y, m - 1, d + n));
 }
+
+/** "just now", "4 min ago", "2 h ago", else the date: enough to trust or doubt a sync. */
+export function sinceLabel(iso: string, now = Date.now()): string {
+  const min = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} h ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}

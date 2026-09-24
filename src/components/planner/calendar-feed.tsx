@@ -3,19 +3,15 @@
 import { useEffect, useState } from "react";
 import { CalendarSync, RefreshCw } from "lucide-react";
 import type { CalendarFeedDTO } from "@/lib/dto";
+import { sinceLabel } from "../activity/format";
 import { Button, Input } from "../ui";
 
 const FEED_URL = "/api/settings/calendar";
 const JSON_HEADERS = { "content-type": "application/json" };
 
-/** "just now", "4 min ago", "2 h ago", else the date: enough to trust or doubt a sync. */
-export function sinceLabel(iso: string, now = Date.now()): string {
-  const min = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  if (min < 24 * 60) return `${Math.round(min / 60)} h ago`;
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
+/** Home says "2 h ago" about an item the way this row says it about a sync; the wording lives
+ * with the other time formatters now, and stays exported here for everything that reads it. */
+export { sinceLabel };
 
 /**
  * A published calendar link (Outlook on the web › Settings › Calendar › Shared calendars ›
