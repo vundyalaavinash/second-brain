@@ -414,6 +414,9 @@ export interface ReviewDTO {
   week: string;
   label: string;
   days: string[];
+  /** The day this payload was assembled on — for date math a fixed figure elsewhere in the DTO
+   * cannot answer, `GoalRow`'s own deadline and stalled-since reading chief among them. */
+  today: string;
   /** Whether the week being reviewed is the one the app is being used in. */
   current: boolean;
   /** Where to resume: the first step with no answer yet, or the last step once every one does. */

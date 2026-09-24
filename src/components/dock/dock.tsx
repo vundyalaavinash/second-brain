@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import {
   Archive,
+  ArrowsClockwise,
   BookBookmark,
   CalendarCheck,
   DotsThree,
@@ -43,6 +44,7 @@ const ICONS: Record<IconName, Glyph> = {
   planner: CalendarCheck,
   inbox: Tray,
   goal: Target,
+  review: ArrowsClockwise,
   project: Flag,
   area: Stack,
   resource: BookBookmark,

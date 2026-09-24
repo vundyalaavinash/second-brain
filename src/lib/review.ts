@@ -139,6 +139,7 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
     week,
     label: weekLabel(week),
     days,
+    today,
     current,
     step: nextStep(answers),
     answers,
