@@ -12,6 +12,12 @@ describe("NAV_ITEMS", () => {
     expect(all.every((n) => n.shortcut.startsWith("g "))).toBe(true);
     expect(new Set(letters).size).toBe(letters.length);
   });
+
+  it("sits Goals directly after Planner, above Projects", () => {
+    const hrefs = NAV_ITEMS.map((n) => n.href);
+    expect(hrefs.indexOf("/goals")).toBe(hrefs.indexOf("/planner") + 1);
+    expect(NAV_ITEMS.find((n) => n.href === "/goals")).toEqual({ href: "/goals", label: "Goals", shortcut: "g g", icon: "goal", section: "brain" });
+  });
 });
 
 describe("isNavActive", () => {
