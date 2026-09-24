@@ -76,7 +76,10 @@ function timedItems(db: DB, day: HomeDTO["day"], date: string): HomeItemDTO[] {
  */
 function nowAndNext(items: HomeItemDTO[], at: number): { now: HomeItemDTO | null; next: HomeItemDTO[] } {
   const running = items.filter((i) => Date.parse(i.startsAt) <= at && at < Date.parse(i.endsAt));
-  const now = running.find((i) => i.kind === "meeting") ?? running[0] ?? null;
+  // Of two things running at once the nearer end is the more pressing: a standup inside an
+  // all-hands is what the next few minutes are actually about.
+  const soonestEnd = (list: HomeItemDTO[]) => [...list].sort((a, b) => Date.parse(a.endsAt) - Date.parse(b.endsAt))[0];
+  const now = soonestEnd(running.filter((i) => i.kind === "meeting")) ?? soonestEnd(running) ?? null;
   return { now, next: items.filter((i) => Date.parse(i.startsAt) > at).slice(0, NEXT_LIMIT) };
 }
 
@@ -160,7 +163,8 @@ export function homePayload(db: DB, now: Date): HomeDTO {
     day,
     counts: {
       planned: day.plan.filter((t) => t.status === "open").length,
-      meetings: day.meetings.filter((m) => !m.allDay).length,
+      // The same meetings the capacity line measures: a declined one takes none of the day.
+      meetings: day.meetings.filter((m) => !m.allDay && m.status !== "declined").length,
       // The dock's badge count, called rather than counted again.
       inbox: countInbox(db),
     },

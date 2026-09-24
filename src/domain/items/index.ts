@@ -61,7 +61,8 @@ export interface ListItemsFilter {
   /**
    * What "first" means. The default is creation order, newest first, which is how every
    * existing caller reads a list; "updated" asks for the last touched instead, which is what
-   * Home's Recent shows. Neither changes where pinned items sort when a home is named.
+   * Home's Recent shows. Neither changes where pinned items sort when a home is named, and
+   * neither moves `from`/`to`, which always window on creation.
    */
   orderBy?: "created" | "updated";
 }

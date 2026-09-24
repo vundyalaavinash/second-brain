@@ -96,7 +96,7 @@ describe("homePayload", () => {
     expect(home.next).toEqual([]);
   });
 
-  it("leaves now empty when nothing is on, and skips all-day blocks and finished tasks", () => {
+  it("leaves now empty when nothing is on, and skips all-day meetings and finished tasks", () => {
     const done = createTask(t.db, { title: "Already ticked" });
     addToPlan(t.db, DATE, done.id);
     addBlock(t.db, { taskId: done.id, startsAt: localAt(10), minutes: 60 });
