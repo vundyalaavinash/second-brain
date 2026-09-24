@@ -111,11 +111,14 @@ export function addBlock(db: DB, input: { taskId: number; startsAt: string; minu
  * The estimate is the total, so it may not sit under the day's sessions: a session resized past
  * it pulls it up to their sum. An estimate nobody has guessed stays unguessed.
  */
+/** The day's sessions are a floor for the estimate: a task nobody estimated takes their sum as
+ * its estimate, and one estimated too low grows to match. Past eight hours the estimate stays
+ * at its own ceiling and the sessions simply exceed it. */
 function growEstimate(db: DB, taskId: number, date: string): void {
   const task = getTask(db, taskId);
-  if (!task || task.estimateMinutes === null) return;
+  if (!task) return;
   const sum = listBlocks(db, { taskId, date }).reduce((n, b) => n + b.minutes, 0);
-  if (sum > task.estimateMinutes) updateTask(db, taskId, { estimateMinutes: Math.min(MAX_ESTIMATE, sum) });
+  if (task.estimateMinutes === null || sum > task.estimateMinutes) updateTask(db, taskId, { estimateMinutes: Math.min(MAX_ESTIMATE, sum) });
 }
 
 export function updateBlock(db: DB, id: number, patch: { startsAt?: string; minutes?: number }): TaskBlock {

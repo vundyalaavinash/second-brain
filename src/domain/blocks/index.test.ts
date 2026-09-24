@@ -52,11 +52,11 @@ describe("blocks domain", () => {
     expect(() => updateBlock(t.db, 999, { minutes: 30 })).toThrow(BlockError);
   });
 
-  it("leaves an unguessed estimate unguessed when a session grows", () => {
+  it("gives an unguessed task the estimate its sessions add up to", () => {
     const task = createTask(t.db, { title: "Write" });
     const block = addBlock(t.db, { taskId: task.id, startsAt: `${DAY}T10:00:00`, minutes: 25 });
     updateBlock(t.db, block.id, { minutes: 90 });
-    expect(getTask(t.db, task.id)!.estimateMinutes).toBeNull();
+    expect(getTask(t.db, task.id)!.estimateMinutes).toBe(90);
   });
 
   it("removes one session, clears a day's, and lists a day's in clock order", () => {

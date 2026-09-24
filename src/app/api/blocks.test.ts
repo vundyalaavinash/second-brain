@@ -108,6 +108,7 @@ describe("blocks api", () => {
     expect((await r.block.PATCH(json("PATCH", "/x", { taskId: 2 }), params(1))).status).toBe(400);
     expect((await r.block.PATCH(json("PATCH", "/x", { minutes: 30 }), params(9999))).status).toBe(404);
     expect((await r.taskBlocks.DELETE(json("DELETE", `/api/tasks/${taskId}/blocks?date=nope`), params(taskId))).status).toBe(400);
+    expect((await r.taskBlocks.DELETE(json("DELETE", `/api/tasks/${taskId}/blocks`), params(taskId))).status).toBe(400);
     expect((await r.place.POST(json("POST", "/api/plan/place", { date: "nope" }))).status).toBe(400);
     expect((await r.place.POST(json("POST", "/api/plan/place", { date: DAY, taskId: 9999 }))).status).toBe(404);
   });

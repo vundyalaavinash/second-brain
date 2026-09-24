@@ -46,4 +46,16 @@ describe("scheduler", () => {
     expect(placeSessions([{ start: 700, end: 730 }], [45, 45], {})).toEqual({ placed: [{ start: 700, end: 730 }], leftover: 60 });
     expect(placeSessions([{ start: 700, end: 712 }], [45], {})).toEqual({ placed: [], leftover: 45 });
   });
+
+  it("never places a piece under the floor, and starts on the five-minute grid", () => {
+    // 09:00–09:35 takes 35 of the first 45; the 10-minute tail is not a session.
+    expect(placeSessions([{ start: 540, end: 575 }, { start: 660, end: 1080 }], [45, 45], {})).toEqual({
+      placed: [
+        { start: 540, end: 575 },
+        { start: 660, end: 705 },
+      ],
+      leftover: 10,
+    });
+    expect(placeSessions([{ start: 607, end: 700 }], [30], {})).toEqual({ placed: [{ start: 610, end: 640 }], leftover: 0 });
+  });
 });

@@ -77,7 +77,8 @@ export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: 
         leftover += need;
         break;
       }
-      const start = Math.max(cursor, slot.start);
+      // Starts sit on the five-minute grid, so a meeting ending at 10:07 gives a session at 10:10.
+      const start = up(Math.max(cursor, slot.start), snap);
       const room = Math.floor((slot.end - start) / snap) * snap;
       if (room < floor) {
         slotIndex += 1;
@@ -85,14 +86,14 @@ export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: 
         continue;
       }
       const take = Math.min(need, room);
-      if (take < floor && need - take > 0 && need - take < floor) {
-        // Neither the piece here nor what would remain is worth a session on its own.
-        leftover += need;
-        break;
-      }
       placed.push({ start, end: start + take });
       need -= take;
       cursor = start + take;
+      // A tail shorter than the floor is not worth a session of its own: it stays unplaced.
+      if (need > 0 && need < floor) {
+        leftover += need;
+        need = 0;
+      }
       if (cursor >= slot.end - snap + 1) {
         slotIndex += 1;
         cursor = slots[slotIndex]?.start ?? 0;
