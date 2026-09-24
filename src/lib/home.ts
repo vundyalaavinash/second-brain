@@ -1,8 +1,7 @@
 import { inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { tasks } from "@/db/schema";
-import { todayLocal } from "@/components/activity/format";
-import { getDay, getHelperState } from "@/domain/activity";
+import { getDay, getHelperState, localDay } from "@/domain/activity";
 import { listBlocks } from "@/domain/blocks";
 import { listContainers } from "@/domain/containers";
 import { countInbox, listItems, parseMeta } from "@/domain/items";
@@ -172,7 +171,7 @@ function activityToday(db: DB, date: string): HomeDTO["activity"] {
  * asked for again, so the figures and the rows under them can never disagree.
  */
 export function homePayload(db: DB, now: Date): HomeDTO {
-  const date = todayLocal(now);
+  const date = localDay(now.toISOString());
   const day = plannerDay(db, date);
   const { now: current, next } = nowAndNext(timedItems(db, day, date), now.getTime());
   return {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
+import { todayLocal } from "@/components/activity/format";
 import type { HomeDTO } from "@/lib/dto";
 
 let dir: string;
@@ -21,7 +22,7 @@ describe("home api", () => {
     expect(res.status).toBe(200);
     const home = (await res.json()) as HomeDTO;
     expect(home.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(home.today).toBe(home.date);
+    expect(home.today).toBe(todayLocal());
     expect(home.day.date).toBe(home.date);
     expect(home.counts).toEqual({ planned: 0, meetings: 0, inbox: 0 });
     expect(home.now).toBeNull();

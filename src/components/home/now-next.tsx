@@ -16,9 +16,11 @@ const JSON_HEADERS = { "content-type": "application/json" };
  */
 const clock = (iso: string) => formatClock(iso);
 
-/** What the day would be told to fill, and whether anything is waiting to be filled in. */
+/** What the day would be told to fill, and whether anything is waiting to be filled in. Only
+ * open rows count: filling the day never places a task that is already done. */
 function nothingPlaced(day: PlannerDayDTO): boolean {
-  return day.plan.every((t) => blocksOn(t, day.date).length === 0) && day.plan.some((t) => t.estimateMinutes !== null);
+  const open = day.plan.filter((t) => t.status === "open");
+  return open.every((t) => blocksOn(t, day.date).length === 0) && open.some((t) => t.estimateMinutes !== null);
 }
 
 interface Props {

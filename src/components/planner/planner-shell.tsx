@@ -189,7 +189,7 @@ export function PlannerShell(props: Props) {
         <DateHeader
           date={week.start}
           unit="week"
-          summary={`${count(week.days.reduce((n, d) => n + d.meetings.length, 0), "meeting")}, ${week.days.reduce((n, d) => n + d.due.length, 0)} due`}
+          summary={`${count(week.days.reduce((n, d) => n + d.meetings.filter((m) => !m.allDay && m.status !== "declined").length, 0), "meeting")}, ${week.days.reduce((n, d) => n + d.due.length, 0)} due`}
           prevHref={`/planner/week?start=${addDaysLocal(week.start, -7)}`}
           nextHref={`/planner/week?start=${addDaysLocal(week.start, 7)}`}
           todayHref="/planner/week"

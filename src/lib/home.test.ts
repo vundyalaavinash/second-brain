@@ -174,6 +174,11 @@ describe("homePayload", () => {
     expect(home.recent[1].meeting).toBeUndefined();
   });
 
+  it("stamps the instant it was built, so a relative time reads the same on both sides", () => {
+    const home = homePayload(t.db, NOW);
+    expect(home.generatedAt).toBe(NOW.toISOString());
+  });
+
   it("reports the day's activity only once the helper has been seen", () => {
     const S = new Date(2026, 8, 22, 9, 0, 0).getTime();
     const stamp = (s: number) => new Date(S + s * 1000).toISOString();

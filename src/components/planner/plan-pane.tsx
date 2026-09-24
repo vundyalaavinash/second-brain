@@ -76,10 +76,12 @@ interface Props {
   onRefresh: () => void;
   /** Home shows the plan without the morning ritual: spec §2 keeps the strip on the Planner. */
   hideRitual?: boolean;
+  /** Names the section when it is one of several on a page, so landmark navigation reaches it. */
+  label?: string;
 }
 
 /** The day's plan, and the picker under it that feeds it: everything else is a row menu away. */
-export function PlanPane({ day, today, onRefresh, hideRitual = false }: Props) {
+export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState(false);
@@ -316,7 +318,7 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false }: Props) {
   const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
 
   return (
-    <section className="pane p-4 flex flex-col gap-3">
+    <section aria-label={label} className="pane p-4 flex flex-col gap-3">
       {/* Takes focus when the last plan row is unplanned from the keyboard, so the keyboard
         * stays in the pane rather than falling back to the document. */}
       <div className="flex items-center justify-between gap-2">

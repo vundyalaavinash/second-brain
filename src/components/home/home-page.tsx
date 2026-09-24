@@ -81,7 +81,7 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
       <div className="grid grid-cols-1 min-[1100px]:grid-cols-[5fr_4fr] gap-6 items-start">
         <div className="flex flex-col gap-4 min-w-0">
           <NowNext day={data.day} today={data.today} now={data.now} next={data.next} />
-          <PlanPane day={data.day} today={data.today} onRefresh={refresh} hideRitual />
+          <PlanPane day={data.day} today={data.today} onRefresh={refresh} hideRitual label="Today's plan" />
           <div className="flex justify-end">
             <Link href="/planner" className="focus-ring rounded-sm text-[12px] text-fg-muted hover:text-fg transition-colors duration-150">
               Open the Planner
