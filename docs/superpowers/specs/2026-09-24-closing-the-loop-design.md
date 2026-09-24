@@ -113,8 +113,10 @@ gentle accountability and it is the only nudge in the design.
 
 ### 3.4 Days left
 
-A goal past its target date and still active reads "overdue by N days" and
-sorts first. Closing it asks which of `hit`, `missed` or `dropped` it was —
+A goal past its target date and still active says so in the same words every
+other deadline in the app uses — "4 days overdue", from the shared deadline
+helper — and sorts first. Consistency across screens beats a phrasing
+invented here. Closing it asks which of `hit`, `missed` or `dropped` it was —
 the distinction matters for looking back and costs one click.
 
 ## 4. Focus
