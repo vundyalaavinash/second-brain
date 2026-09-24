@@ -82,7 +82,10 @@ export function NowNext({ day, today, now, next, focus }: Props) {
             size="sm"
             variant="ghost"
             onClick={() => void finish("stopped")}
-            disabled={focusBusy}
+            // Before the store has loaded, this run came from the server payload and the store
+            // has nothing to stop: `finish` would return having sent nothing, which reads as a
+            // button that silently does not work. It waits the one in-flight request out.
+            disabled={focusBusy || !focusLoaded}
             aria-label={`Stop focusing on ${activeRun.taskTitle}`}
             className="shrink-0"
           >

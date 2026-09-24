@@ -157,7 +157,10 @@ async function finishRun(id: number, outcome: FocusOutcome, opts: { auto?: boole
       setState({ error: (body as { error?: string } | null)?.error ?? "Could not finish the run" });
       return;
     }
-    const { run: finished, where } = body as { run: FocusRunDTO; where: { label: string; ms: number }[] };
+    // `where` is absent whenever the activity helper has never reported, and the break offer
+    // reads it the moment this event lands: a missing key here would throw inside a component
+    // mounted on every page.
+    const { run: finished, where } = body as { run: FocusRunDTO; where?: { label: string; ms: number }[] };
     // Read straight from the store's own state, not from inside a `setState` updater: there is
     // no queued function to run later, only a plain variable, so "including this one" below is
     // exact rather than a guess at whatever the next poll happens to see.
@@ -166,7 +169,7 @@ async function finishRun(id: number, outcome: FocusOutcome, opts: { auto?: boole
     setState({ run: null, remainingMs: 0, error: null });
     if (finished.outcome === "completed") {
       window.dispatchEvent(
-        new CustomEvent<FocusCompletedDetail>("sb:focus-completed", { detail: { run: finished, completedToday, settings, where } }),
+        new CustomEvent<FocusCompletedDetail>("sb:focus-completed", { detail: { run: finished, completedToday, settings, where: where ?? [] } }),
       );
     }
   } catch {
