@@ -91,9 +91,13 @@ describe("plannerDay", () => {
     expect(day.plan[0].blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`]);
     expect(day.sources.inbox.find((x) => x.id === task.id)!.blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`]);
     // A week column may hold either of them, so the week payload carries both days'.
+    addBlock(t.db, { taskId: task.id, startsAt: "2026-10-05T10:00:00", minutes: 45 });
     const week = plannerWeek(t.db, "2026-09-21");
     expect(week.days[1].capacity.blockedMinutes).toBe(45);
     expect(week.days[2].capacity.blockedMinutes).toBe(45);
+    // A session beyond the seven columns is outside the window the week asks for.
+    const due = week.days.flatMap((d) => d.due).find((x) => x.id === task.id);
+    if (due) expect(due.blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`, "2026-09-23T10:00:00"]);
   });
 
   it("groups every open task by where it lives and marks the day's capacity", () => {

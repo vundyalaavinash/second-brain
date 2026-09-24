@@ -467,6 +467,11 @@ describe("PlanPane", () => {
       // Planning the task on tomorrow and placing it there is one change to read back, not two.
       await waitFor(() => expect(posts).toHaveLength(3));
       await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(2));
+      // Settle anything still in flight: a third read would mean the offer announced itself twice.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(2);
     } finally {
       toasts.stop();
     }

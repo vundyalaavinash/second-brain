@@ -79,14 +79,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <div className="fixed bottom-24 right-6 z-50 flex flex-col gap-2 items-end">
+      {/* The live region is mounted for the session and the toasts arrive inside it: a region
+        * inserted alongside its own words is often never announced at all. Its buttons are
+        * read with the words, which is the price of the announcement working. */}
+      <div role="status" aria-live="polite" className="fixed bottom-24 right-6 z-50 flex flex-col gap-2 items-end">
         {toasts.map((t) => (
           <div key={t.id} className="panel rounded-md pl-3.5 pr-1.5 h-10 flex items-center gap-3 text-[13px]">
-            {/* Only the words are announced: a screen reader reads the toast, not the two
-              * controls beside it, which it reaches as buttons in the usual way. */}
-            <span role="status" aria-live="polite">
-              {t.text}
-            </span>
+            <span>{t.text}</span>
             {t.href && (
               <Link href={t.href} className="focus-ring text-violet-bright rounded-sm">
                 {t.hrefLabel ?? "Open"}

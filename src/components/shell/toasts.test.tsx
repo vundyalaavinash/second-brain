@@ -35,7 +35,7 @@ describe("ToastProvider", () => {
     expect(screen.queryByText("Placed 3 sessions, 1h 20m unplaced")).toBeNull();
   });
 
-  it("offers an action outside the words it announces, and a way to put the toast away", async () => {
+  it("announces the toast from a region that was already there, and offers a way to put it away", async () => {
     render(
       <ToastProvider>
         <span />
@@ -44,10 +44,11 @@ describe("ToastProvider", () => {
     act(() => {
       window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: "Placed 3 sessions", action: { label: "Place tomorrow", onClick: vi.fn() } } }));
     });
-    const live = await screen.findByRole("status");
-    // The live region announces the text and nothing else: the buttons are its siblings.
-    expect(live.textContent).toBe("Placed 3 sessions");
-    expect(live.querySelector("button")).toBeNull();
+    await screen.findByText("Placed 3 sessions");
+    const live = screen.getByRole("status");
+    // The region is mounted for the session, so the words land inside something already there.
+    expect(live.textContent).toContain("Placed 3 sessions");
+    expect(live.querySelector("button")).not.toBeNull();
     const action = screen.getByRole("button", { name: "Place tomorrow" });
     action.focus();
     expect(document.activeElement).toBe(action);

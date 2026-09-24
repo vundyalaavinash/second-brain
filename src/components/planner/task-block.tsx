@@ -212,7 +212,7 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
     "data-block-id": block.id,
     onKeyDown: onKey,
     onPointerDown: done ? undefined : onDragStart,
-    // The question hangs below the block, so while it is up the block lets it out and sits over
+    // The question hangs below the block, or above it when the column ends too soon, so while it is up the block lets it out and sits over
     // whatever is beside it.
     className: `focus-ring absolute rounded-md border-l-2 border-violet bg-violet-dim select-none ${asking ? "z-50" : "overflow-hidden"} ${done ? "opacity-50" : ""} ${resizing ? "cursor-ns-resize" : "cursor-grab"}`,
     style: {

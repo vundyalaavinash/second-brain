@@ -86,7 +86,8 @@ describe("blocks api", () => {
     const taskId = await addTask("Draft the brief");
     await addBlock(taskId, `${DAY}T09:00:00`, 30);
     await addBlock(taskId, `${DAY}T14:00:00`, 30);
-    const other = await addBlock(taskId, "2026-10-06T09:00:00", 30);
+    // Inside the window a task list carries, whenever this runs.
+    const other = await addBlock(taskId, `${shift(3)}T09:00:00`, 30);
     const cleared = await r.taskBlocks.DELETE(json("DELETE", `/api/tasks/${taskId}/blocks?date=${DAY}`), params(taskId));
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toEqual({ removed: 2 });
