@@ -252,6 +252,59 @@ describe("Timeline", () => {
     expect(screen.getByRole("group", { name: "Write the note · 2 of 2, 14:00 to 14:45" })).toBeTruthy();
   });
 
+  describe("the keyboard after a session goes", () => {
+    /** Presses backspace on one session and hands back the day that came of it. */
+    async function removeAndReload(tasks: PlanTaskDTO[], name: string, after: PlanTaskDTO[]) {
+      const { acts, onBlock: record } = stubBlocks();
+      const view = render(<Timeline date={DATE} meetings={[]} tasks={tasks} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
+      const block = screen.getByRole("group", { name });
+      block.focus();
+      fireEvent.keyDown(block, { key: "Backspace" });
+      await waitFor(() => expect(acts).toHaveLength(1));
+      view.rerender(<Timeline date={DATE} meetings={[]} tasks={after} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
+    }
+
+    it("moves to the next session on the column", async () => {
+      await removeAndReload([twoSessions], "Write the note · 1 of 2, 10:30 to 11:15", [{ ...twoSessions, blocks: [twoSessions.blocks[1]] }]);
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: "Write the note, 14:00 to 14:45" }));
+    });
+
+    it("falls back to the session before it when there is none after", async () => {
+      await removeAndReload([twoSessions], "Write the note · 2 of 2, 14:00 to 14:45", [{ ...twoSessions, blocks: [twoSessions.blocks[0]] }]);
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" }));
+    });
+
+    it("falls back to the column's heading when the last one goes", async () => {
+      await removeAndReload([blocked], "Write the note, 10:30 to 11:15", [{ ...blocked, blocks: [] }]);
+      expect(document.activeElement?.textContent).toBe("Timeline");
+    });
+
+    it("follows the focused session to the fresh ones a place laid in its stead", () => {
+      const { rerender } = render(<Timeline date={DATE} meetings={[]} tasks={[twoSessions]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+      screen.getByRole("group", { name: "Write the note · 1 of 2, 10:30 to 11:15" }).focus();
+      // A place from the plan pane: the sessions are written again, with ids of their own.
+      const replaced = { ...twoSessions, blocks: [{ id: 31, taskId: 12, startsAt: `${DATE}T09:00:00`, minutes: 45 }, { id: 32, taskId: 12, startsAt: `${DATE}T09:55:00`, minutes: 45 }] };
+      rerender(<Timeline date={DATE} meetings={[]} tasks={[replaced]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: "Write the note · 1 of 2, 09:00 to 09:45" }));
+    });
+
+    it("leaves the keyboard where the person put it", () => {
+      const { rerender } = render(<Timeline date={DATE} meetings={[sync]} tasks={[twoSessions]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+      screen.getByRole("group", { name: "Write the note · 1 of 2, 10:30 to 11:15" }).focus();
+      const elsewhere = screen.getByRole("button", { name: "Product sync, 10:00 to 11:00, 3 attendees" });
+      elsewhere.focus();
+      rerender(<Timeline date={DATE} meetings={[sync]} tasks={[{ ...twoSessions, blocks: [] }]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+      expect(document.activeElement).toBe(elsewhere);
+    });
+  });
+
+  it("names each session's checkbox by the session, not only by the task", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[twoSessions]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+    // One name each: two checkboxes called "Done: Write the note" would be the same offer twice.
+    expect(screen.getByRole("checkbox", { name: "Done: Write the note · 1 of 2" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Done: Write the note · 2 of 2" })).toBeTruthy();
+  });
+
   it("moves twice before the day comes back, the second press counting from the first", async () => {
     const { acts, onBlock: record } = stubBlocks();
     render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
@@ -417,6 +470,63 @@ describe("Timeline", () => {
       view.rerender(<Timeline date={DATE} meetings={[]} tasks={[dropped]} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
       expect(screen.queryByRole("menu", { name: "Length" })).toBeNull();
       expect(acts).toHaveLength(1);
+    });
+
+    it("puts the question away when the pointer goes somewhere else", async () => {
+      stubPatch();
+      const { acts, onBlock: record } = stubBlocks();
+      await drop(record, acts);
+      await screen.findByRole("menu", { name: "Length" });
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole("menu", { name: "Length" })).toBeNull();
+      // Nothing was written by the press: only the drop that opened it stands.
+      expect(acts).toHaveLength(1);
+    });
+
+    it("leaves the session alone when the estimate cannot be saved", async () => {
+      // The task's estimate refuses: resizing the session to match would leave the two apart.
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => (String(input) === "/api/meetings/recorder" ? Response.json({ state: "idle", missing: [] }) : new Response(null, { status: 500 }))));
+      const { acts, onBlock: record } = stubBlocks();
+      await drop(record, acts);
+      const menu = await screen.findByRole("menu", { name: "Length" });
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name: "45m" }));
+      await waitFor(() => expect(screen.queryByRole("menu", { name: "Length" })).toBeNull());
+      expect(acts).toEqual([{ kind: "add", taskId: 7, startsAt: `${DATE}T10:35:00`, minutes: 25 }]);
+    });
+
+    it("keeps the question up when a write beside it fails", async () => {
+      stubPatch();
+      const acts: BlockAction[] = [];
+      // The add lands; everything after it is refused, the way a dead route answers.
+      const record = async (action: BlockAction): BlockResult => {
+        acts.push(action);
+        return action.kind === "add" ? NEW_BLOCK : null;
+      };
+      await drop(record, acts);
+      await screen.findByRole("menu", { name: "Length" });
+      fireEvent.keyDown(screen.getByRole("group", { name: "Write the note, 10:35 to 11:00" }), { key: "ArrowDown" });
+      await waitFor(() => expect(acts).toHaveLength(2));
+      // The move never happened, so the question it would have answered is still standing.
+      expect(screen.getByRole("menu", { name: "Length" })).toBeTruthy();
+    });
+
+    it("opens the question above a session near the foot of the column", async () => {
+      stubPatch();
+      const { acts, onBlock: record } = stubBlocks();
+      const late = { ...unestimated, blocks: [{ id: NEW_BLOCK, taskId: 7, startsAt: `${DATE}T17:40:00`, minutes: 25 }] };
+      const view = render(<Timeline date={DATE} meetings={[]} tasks={[unestimated]} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
+      // 17:40 on a column that ends at 18:00: below the block there is no room for the panel.
+      fireEvent.drop(column(), { dataTransfer: dt, clientY: 100 + 520 });
+      await waitFor(() => expect(acts).toHaveLength(1));
+      view.rerender(<Timeline date={DATE} meetings={[]} tasks={[late]} onPatchTask={patchTask} onBlock={record} workHours="09:00-18:00" />);
+      expect((await screen.findByRole("menu", { name: "Length" })).className).toContain("bottom-full");
+    });
+
+    it("hangs the question below a session with room under it", async () => {
+      stubPatch();
+      const { acts, onBlock: record } = stubBlocks();
+      await drop(record, acts);
+      expect((await screen.findByRole("menu", { name: "Length" })).className).toContain("top-full");
     });
 
     it("asks nothing of a task that already carries an estimate", async () => {

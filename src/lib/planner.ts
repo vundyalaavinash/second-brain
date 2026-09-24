@@ -25,8 +25,8 @@ function unplannedIn(tasks: TaskDTO[], plannedIds: Set<number>): number {
 
 /** Open tasks grouped by home: inbox (no container), then every active project and area. A task
  * in an archived container is in no group; it still shows under `due` when it is dated. */
-export function plannerSources(db: DB, date: string, plannedIds: Set<number>): PlannerSourcesDTO {
-  const open = serializeTasks(db, listTasks(db, { status: "open" }));
+export function plannerSources(db: DB, date: string, plannedIds: Set<number>, window = dayWindow(date)): PlannerSourcesDTO {
+  const open = serializeTasks(db, listTasks(db, { status: "open" }), window);
   const unplanned = open.filter((t) => !plannedIds.has(t.id));
   // A group heading needs a name and nothing else, so the rows are turned into refs here rather
   // than through `serializeContainers`, which would count every container's items to say it.
@@ -50,7 +50,10 @@ export function plannerSources(db: DB, date: string, plannedIds: Set<number>): P
  * due reaches the day through `sources.due`; the day itself lists none of it.
  */
 export function plannerDay(db: DB, date: string): PlannerDayDTO {
-  const plan = serializePlanTasks(db, listPlan(db, date));
+  // Every task in the payload carries the day's own sessions and no others: this screen draws
+  // one column, and a task's hours on any other day are another day's business.
+  const window = dayWindow(date);
+  const plan = serializePlanTasks(db, listPlan(db, date), window);
   const plannedIds = new Set(plan.map((t) => t.id));
   const workHours = getWorkHours(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
@@ -58,11 +61,11 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
   return {
     date,
     plan,
-    unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1))),
+    unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1)), window),
     // The same flagged meetings the list view shows, so the timeline can badge them too.
     meetings,
     calendar: plannerCalendar(db),
-    sources: plannerSources(db, date, plannedIds),
+    sources: plannerSources(db, date, plannedIds, window),
     capacity: {
       freeMinutes: freeMinutes(meetings, workHours, date),
       plannedMinutes: planned,
@@ -74,9 +77,16 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
   };
 }
 
+/** The one day a Planner day payload carries sessions for. */
+function dayWindow(date: string): { from: string; to: string } {
+  return { from: date, to: addDays(date, 1) };
+}
+
 /** Seven days from `start`, each with its meetings and the tasks due on it. */
 export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   const end = addDays(start, 7);
+  // The week's own seven days: a column can show nothing outside them.
+  const window = { from: start, to: end };
   const byDay = new Map<string, ReturnType<typeof serializeMeeting>[]>();
   for (const ev of listMeetings(db, { from: start, to: end })) {
     const day = localDay(ev.startsAt);
@@ -85,13 +95,13 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
     else byDay.set(day, [serializeMeeting(ev)]);
   }
   // The week's last day is the latest one a column can hold; anything later is not shown.
-  const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }));
+  const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }), window);
   const workHours = getWorkHours(db);
   return {
     start,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
-      const dayPlan = serializePlanTasks(db, listPlan(db, date));
+      const dayPlan = serializePlanTasks(db, listPlan(db, date), window);
       return {
         date,
         meetings,

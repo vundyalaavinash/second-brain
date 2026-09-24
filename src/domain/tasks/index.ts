@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { containers, items, tasks, type Task } from "@/db/schema";
+import { clearBlocks } from "@/domain/blocks";
 import type { TaskPriority, TaskStatus } from "@/db/enums";
 import { nowIso } from "@/lib/time";
 
@@ -181,17 +182,28 @@ export function updateTask(db: DB, id: number, patch: UpdateTaskInput): Task {
   return row;
 }
 
+/**
+ * A dropped task is not going to happen, so it gives its hours back: every session it holds,
+ * on every day, goes with it. Blocked time the plan can no longer use would otherwise keep
+ * the next placement out of those slots.
+ *
+ * The import runs the other way round from the usual one — the blocks domain reads tasks —
+ * but only inside this call, never while either module is being evaluated.
+ */
 function setStatus(db: DB, id: number, status: TaskStatus): Task {
   requireTask(db, id);
   const now = nowIso();
-  const row = db
-    .update(tasks)
-    .set({ status, completedAt: status === "done" ? now : null, updatedAt: now })
-    .where(eq(tasks.id, id))
-    .returning()
-    .get();
-  if (!row) throw new TaskError(`Task ${id} not found`, 404);
-  return row;
+  return db.transaction(() => {
+    const row = db
+      .update(tasks)
+      .set({ status, completedAt: status === "done" ? now : null, updatedAt: now })
+      .where(eq(tasks.id, id))
+      .returning()
+      .get();
+    if (!row) throw new TaskError(`Task ${id} not found`, 404);
+    if (status === "dropped") clearBlocks(db, id);
+    return row;
+  });
 }
 
 export function completeTask(db: DB, id: number): Task {

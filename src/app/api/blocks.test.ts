@@ -3,6 +3,8 @@ import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
 
 const DAY = "2026-10-05";
+/** The placement's own day, so nothing an earlier case left behind can sit in its slots. */
+const PLACE_DAY = "2026-10-12";
 
 let dir: string;
 let r: {
@@ -16,6 +18,14 @@ let r: {
 const json = (method: string, url: string, body?: unknown) =>
   new Request(`http://localhost${url}`, { method, headers: body ? { "content-type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
 const params = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) });
+
+/** A local date `n` days from today, for the window a task list carries its sessions in. */
+function shift(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 interface BlockBody {
   id: number;
@@ -49,6 +59,7 @@ beforeAll(async () => {
   const { replaceCalendarEvents } = await import("@/domain/activity");
   replaceCalendarEvents(getDb(), [
     { externalId: "m1", title: "Sync", startsAt: `${DAY}T10:00:00`, endsAt: `${DAY}T11:00:00`, attendees: 2, hasCallLink: true },
+    { externalId: "m2", title: "Sync", startsAt: `${PLACE_DAY}T10:00:00`, endsAt: `${PLACE_DAY}T11:00:00`, attendees: 2, hasCallLink: true },
   ]);
 });
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -83,20 +94,35 @@ describe("blocks api", () => {
     expect(after.tasks.find((t) => t.id === taskId)!.blocks.map((b) => b.id)).toEqual([other.id]);
   });
 
+  // Its own day and its own tasks: what the cases above placed or cleared cannot move these.
   it("places one task's sessions around the day's meeting, and fills the day", async () => {
     const taskId = await addTask("Long piece of work", { estimateMinutes: 120 });
-    const placed = await r.place.POST(json("POST", "/api/plan/place", { date: DAY, taskId }));
+    const placed = await r.place.POST(json("POST", "/api/plan/place", { date: PLACE_DAY, taskId }));
     expect(placed.status).toBe(200);
-    expect(await placed.json()).toEqual({ placed: 4, unplacedMinutes: 0 });
+    // 09:00–09:45; the ten-minute break would leave only five minutes of the morning slot, so
+    // the second session waits for the meeting to end (11:00–11:45) and the third takes its
+    // break after it (11:55–12:25).
+    expect(await placed.json()).toEqual({ placed: 3, unplacedMinutes: 0 });
 
     const waiting = await addTask("Waiting on the plan", { estimateMinutes: 45, sessionMinutes: 45 });
-    await r.plan.POST(json("POST", "/api/plan", { date: DAY, taskId: waiting }));
-    const filled = await r.place.POST(json("POST", "/api/plan/place", { date: DAY }));
-    expect(await filled.json()).toEqual({ placed: 1, unplacedMinutes: 0 });
-    const day = (await (await r.plan.GET(json("GET", `/api/plan?date=${DAY}`))).json()) as { tasks: { id: number; blocks: BlockBody[]; sessionMinutes: number | null }[] };
+    await r.plan.POST(json("POST", "/api/plan", { date: PLACE_DAY, taskId: waiting }));
+    const filled = await r.place.POST(json("POST", "/api/plan/place", { date: PLACE_DAY }));
+    // 09:45–10:00 is all that is left before the meeting: the session takes it and carries the
+    // rest past the morning's work, to 12:25.
+    expect(await filled.json()).toEqual({ placed: 2, unplacedMinutes: 0 });
+    const day = (await (await r.plan.GET(json("GET", `/api/plan?date=${PLACE_DAY}`))).json()) as { tasks: { id: number; blocks: BlockBody[]; sessionMinutes: number | null }[] };
     const row = day.tasks.find((t) => t.id === waiting)!;
     expect(row.sessionMinutes).toBe(45);
-    expect(row.blocks.map((b) => [b.startsAt.slice(11, 16), b.minutes])).toEqual([["12:00", 45]]);
+    expect(row.blocks.map((b) => [b.startsAt.slice(11, 16), b.minutes])).toEqual([["09:45", 15], ["12:25", 30]]);
+  });
+
+  it("carries the sessions near today and leaves an old one out of the payload", async () => {
+    const taskId = await addTask("Long runner");
+    // A month back is outside the window a list carries; three days ahead is inside it.
+    await addBlock(taskId, `${shift(-30)}T09:00:00`, 30);
+    const soon = await addBlock(taskId, `${shift(3)}T09:00:00`, 30);
+    const listed = (await (await r.tasks.GET(json("GET", "/api/tasks?status=open"))).json()) as { tasks: { id: number; blocks: BlockBody[] }[] };
+    expect(listed.tasks.find((t) => t.id === taskId)!.blocks.map((b) => b.id)).toEqual([soon.id]);
   });
 
   it("refuses a body it cannot read", async () => {

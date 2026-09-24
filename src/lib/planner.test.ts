@@ -80,6 +80,22 @@ describe("plannerDay", () => {
     expect(week.days.flatMap((d) => d.due.map((x) => x.title))).toEqual(["Due"]);
   });
 
+  it("carries the day's own sessions and leaves the rest of a task's out of the payload", () => {
+    const task = createTask(t.db, { title: "Runs for days", estimateMinutes: 90 });
+    addToPlan(t.db, DATE, task.id);
+    addToPlan(t.db, "2026-09-23", task.id);
+    addBlock(t.db, { taskId: task.id, startsAt: `${DATE}T10:00:00`, minutes: 45 });
+    addBlock(t.db, { taskId: task.id, startsAt: "2026-09-23T10:00:00", minutes: 45 });
+    const day = plannerDay(t.db, DATE);
+    // The column draws one day, so the payload carries one day: tomorrow's session is not here.
+    expect(day.plan[0].blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`]);
+    expect(day.sources.inbox.find((x) => x.id === task.id)!.blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`]);
+    // A week column may hold either of them, so the week payload carries both days'.
+    const week = plannerWeek(t.db, "2026-09-21");
+    expect(week.days[1].capacity.blockedMinutes).toBe(45);
+    expect(week.days[2].capacity.blockedMinutes).toBe(45);
+  });
+
   it("groups every open task by where it lives and marks the day's capacity", () => {
     const project = createContainer(t.db, { kind: "project", name: "Launch" });
     const area = createContainer(t.db, { kind: "area", name: "Health" });

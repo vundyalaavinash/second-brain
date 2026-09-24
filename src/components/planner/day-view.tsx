@@ -63,8 +63,10 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
     }
     window.dispatchEvent(new Event("sb:tasks-changed"));
     if (action.kind !== "add") return action.id;
-    const block = (await res.json()) as BlockDTO;
-    return block.id;
+    // The session is written; only its id is in doubt. A body that cannot be read costs the
+    // question a fresh drop would have asked, and nothing else.
+    const block = (await res.json().catch(() => null)) as BlockDTO | null;
+    return block?.id ?? null;
   }
 
   return (

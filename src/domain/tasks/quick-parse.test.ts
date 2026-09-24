@@ -44,6 +44,14 @@ describe("quickParse", () => {
     expect(quickParse("Deep work ~2h/45m", now)).toMatchObject({ title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 });
     expect(quickParse("Sprint ~90m/30m", now)).toMatchObject({ title: "Sprint", estimateMinutes: 90, sessionMinutes: 30 });
     expect(quickParse("Sprint ~2h/1h", now)).toMatchObject({ title: "Sprint", estimateMinutes: 120, sessionMinutes: 60 });
+    // Hours and minutes together on the session side, the same way the estimate reads them.
+    expect(quickParse("Sprint ~2h/1h20m", now)).toMatchObject({ title: "Sprint", estimateMinutes: 120, sessionMinutes: 80 });
+  });
+  it("reads a dangling slash as no session length at all", () => {
+    const now = new Date("2026-09-23T09:00:00");
+    // Mid-typing, "~2h/" is still "~2h": the estimate stands, the slash goes with the token
+    // rather than being left in the title.
+    expect(quickParse("Deep work ~2h/", now)).toMatchObject({ title: "Deep work", estimateMinutes: 120, sessionMinutes: null });
   });
   it("ignores a session length under the 15-minute floor, keeping the estimate", () => {
     const now = new Date("2026-09-23T09:00:00");

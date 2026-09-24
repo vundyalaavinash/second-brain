@@ -24,6 +24,10 @@ describe("scheduler", () => {
   });
   it("cuts an estimate into sessions", () => {
     expect(sessionsFor(null, null)).toEqual([25]);
+    // Under the floor the session is the floor: a ten-minute task still gets a block to press.
+    expect(sessionsFor(5, null)).toEqual([15]);
+    expect(sessionsFor(10, 45)).toEqual([15]);
+    expect(sessionsFor(15, null)).toEqual([15]);
     expect(sessionsFor(50, null)).toEqual([50]);
     expect(sessionsFor(120, null)).toEqual([45, 45, 30]);
     expect(sessionsFor(100, 45)).toEqual([45, 55]);
@@ -57,5 +61,33 @@ describe("scheduler", () => {
       leftover: 10,
     });
     expect(placeSessions([{ start: 607, end: 700 }], [30], {})).toEqual({ placed: [{ start: 610, end: 640 }], leftover: 0 });
+  });
+
+  it("leaves a break between two sessions in one slot, and none across slots", () => {
+    // 09:00–09:45, ten minutes off, 09:55–10:40: the break falls inside the slot only.
+    expect(placeSessions([{ start: 540, end: 720 }], [45, 45], { gap: 10 })).toEqual({
+      placed: [
+        { start: 540, end: 585 },
+        { start: 595, end: 640 },
+      ],
+      leftover: 0,
+    });
+    // The second slot begins after a meeting, which is break enough: it starts at its own start.
+    expect(placeSessions([{ start: 540, end: 585 }, { start: 600, end: 700 }], [45, 45], { gap: 10 })).toEqual({
+      placed: [
+        { start: 540, end: 585 },
+        { start: 600, end: 645 },
+      ],
+      leftover: 0,
+    });
+    // The break comes out of the slot's room: 20 minutes are left after it, and the 5-minute
+    // tail is under the floor, so it goes unplaced rather than becoming a session of its own.
+    expect(placeSessions([{ start: 540, end: 600 }], [30, 25], { gap: 10 })).toEqual({
+      placed: [
+        { start: 540, end: 570 },
+        { start: 580, end: 600 },
+      ],
+      leftover: 5,
+    });
   });
 });

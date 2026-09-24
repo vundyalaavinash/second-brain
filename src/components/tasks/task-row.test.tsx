@@ -336,6 +336,36 @@ describe("TaskRow blocks", () => {
     }
   });
 
+  it("names the session still to come when the row's own day holds none", () => {
+    renderRow(
+      {},
+      {
+        ...task,
+        blocks: [
+          { id: 1, taskId: task.id, startsAt: "2026-09-15T09:00:00", minutes: 25 },
+          { id: 2, taskId: task.id, startsAt: "2026-09-18T14:00:00", minutes: 25 },
+        ],
+      },
+    );
+    // Yesterday's session is history; the one still coming is what the chip says.
+    expect(screen.getByTitle("Blocked on Fri 18 at 14:00").textContent).toBe("14:00");
+    expect(screen.queryByTitle(/Blocked on Tue 15/)).toBeNull();
+  });
+
+  it("falls back to the latest session once they are all behind", () => {
+    renderRow(
+      {},
+      {
+        ...task,
+        blocks: [
+          { id: 1, taskId: task.id, startsAt: "2026-09-10T09:00:00", minutes: 25 },
+          { id: 2, taskId: task.id, startsAt: "2026-09-14T14:00:00", minutes: 25 },
+        ],
+      },
+    );
+    expect(screen.getByTitle("Blocked on Mon 14 at 14:00").textContent).toBe("14:00");
+  });
+
   it("leaves n alone on a row that is already finished", () => {
     const onBlockNow = vi.fn();
     renderRow({ onBlockNow }, { ...task, title: "Write", status: "done" });
@@ -479,6 +509,18 @@ describe("TaskRow placing and splitting", () => {
     expect(screen.getByRole("menuitemradio", { name: "One session" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("menuitemradio", { name: "One session" }));
     expect(onSplit).toHaveBeenCalledWith(null);
+  });
+
+  it("closes the other submenu when one is opened", () => {
+    renderRow({ onPlanDate: vi.fn(), onSplit: vi.fn() }, twoHours);
+    const panel = openMenuPanel();
+    fireEvent.click(within(panel).getByRole("menuitem", { name: "Plan for" }));
+    expect(screen.getByRole("menu", { name: "Plan for" })).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("menuitem", { name: "Split into" }));
+    expect(screen.getByRole("menu", { name: "Split into" })).toBeTruthy();
+    expect(screen.queryByRole("menu", { name: "Plan for" })).toBeNull();
+    fireEvent.click(within(panel).getByRole("menuitem", { name: "Plan for" }));
+    expect(screen.queryByRole("menu", { name: "Split into" })).toBeNull();
   });
 
   it("escape backs out of the lengths before it closes the menu", () => {

@@ -32,6 +32,14 @@ describe("layoutBlocks", () => {
     expect(block.height).toBe(60);
   });
 
+  it("draws a floor-length session at its own height, clear of the block after it", () => {
+    const [first, second] = layoutBlocks([at(1, "09:00", "09:15"), at(2, "09:15", "10:00")], RANGE);
+    // 15 minutes tall, so the 09:15 block below it starts where this one ends.
+    expect([first.top, first.height]).toEqual([120, 15]);
+    expect(second.top).toBe(135);
+    expect(first.cols).toBe(1);
+  });
+
   it("clamps a meeting that runs past the day to the last hour", () => {
     const [block] = layoutBlocks([at(1, "20:00", "23:00")], RANGE);
     expect(block.top).toBe(780);

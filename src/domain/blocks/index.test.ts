@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { replaceCalendarEvents } from "@/domain/activity";
 import { addToPlan } from "@/domain/plan";
-import { completeTask, createTask, deleteTask, getTask } from "@/domain/tasks";
+import { completeTask, createTask, deleteTask, dropTask, getTask } from "@/domain/tasks";
 import { addBlock, blocksByTask, BlockError, clearBlocks, fillDay, listBlocks, placeTask, removeBlock, updateBlock } from "./index";
 
 const DAY = "2026-10-05";
@@ -85,14 +85,16 @@ describe("blocks domain", () => {
     const other = createTask(t.db, { title: "Other" });
     addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T14:00:00`, minutes: 60 });
     const task = createTask(t.db, { title: "Write", estimateMinutes: 120 });
-    expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 4, unplacedMinutes: 0 });
+    expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 3, unplacedMinutes: 0 });
     const placed = listBlocks(t.db, { taskId: task.id });
-    // 09:00 fills to the meeting, the rest of that session waits for it to end.
+    // 120 minutes at 45 apiece is 45 + 45 + 30, and ten minutes stand between two of them in
+    // one slot. 09:00–09:45 fills the morning slot: the break would leave only five minutes
+    // of it, under the floor, so the second session waits for the meeting to end at 11:00 and
+    // starts there with no break before it. The third takes its break: 11:55–12:25.
     expect(placed.map((b) => [b.startsAt.slice(11, 16), b.minutes])).toEqual([
       ["09:00", 45],
-      ["09:45", 15],
-      ["11:00", 30],
-      ["11:30", 30],
+      ["11:00", 45],
+      ["11:55", 30],
     ]);
     expect(placed.reduce((n, b) => n + b.minutes, 0)).toBe(120);
     // A declined meeting is not busy, and nothing lands inside the one that stands.
@@ -119,7 +121,8 @@ describe("blocks domain", () => {
     expect(second).toHaveLength(2);
     // Fresh rows, in the same places: the old ones went before the new ones were laid.
     expect(second.some((b) => first.includes(b.id))).toBe(false);
-    expect(second.map((b) => b.startsAt.slice(11, 16))).toEqual(["09:00", "09:30"]);
+    // 09:00–09:30, ten minutes off, 09:40–10:10: both sessions sit in the one free slot.
+    expect(second.map((b) => b.startsAt.slice(11, 16))).toEqual(["09:00", "09:40"]);
     expect(listBlocks(t.db, { taskId: task.id, date: NEXT }).map((b) => b.startsAt)).toEqual([`${NEXT}T09:00:00`]);
   });
 
@@ -156,6 +159,50 @@ describe("blocks domain", () => {
     expect(listBlocks(t.db, { taskId: blocked.id })).toHaveLength(1);
     expect(listBlocks(t.db, { taskId: offPlan.id })).toEqual([]);
     expect(listBlocks(t.db, { taskId: done.id })).toEqual([]);
+  });
+
+  it("gives the day's hours back when a task is dropped", () => {
+    const first = createTask(t.db, { title: "Abandoned", estimateMinutes: 60 });
+    placeTask(t.db, { taskId: first.id, date: DAY });
+    expect(listBlocks(t.db, { taskId: first.id, date: DAY }).map((b) => b.startsAt.slice(11, 16))).toEqual(["09:00"]);
+    dropTask(t.db, first.id);
+    // The sessions go with it, so the day reads as empty again.
+    expect(listBlocks(t.db, { date: DAY })).toEqual([]);
+    const next = createTask(t.db, { title: "Instead", estimateMinutes: 60 });
+    placeTask(t.db, { taskId: next.id, date: DAY });
+    expect(listBlocks(t.db, { taskId: next.id, date: DAY }).map((b) => b.startsAt.slice(11, 16))).toEqual(["09:00"]);
+  });
+
+  it("leaves a dropped task's leftover session out of the busy hours", () => {
+    const dropped = createTask(t.db, { title: "Abandoned", estimateMinutes: 60 });
+    addBlock(t.db, { taskId: dropped.id, startsAt: `${DAY}T09:00:00`, minutes: 60 });
+    // Straight to the row, the way an older write left one behind: the status alone must do it.
+    dropTask(t.db, dropped.id);
+    addBlock(t.db, { taskId: dropped.id, startsAt: `${DAY}T09:00:00`, minutes: 60 });
+    const task = createTask(t.db, { title: "Write", estimateMinutes: 60 });
+    placeTask(t.db, { taskId: task.id, date: DAY });
+    expect(listBlocks(t.db, { taskId: task.id, date: DAY }).map((b) => b.startsAt.slice(11, 16))).toEqual(["09:00"]);
+  });
+
+  it("fills the day once: a second run finds every plan task already placed", () => {
+    const a = createTask(t.db, { title: "First", estimateMinutes: 60 });
+    const b = createTask(t.db, { title: "Second", estimateMinutes: 30 });
+    for (const task of [a, b]) addToPlan(t.db, DAY, task.id);
+    expect(fillDay(t.db, { date: DAY })).toEqual({ placed: 2, unplacedMinutes: 0 });
+    const before = listBlocks(t.db, { date: DAY }).map((x) => [x.taskId, x.startsAt, x.minutes]);
+    expect(fillDay(t.db, { date: DAY })).toEqual({ placed: 0, unplacedMinutes: 0 });
+    expect(listBlocks(t.db, { date: DAY }).map((x) => [x.taskId, x.startsAt, x.minutes])).toEqual(before);
+  });
+
+  it("places nothing on a day whose working hours are already behind now", () => {
+    const now = new Date();
+    now.setHours(23, 30, 0, 0);
+    const today = localDay(now);
+    const task = createTask(t.db, { title: "Too late", estimateMinutes: 45 });
+    addToPlan(t.db, today, task.id);
+    expect(placeTask(t.db, { taskId: task.id, date: today, now })).toEqual({ placed: 0, unplacedMinutes: 45 });
+    expect(fillDay(t.db, { date: today, now })).toEqual({ placed: 0, unplacedMinutes: 45 });
+    expect(listBlocks(t.db, { date: today })).toEqual([]);
   });
 
   it("takes a task's sessions with it when the task is deleted", () => {

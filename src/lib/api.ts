@@ -12,6 +12,7 @@ import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
+import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
 import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
 
@@ -150,15 +151,31 @@ export function serializePlanTask(t: Task & { planId: number; sortOrder: number 
   return { ...serializeTask(t, blocks), sortOrder: t.sortOrder, planId: t.planId };
 }
 
-/** A list of tasks with their sessions, in one query for the lot. */
-export function serializeTasks(db: DB, list: Task[]): TaskDTO[] {
-  const byTask = blocksByTask(db, list.map((t) => t.id));
+/** How many days either side of today a task list carries sessions for: last week, because a
+ * session missed is still worth saying, and two months ahead, which is further than any screen
+ * plans. Past that a payload would grow with a task's whole history for nothing. */
+const WINDOW_BEFORE = 7;
+const WINDOW_AFTER = 60;
+
+/** The window a list of tasks carries its sessions in; `to` is exclusive, both are dates. */
+export function taskBlockWindow(today: string = localDay(new Date().toISOString())): { from: string; to: string } {
+  return { from: addDays(today, -WINDOW_BEFORE), to: addDays(today, WINDOW_AFTER) };
+}
+
+/** A list of tasks with their sessions, in one query for the lot. The window bounds what each
+ * row carries: without one a task placed every day for a year would serialize all of it. */
+export function serializeTasks(db: DB, list: Task[], window: { from: string; to: string } = taskBlockWindow()): TaskDTO[] {
+  const byTask = blocksByTask(db, list.map((t) => t.id), window);
   return list.map((t) => serializeTask(t, byTask.get(t.id) ?? []));
 }
 
 /** A day's plan with its sessions, in one query for the lot. */
-export function serializePlanTasks(db: DB, list: (Task & { planId: number; sortOrder: number })[]): PlanTaskDTO[] {
-  const byTask = blocksByTask(db, list.map((t) => t.id));
+export function serializePlanTasks(
+  db: DB,
+  list: (Task & { planId: number; sortOrder: number })[],
+  window: { from: string; to: string } = taskBlockWindow(),
+): PlanTaskDTO[] {
+  const byTask = blocksByTask(db, list.map((t) => t.id), window);
   return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? []));
 }
 

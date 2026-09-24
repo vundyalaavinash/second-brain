@@ -97,7 +97,13 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
   // it should be, straight away; any other change to any session puts the question away.
   const [askId, setAskId] = useState<number | null>(null);
   const columnRef = useRef<HTMLDivElement | null>(null);
+  const headingRef = useRef<HTMLSpanElement | null>(null);
   const move = useRef<Move | null>(null);
+  // Where the keyboard should land once the day that a removal asked for has come back: the id
+  // of the session taking the departing one's place, or 0 for the column's own heading.
+  const refocus = useRef<number | null>(null);
+  // The session that last had the keyboard, so a place that swept it away can be followed.
+  const lastFocused = useRef<number | null>(null);
   const recorder = useRecorder();
 
   // The line is drawn from the clock, so it has no place in the server's HTML; the first
@@ -149,11 +155,44 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
   const byId = new Map(timed.map((m) => [m.id, m]));
   const placedById = new Map(placed.map((p) => [-p.block.id, p]));
 
+  // The sessions in the order the column reads, top to bottom: what "the next one" means.
+  const columnOrder = [...placed]
+    .sort((a, b) => a.block.startsAt.localeCompare(b.block.startsAt) || a.block.id - b.block.id)
+    .map((p) => p.block.id);
+  const columnKey = columnOrder.join(",");
+
   let nowTop: number | null = null;
   if (now !== null) {
     const at = new Date(now);
     const offset = at.getHours() * 60 + at.getMinutes() - dayStart * 60;
     if (todayLocal(at) === date && offset >= 0 && offset <= minutes) nowTop = offset;
+  }
+
+  /**
+   * A session that had the keyboard and has gone takes it somewhere sensible, the way the plan
+   * pane hands a row's focus on: the next session on the column, else the one before it, else
+   * the column's own heading. The removal notes its neighbour before the write; a place, which
+   * the plan pane asks for, is noticed by the focused session simply no longer being here.
+   * Nothing moves while the keyboard is somewhere else: only a focus that fell to the document
+   * is picked up again.
+   */
+  useEffect(() => {
+    const wanted = refocus.current;
+    refocus.current = null;
+    const column = columnRef.current;
+    const at = (id: number) => column?.querySelector<HTMLElement>(`[data-block-id="${id}"]`) ?? null;
+    const swept = lastFocused.current !== null && at(lastFocused.current) === null;
+    if (wanted === null && !swept) return;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    const target = (wanted !== null && wanted !== 0 ? at(wanted) : null) ?? (swept ? column?.querySelector<HTMLElement>("[data-block-id]") ?? null : null) ?? headingRef.current;
+    lastFocused.current = null;
+    target?.focus();
+  }, [columnKey]);
+
+  /** The session the keyboard should move to when this one is taken off the column. */
+  function noteNeighbour(id: number) {
+    const i = columnOrder.indexOf(id);
+    refocus.current = i === -1 ? null : (columnOrder[i + 1] ?? columnOrder[i - 1] ?? 0);
   }
 
   function open(id: number) {
@@ -164,10 +203,14 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
   }
 
   /** Every session the column writes goes through here, so any change to any session puts
-   * away the question a fresh drop asked. */
+   * away the question a fresh drop asked — but only when the write went through: a change that
+   * never happened must not take the question with it. */
   async function act(action: BlockAction): BlockResult {
+    if (action.kind === "remove") noteNeighbour(action.id);
     const id = await onBlock(action);
-    setAskId(null);
+    if (id !== null) setAskId(null);
+    // Nothing went: the session is still there, and still has the keyboard.
+    else if (action.kind === "remove") refocus.current = null;
     return id;
   }
 
@@ -262,6 +305,11 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
 
   return (
     <section aria-label="Timeline" className="flex flex-col gap-3">
+      {/* Takes the keyboard when the last session it held is taken off, so the keyboard stays
+        * on the column rather than falling back to the document. */}
+      <span ref={headingRef} tabIndex={-1} className="focus-ring micro rounded-sm self-start">
+        Timeline
+      </span>
       {allDay.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="micro">All day</span>
@@ -286,6 +334,12 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
+        onFocus={(e) => {
+          // Which session the keyboard is on, noted as it happens: once one has gone there is
+          // nothing left to read it off.
+          const block = (e.target as HTMLElement).closest<HTMLElement>("[data-block-id]");
+          if (block) lastFocused.current = Number(block.dataset.blockId);
+        }}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => onPointerUp(e, true)}
         onPointerCancel={(e) => onPointerUp(e, false)}
@@ -314,6 +368,7 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                 col={b.col}
                 cols={b.cols}
                 pxPerMin={PX_PER_MIN}
+                columnMinutes={minutes}
                 onPatchTask={onPatchTask}
                 onBlock={act}
                 askLength={askId === session.block.id}

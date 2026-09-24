@@ -14,8 +14,10 @@ export interface TimelineBlock {
   cols: number;
 }
 
-/** A block never collapses to a hairline, however short or clipped the meeting is. */
-const MIN_HEIGHT = 20;
+/** A block never collapses to a hairline, however short or clipped the meeting is. The floor
+ * is the shortest session the scheduler will place, so a block is never drawn taller than the
+ * time it holds and never overlaps the one after it. */
+const MIN_HEIGHT = 15;
 
 function minutesOfDay(iso: string): number {
   const d = new Date(iso);

@@ -12,6 +12,11 @@ function badRequest(message: string): NextResponse {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+/** A plan is one day's, so the rows it answers with carry that day's sessions and no others. */
+function dayWindow(date: string): { from: string; to: string } {
+  return { from: date, to: addDays(date, 1) };
+}
+
 /** One day's plan, plus what was still open on the day before, so the view can offer to carry it over. */
 export async function GET(req: Request): Promise<Response> {
   try {
@@ -21,8 +26,8 @@ export async function GET(req: Request): Promise<Response> {
     const db = getDb();
     const body: PlanDTO = {
       date,
-      tasks: serializePlanTasks(db, listPlan(db, date)),
-      unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1))),
+      tasks: serializePlanTasks(db, listPlan(db, date), dayWindow(date)),
+      unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1)), dayWindow(date)),
     };
     return NextResponse.json(body);
   } catch (err) {
@@ -36,7 +41,7 @@ export async function POST(req: Request): Promise<Response> {
     if (!parsed.success) return badRequest(parsed.error.message);
     const db = getDb();
     addToPlan(db, parsed.data.date, parsed.data.taskId);
-    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date)) }, { status: 201 });
+    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date), dayWindow(parsed.data.date)) }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }
@@ -48,7 +53,7 @@ export async function DELETE(req: Request): Promise<Response> {
     if (!parsed.success) return badRequest(parsed.error.message);
     const db = getDb();
     removeFromPlan(db, parsed.data.date, parsed.data.taskId);
-    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date)) });
+    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date), dayWindow(parsed.data.date)) });
   } catch (err) {
     return errorResponse(err);
   }
@@ -59,7 +64,7 @@ export async function PATCH(req: Request): Promise<Response> {
     const parsed = ReorderPlanBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return badRequest(parsed.error.message);
     const db = getDb();
-    const tasks = serializePlanTasks(db, reorderPlan(db, parsed.data.date, parsed.data.taskIds));
+    const tasks = serializePlanTasks(db, reorderPlan(db, parsed.data.date, parsed.data.taskIds), dayWindow(parsed.data.date));
     return NextResponse.json({ date: parsed.data.date, tasks });
   } catch (err) {
     return errorResponse(err);

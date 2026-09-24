@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { completeTask, deleteTask, dropTask, getTask, reopenTask, updateTask, TaskError } from "@/domain/tasks";
-import { listBlocks } from "@/domain/blocks";
-import { errorResponse, parseId, serializeTask } from "@/lib/api";
+import { blocksByTask } from "@/domain/blocks";
+import { errorResponse, parseId, serializeTask, taskBlockWindow } from "@/lib/api";
 import { PatchTaskBody } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,8 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     if (status === "done") task = completeTask(db, id);
     else if (status === "open") task = reopenTask(db, id);
     else if (status === "dropped") task = dropTask(db, id);
-    return NextResponse.json(serializeTask(task, listBlocks(db, { taskId: id })));
+    // The same window a list carries: one task's answer is not a place for its whole history.
+    return NextResponse.json(serializeTask(task, blocksByTask(db, [id], taskBlockWindow()).get(id) ?? []));
   } catch (err) {
     return errorResponse(err);
   }

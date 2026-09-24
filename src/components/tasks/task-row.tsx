@@ -306,7 +306,9 @@ export function TaskRow({
   const first = dayBlocks[0];
   const more = dayBlocks.length - 1;
   // Nothing on this day: whatever the task holds elsewhere is worth saying, but not offering.
-  const elsewhere = first ? null : (task.blocks[0]?.startsAt ?? null);
+  // The session still to come is the one worth naming — the sessions are in clock order, so it
+  // is the first at or after today — and where they are all behind us the latest one says most.
+  const elsewhere = first ? null : ((task.blocks.find((b) => b.startsAt >= today) ?? task.blocks.at(-1))?.startsAt ?? null);
   const hasDayBlock = (blockDate ? dayBlocks.length : task.blocks.length) > 0;
   const blockNode = first ? (
     <button
@@ -385,7 +387,11 @@ export function TaskRow({
                       className={MENU_ITEM}
                       aria-haspopup="menu"
                       aria-expanded={planOpen}
-                      onClick={() => setPlanOpen((v) => !v)}
+                      // One submenu at a time: the other is a sibling of this item, not a way out of it.
+                      onClick={() => {
+                        setSplitOpen(false);
+                        setPlanOpen((v) => !v);
+                      }}
                     >
                       Plan for
                     </button>
@@ -444,7 +450,10 @@ export function TaskRow({
                       className={MENU_ITEM}
                       aria-haspopup="menu"
                       aria-expanded={splitOpen}
-                      onClick={() => setSplitOpen((v) => !v)}
+                      onClick={() => {
+                        setPlanOpen(false);
+                        setSplitOpen((v) => !v);
+                      }}
                     >
                       Split into
                     </button>

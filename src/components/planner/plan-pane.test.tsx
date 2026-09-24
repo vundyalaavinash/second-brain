@@ -407,13 +407,20 @@ describe("PlanPane", () => {
 
   it("splits a task into sessions, and lays out again a day that already held some", async () => {
     const posts = stubPlace({ placed: 3, unplacedMinutes: 0 });
-    render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+    const onRefresh = vi.fn();
+    render(<PlanPane day={day()} today={TODAY} onRefresh={onRefresh} />);
     fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Split into" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "45m" }));
     await waitFor(() => expect(posts).toHaveLength(1));
+    // A place would be the very next thing the handler did, so one flushed microtask settles it.
+    await act(async () => {
+      await Promise.resolve();
+    });
     // Nothing on the timeline yet: the length is saved and the day is left where it is.
-    expect(posts[0]).toEqual({ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { sessionMinutes: 45 } });
+    expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { sessionMinutes: 45 } }]);
+    // One announcement for the one change: the pane reads the day back once.
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
 
     cleanup();
     const withSessions = stubPlace({ placed: 3, unplacedMinutes: 0 });
@@ -428,5 +435,55 @@ describe("PlanPane", () => {
       { url: `/api/tasks/${planned.id}`, method: "PATCH", body: { sessionMinutes: 45 } },
       { url: "/api/plan/place", method: "POST", body: { date: TODAY, taskId: planned.id } },
     ]);
+  });
+
+  it("names the day the offer means when the pane is not on today", async () => {
+    const posts = stubPlace({ placed: 1, unplacedMinutes: 45 }, { placed: 1, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      // The pane is showing Thursday the 24th, so its offer is Friday the 25th, not "tomorrow".
+      render(<PlanPane day={day({ date: "2026-09-24" })} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Plan actions" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Fill the day" }));
+      await waitFor(() => expect(toasts.seen[0]?.action?.label).toBe("Place on Fri 25"));
+      act(() => toasts.seen[0].action?.onClick());
+      await waitFor(() => expect(posts).toHaveLength(2));
+      expect(posts[1]).toEqual({ url: "/api/plan/place", method: "POST", body: { date: "2026-09-25" } });
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("reads the day back once for a place that spills onto tomorrow", async () => {
+    const posts = stubPlace({ placed: 3, unplacedMinutes: 80 }, { placed: 2, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    const onRefresh = vi.fn();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={onRefresh} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Place in free slots" }));
+      await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+      act(() => toasts.seen[0].action?.onClick());
+      // Planning the task on tomorrow and placing it there is one change to read back, not two.
+      await waitFor(() => expect(posts).toHaveLength(3));
+      await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(2));
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("says so when a place answers with something it cannot read", async () => {
+    const toasts = watchToasts();
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 200 })));
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Plan actions" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Fill the day" }));
+      expect(await screen.findByText("Could not save that change")).toBeTruthy();
+      // No toast about a placement nobody can describe.
+      expect(toasts.seen).toEqual([]);
+    } finally {
+      toasts.stop();
+    }
   });
 });

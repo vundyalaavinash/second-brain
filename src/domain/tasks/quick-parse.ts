@@ -17,7 +17,8 @@ function dateFromToken(token: string, now: Date): string | null {
 
 /** `~25m`, `~1h`, `~1h30m`, and an optional `/45m|1h|1h30m` session length: one token, anywhere,
  * at most 8 hours. Priority marks (`!`) must already be stripped: the token has to end at a
- * space or the end of the text. */
+ * space or the end of the text. A dangling `~2h/`, half-typed, is read as `~2h`: the slash
+ * belongs to the token, so it goes with it rather than being left behind in the title. */
 const ESTIMATE_RE = /(?:^|\s)~(?:(\d{1,2})h)?(?:(\d{1,3})m)?(?:\/(?:(\d{1,2})h)?(?:(\d{1,3})m)?)?(?=\s|$)/i;
 
 /** Floor and ceiling for a session length; it must also come in strictly under the estimate. */

@@ -4,6 +4,8 @@ export type Span = { start: number; end: number };
 export const SESSION_FLOOR = 15;
 export const DEFAULT_SESSION = 45;
 export const WHOLE_UP_TO = 60;
+/** The break a task takes between two of its own sessions laid in the same free slot. */
+export const SESSION_GAP = 10;
 const SNAP = 5;
 
 const up = (n: number, step = SNAP) => Math.ceil(n / step) * step;
@@ -40,6 +42,9 @@ export function freeSlots(busy: Span[], workHours: string, opts: { notBefore?: n
 /** How long each session should be for this task. */
 export function sessionsFor(estimate: number | null, sessionMinutes: number | null): number[] {
   if (estimate === null) return [25];
+  // No session is shorter than the floor, whatever the estimate: a ten-minute task is one
+  // fifteen-minute session, because anything less is a block too thin to read or to press.
+  if (estimate < SESSION_FLOOR) return [SESSION_FLOOR];
   if (sessionMinutes === null && estimate <= WHOLE_UP_TO) return [estimate];
   const size = sessionMinutes ?? DEFAULT_SESSION;
   if (estimate <= size) return [estimate];
@@ -61,14 +66,23 @@ export function sessionsFor(estimate: number | null, sessionMinutes: number | nu
 /**
  * Lays sessions into slots, earliest first. A session longer than the slot it reaches takes
  * the whole slot and carries the rest into the next; a piece under the floor is not placed.
+ *
+ * `gap` is the break a task takes between two of its own sessions. It only falls between two
+ * spans laid inside the same slot: never before the first span of a placement, and never when
+ * a session moves on to a new slot, where the meeting or session in between is break enough.
+ * The break is not reserved for the task — it is simply time this placement did not take, and
+ * the next task placed, or a session dragged there by hand, may sit in it.
  */
-export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: number; floor?: number }): { placed: Span[]; leftover: number } {
+export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: number; floor?: number; gap?: number }): { placed: Span[]; leftover: number } {
   const floor = opts.floor ?? SESSION_FLOOR;
   const snap = opts.snap ?? SNAP;
+  const gap = opts.gap ?? 0;
   const placed: Span[] = [];
   let leftover = 0;
   let slotIndex = 0;
   let cursor = slots[0]?.start ?? 0;
+  /** The slot the span before this one was laid in; -1 while no span has been laid in the slot in hand. */
+  let lastSlot = -1;
   for (const wanted of sessions) {
     let need = wanted;
     while (need > 0) {
@@ -78,17 +92,23 @@ export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: 
         break;
       }
       // Starts sit on the five-minute grid, so a meeting ending at 10:07 gives a session at 10:10.
-      const start = up(Math.max(cursor, slot.start), snap);
+      // The break is counted before the grid, so the session after it also starts on a five.
+      const from = slotIndex === lastSlot ? cursor + gap : cursor;
+      const start = up(Math.max(from, slot.start), snap);
+      // What is left of the slot once the break has been taken out: a slot with room for the
+      // session but not for the break before it is passed over, the same as any other short one.
       const room = Math.floor((slot.end - start) / snap) * snap;
       if (room < floor) {
         slotIndex += 1;
         cursor = slots[slotIndex]?.start ?? 0;
+        lastSlot = -1;
         continue;
       }
       const take = Math.min(need, room);
       placed.push({ start, end: start + take });
       need -= take;
       cursor = start + take;
+      lastSlot = slotIndex;
       // A tail shorter than the floor is not worth a session of its own: it stays unplaced.
       if (need > 0 && need < floor) {
         leftover += need;
@@ -97,6 +117,7 @@ export function placeSessions(slots: Span[], sessions: number[], opts: { snap?: 
       if (cursor >= slot.end - snap + 1) {
         slotIndex += 1;
         cursor = slots[slotIndex]?.start ?? 0;
+        lastSlot = -1;
       }
     }
   }

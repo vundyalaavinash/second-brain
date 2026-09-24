@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray, like } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { dailyPlanEntries, taskBlocks, tasks, type Task, type TaskBlock } from "@/db/schema";
 import { addDays, listMeetings } from "@/domain/activity";
 import { getTask, updateTask } from "@/domain/tasks";
-import { freeSlots, placeSessions, sessionsFor, type Span } from "@/lib/scheduler";
+import { freeSlots, placeSessions, SESSION_GAP, sessionsFor, type Span } from "@/lib/scheduler";
 import { getWorkHours } from "@/lib/work-hours";
 
 export class BlockError extends Error {
@@ -68,10 +68,21 @@ function localToday(now: Date): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** Sessions starting on `date`, as a range over the sorted start rather than a pattern match:
+ * an index can answer a range, and no part of a date is ever read as a wildcard. */
+function onDay(date: string) {
+  return and(gte(taskBlocks.startsAt, `${date}T00:00:00`), lt(taskBlocks.startsAt, `${addDays(date, 1)}T00:00:00`))!;
+}
+
+/** Sessions starting in `[from, to)`, by date; the same range, over as many days as asked for. */
+function inWindow(window: { from: string; to: string }) {
+  return and(gte(taskBlocks.startsAt, `${window.from}T00:00:00`), lt(taskBlocks.startsAt, `${window.to}T00:00:00`))!;
+}
+
 export function listBlocks(db: DB, filter: { taskId?: number; date?: string } = {}): TaskBlock[] {
   const conds = [];
   if (filter.taskId !== undefined) conds.push(eq(taskBlocks.taskId, filter.taskId));
-  if (filter.date !== undefined) conds.push(like(taskBlocks.startsAt, `${filter.date}%`));
+  if (filter.date !== undefined) conds.push(onDay(filter.date));
   return db
     .select()
     .from(taskBlocks)
@@ -80,14 +91,20 @@ export function listBlocks(db: DB, filter: { taskId?: number; date?: string } = 
     .all();
 }
 
-/** Every listed task's sessions in one query, each list ordered by start. */
-export function blocksByTask(db: DB, taskIds: number[]): Map<number, TaskBlock[]> {
+/**
+ * Every listed task's sessions in one query, each list ordered by start. `window` bounds what
+ * a payload carries: a task may hold sessions on any number of days, and a page that draws one
+ * day, or one week, has no use for the rest of its history.
+ */
+export function blocksByTask(db: DB, taskIds: number[], window?: { from: string; to: string }): Map<number, TaskBlock[]> {
   const out = new Map<number, TaskBlock[]>(taskIds.map((id) => [id, []]));
   if (taskIds.length === 0) return out;
+  const conds = [inArray(taskBlocks.taskId, taskIds)];
+  if (window) conds.push(inWindow(window));
   const rows = db
     .select()
     .from(taskBlocks)
-    .where(inArray(taskBlocks.taskId, taskIds))
+    .where(and(...conds))
     .orderBy(asc(taskBlocks.startsAt), asc(taskBlocks.id))
     .all();
   for (const row of rows) out.get(row.taskId)?.push(row);
@@ -146,16 +163,27 @@ export function removeBlock(db: DB, id: number): void {
 
 /** Takes the task's sessions off one day, or off every day when no date is given; returns how many went. */
 export function clearBlocks(db: DB, taskId: number, date?: string): number {
-  const where = date === undefined ? eq(taskBlocks.taskId, taskId) : and(eq(taskBlocks.taskId, taskId), like(taskBlocks.startsAt, `${date}%`));
+  const where = date === undefined ? eq(taskBlocks.taskId, taskId) : and(eq(taskBlocks.taskId, taskId), onDay(date));
   return db.delete(taskBlocks).where(where).run().changes;
 }
 
-/** What the day is already spoken for: timed meetings a person has not declined, and every session on it. */
+/**
+ * What the day is already spoken for: timed meetings a person has not declined, and every
+ * session on it a live task holds. A dropped task gives its hours back — `dropTask` takes its
+ * sessions away, and this skips them besides, so a row left behind by an older write or by a
+ * hand-edited database never blocks a slot.
+ */
 function busySpans(db: DB, date: string): Span[] {
   const meetings = listMeetings(db, { from: date, to: addDays(date, 1) })
     .filter((m) => m.allDay === 0 && m.status !== "declined")
     .map((m) => ({ start: minutesInto(date, m.startsAt), end: minutesInto(date, m.endsAt) }));
-  const blocks = listBlocks(db, { date }).map((b) => ({ start: minutesInto(date, b.startsAt), end: minutesInto(date, b.startsAt) + b.minutes }));
+  const blocks = db
+    .select({ startsAt: taskBlocks.startsAt, minutes: taskBlocks.minutes })
+    .from(taskBlocks)
+    .innerJoin(tasks, eq(tasks.id, taskBlocks.taskId))
+    .where(and(onDay(date), ne(tasks.status, "dropped")))
+    .all()
+    .map((b) => ({ start: minutesInto(date, b.startsAt), end: minutesInto(date, b.startsAt) + b.minutes }));
   return [...meetings, ...blocks];
 }
 
@@ -164,7 +192,9 @@ function place(db: DB, task: Task, date: string, now: Date, workHours: string): 
   clearBlocks(db, task.id, date);
   const notBefore = date === localToday(now) ? now.getHours() * 60 + now.getMinutes() : undefined;
   const slots = freeSlots(busySpans(db, date), workHours, { notBefore });
-  const { placed, leftover } = placeSessions(slots, sessionsFor(task.estimateMinutes, task.sessionMinutes), {});
+  // Spec §3: a task's own sessions are not laid back to back — ten minutes stand between two
+  // of them in the same slot. Nothing holds that break: the next task placed may take it.
+  const { placed, leftover } = placeSessions(slots, sessionsFor(task.estimateMinutes, task.sessionMinutes), { gap: SESSION_GAP });
   for (const span of placed) {
     db.insert(taskBlocks).values({ taskId: task.id, startsAt: minutesToIso(date, span.start), minutes: span.end - span.start }).run();
   }

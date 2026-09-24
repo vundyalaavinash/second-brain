@@ -34,6 +34,8 @@ interface Props {
   col: number;
   cols: number;
   pxPerMin: number;
+  /** How many minutes the column covers, so the length question knows where its floor is. */
+  columnMinutes: number;
   onPatchTask: (id: number, body: Record<string, unknown>) => Promise<boolean>;
   onBlock: (action: BlockAction) => BlockResult;
   /** Spec §3: a session just dropped for a task nobody estimated asks how long it should be. */
@@ -42,6 +44,8 @@ interface Props {
   onDragStart: (e: PointerEvent<HTMLDivElement>) => void;
 }
 
+/** Roughly how tall the length question is: two rows of presets, its padding and its offset. */
+const PANEL_PX = 76;
 const MOVE = 15;
 const FINE = 5;
 const MIN_LENGTH = 5;
@@ -55,7 +59,7 @@ const PRESETS = [15, 25, 45, 60, 90, 120];
  * arrows resize it, Backspace takes it off the timeline (the task stays on the plan). Sessions
  * of a done task stay, dimmed and struck through.
  */
-export function TaskBlock({ task, block, index, count, date, top, height, col, cols, pxPerMin, onPatchTask, onBlock, askLength, onDragStart }: Props) {
+export function TaskBlock({ task, block, index, count, date, top, height, col, cols, pxPerMin, columnMinutes, onPatchTask, onBlock, askLength, onDragStart }: Props) {
   const [resizing, setResizing] = useState(false);
   // The question is asked once: Escape, or a length chosen, puts it away for good, whatever
   // the column still believes about the session it just placed.
@@ -82,6 +86,20 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
   useEffect(() => {
     if (asking) firstPreset.current?.focus();
   }, [asking]);
+  // A press anywhere else is an answer of sorts: the question goes away rather than following
+  // the pointer around the column. The panel hangs inside the block, so one test covers both.
+  useEffect(() => {
+    if (!asking) return;
+    function onDown(e: MouseEvent) {
+      if (blockRef.current?.contains(e.target as Node)) return;
+      setDismissed(true);
+    }
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [asking]);
+  // Hanging below a block near the foot of the column would put the presets off the end of it,
+  // so there the question opens upwards instead.
+  const askAbove = (top + height) * pxPerMin + PANEL_PX > columnMinutes * pxPerMin;
 
   const start = block.startsAt;
   const end = blockEnd(block);
@@ -128,10 +146,12 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
     blockRef.current?.focus();
   }
 
-  /** Spec §3: the length chosen is the task's estimate and this session's length. */
+  /** Spec §3: the length chosen is the task's estimate and this session's length. The session
+   * is only resized once the estimate is saved: a failed write leaves the two as they were,
+   * rather than a block of one length against an estimate of another. */
   async function pickLength(minutes: number) {
     closeAsk();
-    await onPatchTask(task.id, { estimateMinutes: minutes });
+    if (!(await onPatchTask(task.id, { estimateMinutes: minutes }))) return;
     await onBlock({ kind: "resize", id: block.id, minutes });
   }
 
@@ -209,7 +229,8 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
         <span className="flex items-center gap-2 min-w-0">
           <input
             type="checkbox"
-            aria-label={`Done: ${task.title}`}
+            // Two sessions of one task would otherwise offer two checkboxes of the same name.
+            aria-label={`Done: ${task.title}${mark}`}
             checked={done}
             onChange={() => void onPatchTask(task.id, { status: done ? "open" : "done" })}
             onPointerDown={(e) => e.stopPropagation()}
@@ -246,7 +267,7 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
             e.stopPropagation();
             closeAsk();
           }}
-          className="panel absolute left-0 top-full mt-1 rounded-md p-1 grid grid-cols-3 gap-0.5 w-40"
+          className={`panel absolute left-0 rounded-md p-1 grid grid-cols-3 gap-0.5 w-40 ${askAbove ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           {PRESETS.map((m, i) => (
             <button
