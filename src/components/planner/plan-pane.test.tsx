@@ -45,6 +45,29 @@ function stubPlan() {
   return posts;
 }
 
+/** Records every request, answering a place with the figures the day is meant to report. */
+function stubPlace(...answers: { placed: number; unplacedMinutes: number }[]) {
+  const posts: { url: string; method?: string; body: unknown }[] = [];
+  let i = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      posts.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (String(input) === "/api/plan/place") return Response.json(answers[Math.min(i++, answers.length - 1)]);
+      return Response.json({});
+    }),
+  );
+  return posts;
+}
+
+/** Every toast the pane raises, in order, with the action's label where it carries one. */
+function watchToasts() {
+  const seen: { text: string; action?: { label: string; onClick(): void } }[] = [];
+  const listen = (e: Event) => seen.push((e as CustomEvent<{ text: string; action?: { label: string; onClick(): void } }>).detail);
+  window.addEventListener("sb:toast", listen);
+  return { seen, stop: () => window.removeEventListener("sb:toast", listen) };
+}
+
 function mount(date = TODAY) {
   const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
   vi.stubGlobal("fetch", fetchMock);
@@ -202,30 +225,33 @@ describe("PlanPane", () => {
   it("blocks a planned task at the next five minutes, and only on the day in hand", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(`${TODAY}T10:34:00`));
+    // A two-hour task with no session length of its own: one 45-minute session, not a slab.
+    const long = day({ plan: [{ ...planned, estimateMinutes: 120 }] });
+    const block = (startsAt: string) => ({ url: "/api/blocks", method: "POST", body: { taskId: planned.id, startsAt, minutes: 45 } });
     try {
       const posts = stubPlan();
-      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      render(<PlanPane day={long} today={TODAY} onRefresh={vi.fn()} />);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
-      await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T10:35:00` } }]));
+      await waitFor(() => expect(posts).toEqual([block(`${TODAY}T10:35:00`)]));
 
       // On the mark itself the next slot is the one after it, never the minute already going.
       cleanup();
       vi.setSystemTime(new Date(`${TODAY}T10:30:00`));
       const onTheMark = stubPlan();
-      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      render(<PlanPane day={long} today={TODAY} onRefresh={vi.fn()} />);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
-      await waitFor(() => expect(onTheMark).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T10:35:00` } }]));
+      await waitFor(() => expect(onTheMark).toEqual([block(`${TODAY}T10:35:00`)]));
 
       // The last slot the day holds: 23:58 blocks at 23:55 rather than rolling into tomorrow.
       cleanup();
       vi.setSystemTime(new Date(`${TODAY}T23:58:00`));
       const atMidnight = stubPlan();
-      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      render(<PlanPane day={long} today={TODAY} onRefresh={vi.fn()} />);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "Block now" }));
-      await waitFor(() => expect(atMidnight).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: `${TODAY}T23:55:00` } }]));
+      await waitFor(() => expect(atMidnight).toEqual([block(`${TODAY}T23:55:00`)]));
 
       // Another day has no "now" on it: the item is not offered at all.
       cleanup();
@@ -245,7 +271,7 @@ describe("PlanPane", () => {
     try {
       render(<PlanPane day={day({ plan: [{ ...planned, blocks: [{ id: 1, taskId: planned.id, startsAt: `${TODAY}T10:30:00`, minutes: 25 }] }] })} today={TODAY} onRefresh={vi.fn()} />);
       fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
-      expect(seen).toEqual([{ taskId: planned.id }]);
+      expect(seen).toEqual([{ taskId: planned.id, blockId: 1 }]);
     } finally {
       window.removeEventListener("sb:timeline-focus", listen);
     }
@@ -256,7 +282,8 @@ describe("PlanPane", () => {
     render(<PlanPane day={day({ plan: [{ ...planned, blocks: [{ id: 1, taskId: planned.id, startsAt: `${TODAY}T10:30:00`, minutes: 25 }] }] })} today={TODAY} onRefresh={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Take off the timeline" }));
-    await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { scheduledAt: null } }]));
+    // The whole day goes, and only that day: the route needs the date to know which sessions.
+    await waitFor(() => expect(posts).toEqual([{ url: `/api/tasks/${planned.id}/blocks?date=${TODAY}`, method: "DELETE", body: null }]));
   });
 
   it("sorts the plan by its blocks from the pane's own menu", async () => {
@@ -288,5 +315,118 @@ describe("PlanPane", () => {
     render(<PlanPane day={quiet} today={TODAY} onRefresh={vi.fn()} />);
     expect(await screen.findByText(/Nothing planned\./)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
+  });
+
+  it("fills the day from the pane's menu and says what it placed", async () => {
+    const posts = stubPlace({ placed: 3, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Plan actions" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Fill the day" }));
+      await waitFor(() => expect(posts).toEqual([{ url: "/api/plan/place", method: "POST", body: { date: TODAY } }]));
+      await waitFor(() => expect(toasts.seen).toEqual([{ text: "Placed 3 sessions", action: undefined }]));
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("places one row's sessions from its menu and from f", async () => {
+    const posts = stubPlace({ placed: 1, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Place in free slots" }));
+      await waitFor(() => expect(posts).toEqual([{ url: "/api/plan/place", method: "POST", body: { date: TODAY, taskId: planned.id } }]));
+      // One session is one session, not "1 sessions".
+      await waitFor(() => expect(toasts.seen[0].text).toBe("Placed 1 session"));
+
+      fireEvent.keyDown(screen.getByRole("button", { name: planned.title }), { key: "f" });
+      await waitFor(() => expect(posts).toHaveLength(2));
+      expect(posts[1]).toEqual({ url: "/api/plan/place", method: "POST", body: { date: TODAY, taskId: planned.id } });
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("says a day with no room for anything placed nothing", async () => {
+    const posts = stubPlace({ placed: 0, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Plan actions" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Fill the day" }));
+      await waitFor(() => expect(posts).toHaveLength(1));
+      await waitFor(() => expect(toasts.seen[0].text).toBe("Nothing to place"));
+      expect(toasts.seen[0].action).toBeUndefined();
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("offers tomorrow what today had no room for, plans the task there and places it", async () => {
+    const posts = stubPlace({ placed: 3, unplacedMinutes: 80 }, { placed: 2, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Place in free slots" }));
+      await waitFor(() => expect(toasts.seen[0].text).toBe("Placed 3 sessions, 1h 20m unplaced"));
+      expect(toasts.seen[0].action?.label).toBe("Place tomorrow");
+
+      act(() => toasts.seen[0].action?.onClick());
+      await waitFor(() => expect(posts).toHaveLength(3));
+      expect(posts.slice(1)).toEqual([
+        { url: "/api/plan", method: "POST", body: { date: "2026-09-23", taskId: planned.id } },
+        { url: "/api/plan/place", method: "POST", body: { date: "2026-09-23", taskId: planned.id } },
+      ]);
+      // Tomorrow's own toast does not offer the day after: the offer is made once.
+      await waitFor(() => expect(toasts.seen).toHaveLength(2));
+      expect(toasts.seen[1]).toEqual({ text: "Placed 2 sessions", action: undefined });
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("fills tomorrow with what it already holds, planning nothing new", async () => {
+    const posts = stubPlace({ placed: 1, unplacedMinutes: 45 }, { placed: 1, unplacedMinutes: 0 });
+    const toasts = watchToasts();
+    try {
+      render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Plan actions" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Plan actions" })).getByRole("menuitem", { name: "Fill the day" }));
+      await waitFor(() => expect(toasts.seen[0].action?.label).toBe("Place tomorrow"));
+      act(() => toasts.seen[0].action?.onClick());
+      await waitFor(() => expect(posts).toHaveLength(2));
+      expect(posts[1]).toEqual({ url: "/api/plan/place", method: "POST", body: { date: "2026-09-23" } });
+    } finally {
+      toasts.stop();
+    }
+  });
+
+  it("splits a task into sessions, and lays out again a day that already held some", async () => {
+    const posts = stubPlace({ placed: 3, unplacedMinutes: 0 });
+    render(<PlanPane day={day()} today={TODAY} onRefresh={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Split into" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "45m" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    // Nothing on the timeline yet: the length is saved and the day is left where it is.
+    expect(posts[0]).toEqual({ url: `/api/tasks/${planned.id}`, method: "PATCH", body: { sessionMinutes: 45 } });
+
+    cleanup();
+    const withSessions = stubPlace({ placed: 3, unplacedMinutes: 0 });
+    render(
+      <PlanPane day={day({ plan: [{ ...planned, estimateMinutes: 120, blocks: [{ id: 1, taskId: planned.id, startsAt: `${TODAY}T09:00:00`, minutes: 120 }] }] })} today={TODAY} onRefresh={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Split into" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "45m" }));
+    await waitFor(() => expect(withSessions).toHaveLength(2));
+    expect(withSessions).toEqual([
+      { url: `/api/tasks/${planned.id}`, method: "PATCH", body: { sessionMinutes: 45 } },
+      { url: "/api/plan/place", method: "POST", body: { date: TODAY, taskId: planned.id } },
+    ]);
   });
 });

@@ -189,6 +189,7 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
     "aria-label": name,
     tabIndex: 0,
     "data-task-block": task.id,
+    "data-block-id": block.id,
     onKeyDown: onKey,
     onPointerDown: done ? undefined : onDragStart,
     // The question hangs below the block, so while it is up the block lets it out and sits over

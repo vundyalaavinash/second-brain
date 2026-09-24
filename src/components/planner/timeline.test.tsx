@@ -348,6 +348,20 @@ describe("Timeline", () => {
     expect(document.activeElement).toBe(block);
   });
 
+  it("goes to the session a chip names, not only to the task's first", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[twoSessions]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+    const second = screen.getByRole("group", { name: "Write the note · 2 of 2, 14:00 to 14:45" });
+    window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: blocked.id, blockId: 2 } }));
+    expect(document.activeElement).toBe(second);
+  });
+
+  it("falls back to the task's first session when the named one is gone", () => {
+    render(<Timeline date={DATE} meetings={[]} tasks={[twoSessions]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+    const first = screen.getByRole("group", { name: "Write the note · 1 of 2, 10:30 to 11:15" });
+    window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: blocked.id, blockId: 999 } }));
+    expect(document.activeElement).toBe(first);
+  });
+
   it("does nothing for a task with no session on the column", () => {
     render(<Timeline date={DATE} meetings={[]} tasks={[blocked]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
     const before = document.activeElement;

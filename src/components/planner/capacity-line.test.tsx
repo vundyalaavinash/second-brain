@@ -21,6 +21,11 @@ describe("CapacityLine", () => {
     expect(screen.getByRole("status").textContent).toBe("3 planned \u00b7 2h 10m of 4h 30m free \u00b7 1h 20m blocked \u00b7 4 meetings");
   });
 
+  it("says how much the day had no room for, after the blocked figure", () => {
+    render(<CapacityLine capacity={{ ...base, blockedMinutes: 80, unplacedMinutes: 80 }} planned={3} meetings={1} onHours={vi.fn()} />);
+    expect(screen.getByRole("status").textContent).toBe("3 planned \u00b7 2h 10m of 4h 30m free \u00b7 1h 20m blocked \u00b7 1h 20m unplaced \u00b7 1 meeting");
+  });
+
   it("names the unestimated and warns past the free time", () => {
     render(<CapacityLine capacity={{ ...base, plannedMinutes: 300, unestimated: 2 }} planned={5} meetings={1} onHours={vi.fn()} />);
     const status = screen.getByRole("status");

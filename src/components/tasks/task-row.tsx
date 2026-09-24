@@ -7,7 +7,9 @@ import { GripVertical, MoreHorizontal } from "lucide-react";
 import type { TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
+import { formatMinutes } from "@/lib/capacity";
 import { titleCase } from "@/lib/format";
+import { blocksOn } from "../planner/block-math";
 import { addDaysLocal, formatClock, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 import { EstimateChip } from "./estimate-chip";
@@ -35,6 +37,9 @@ function planDays(from: string, today: string): { date: string; label: string }[
 
 const MENU_ITEM_FOCUSABLE = '[role="menuitem"], [role="menuitemradio"]';
 
+/** Spec §4: the session lengths "Split into" offers, beside "One session". */
+const SPLIT_PRESETS = [25, 45, 60, 90];
+
 /** Shared with the plan pane, whose header menu is the same small thing. */
 export const MENU_ITEM = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-fg-muted hover:text-fg hover:bg-layer-2 transition-colors duration-100";
 const MENU_ITEM_DANGER = "focus-ring w-full flex items-center px-2 h-8 rounded-sm text-left text-[12.5px] text-danger hover:bg-danger/10 transition-colors duration-100";
@@ -55,8 +60,13 @@ interface Props {
   onPlan?: () => void;
   /** Gives the task a block starting now. Only offered where "now" falls on the day in hand. */
   onBlockNow?: () => void;
-  /** Takes the task's block off the timeline; the task stays on the plan. */
+  /** Takes every one of the day's sessions off the timeline; the task stays on the plan. */
   onUnblock?: () => void;
+  /** Lays the task's sessions in the day's free slots. Offered where a day can be placed into,
+   * which is the plan pane; `f` on the row does the same. */
+  onPlace?: () => void;
+  /** How long each session should be, or null for the whole estimate in one. */
+  onSplit?: (minutes: number | null) => void;
   /** The day this row belongs to. A block on it gets a chip that goes and looks at it; a block
    * on any other day is only told, because no timeline on this screen holds it. */
   blockDate?: string;
@@ -84,7 +94,7 @@ interface Props {
 }
 
 export function TaskRow({
-  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, blockDate, planFrom = today,
+  task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, onPlace, onSplit, blockDate, planFrom = today,
   planLabel = "Plan for today", planned, compact, className = "", draggable, onDragStart, onDragOver, onDragLeave, onDragEnd, onRowDrop,
   as, rowProps: extraRowProps,
 }: Props) {
@@ -94,9 +104,11 @@ export function TaskRow({
   const [dueDraft, setDueDraft] = useState(task.dueDate ?? "");
   const [menuOpen, setMenuOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const planButtonRef = useRef<HTMLButtonElement | null>(null);
+  const splitButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuPanelRef = useRef<HTMLDivElement | null>(null);
   const done = task.status === "done";
   const due = task.dueDate ? deadlineLabel(task.dueDate, today) : null;
@@ -104,6 +116,7 @@ export function TaskRow({
   function closeMenu() {
     setMenuOpen(false);
     setPlanOpen(false);
+    setSplitOpen(false);
     menuButtonRef.current?.focus();
   }
 
@@ -133,10 +146,15 @@ export function TaskRow({
     if (!menuOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        // The day list is a step inside the menu, so Escape backs out of it first.
+        // A submenu is a step inside the menu, so Escape backs out of it first.
         if (planOpen) {
           setPlanOpen(false);
           planButtonRef.current?.focus();
+          return;
+        }
+        if (splitOpen) {
+          setSplitOpen(false);
+          splitButtonRef.current?.focus();
           return;
         }
         closeMenu();
@@ -170,7 +188,7 @@ export function TaskRow({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onPointerDown);
     };
-  }, [menuOpen, planOpen]);
+  }, [menuOpen, planOpen, splitOpen]);
 
   function startEditTitle() {
     setTitleDraft(task.title);
@@ -280,26 +298,33 @@ export function TaskRow({
     )
   );
 
-  // Where the task sits on the timeline. On the row's own day that is one press away, so the
-  // chip is a button; a block on another day has no column here to jump to, and the same mono
-  // figure only says which day holds it.
-  const blockStart = task.blocks[0]?.startsAt ?? null;
-  const blockNode =
-    blockStart &&
-    (blockDate && blockStart.startsWith(blockDate) ? (
-      <button
-        type="button"
-        aria-label={`Blocked at ${formatClock(blockStart)}`}
-        onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id } }))}
-        className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
-      >
-        {formatClock(blockStart)}
-      </button>
-    ) : (
-      <span title={`Blocked on ${formatShortDate(blockStart.slice(0, 10))} at ${formatClock(blockStart)}`} className="font-mono text-[11px] text-violet-bright px-1 shrink-0">
-        {formatClock(blockStart)}
+  // Where the task sits on the timeline. Spec §5: on the row's own day the chip says when the
+  // first session starts and, when the day holds more, how many others follow; one press takes
+  // the keyboard to that first session. A session on another day has no column here to jump to,
+  // so the same mono figure only says which day holds it.
+  const dayBlocks = blockDate ? blocksOn(task, blockDate) : [];
+  const first = dayBlocks[0];
+  const more = dayBlocks.length - 1;
+  // Nothing on this day: whatever the task holds elsewhere is worth saying, but not offering.
+  const elsewhere = first ? null : (task.blocks[0]?.startsAt ?? null);
+  const hasDayBlock = (blockDate ? dayBlocks.length : task.blocks.length) > 0;
+  const blockNode = first ? (
+    <button
+      type="button"
+      aria-label={more > 0 ? `Blocked at ${formatClock(first.startsAt)}, ${dayBlocks.length} sessions` : `Blocked at ${formatClock(first.startsAt)}`}
+      onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id, blockId: first.id } }))}
+      className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
+    >
+      {formatClock(first.startsAt)}
+      {more > 0 && <span className="text-fg-faint">+{more}</span>}
+    </button>
+  ) : (
+    elsewhere && (
+      <span title={`Blocked on ${formatShortDate(elsewhere.slice(0, 10))} at ${formatClock(elsewhere)}`} className="font-mono text-[11px] text-violet-bright px-1 shrink-0">
+        {formatClock(elsewhere)}
       </span>
-    ));
+    )
+  );
 
   const actions = (
     <>
@@ -397,6 +422,65 @@ export function TaskRow({
                     {planned ? "Remove from plan" : planLabel}
                   </button>
                 )}
+                {onPlace && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      closeMenu();
+                      onPlace();
+                    }}
+                  >
+                    Place in free slots
+                  </button>
+                )}
+                {onSplit && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      ref={splitButtonRef}
+                      className={MENU_ITEM}
+                      aria-haspopup="menu"
+                      aria-expanded={splitOpen}
+                      onClick={() => setSplitOpen((v) => !v)}
+                    >
+                      Split into
+                    </button>
+                    {splitOpen && (
+                      <div role="menu" aria-label="Split into" className="panel absolute right-full top-0 mr-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-32 z-50">
+                        {SPLIT_PRESETS.map((minutes) => (
+                          <button
+                            key={minutes}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={task.sessionMinutes === minutes}
+                            className={MENU_ITEM}
+                            onClick={() => {
+                              closeMenu();
+                              onSplit(minutes);
+                            }}
+                          >
+                            {formatMinutes(minutes)}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={task.sessionMinutes === null}
+                          className={MENU_ITEM}
+                          onClick={() => {
+                            closeMenu();
+                            onSplit(null);
+                          }}
+                        >
+                          One session
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {onBlockNow && (
                   <button
                     type="button"
@@ -410,7 +494,7 @@ export function TaskRow({
                     Block now
                   </button>
                 )}
-                {onUnblock && blockStart && (
+                {onUnblock && hasDayBlock && (
                   <button
                     type="button"
                     role="menuitem"
@@ -492,14 +576,16 @@ export function TaskRow({
     </>
   );
 
-  // `p` plans the task under the cursor and `n` blocks it out now, unless something on the row
-  // is taking the letter itself.
+  // `p` plans the task under the cursor, `n` blocks it out now and `f` lays its sessions in
+  // the day's free slots, unless something on the row is taking the letter itself.
   function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const plans = e.key === "p" && (!!onPlan || !!onPlanDate);
-    // A finished task is not blocked out: the menu has no such item either, being closed to it.
+    // A finished task is not blocked out or placed: the menu has no such item either, being
+    // closed to it.
     const blocks = e.key === "n" && !!onBlockNow && !done;
-    if (!plans && !blocks) return;
+    const places = e.key === "f" && !!onPlace && !done;
+    if (!plans && !blocks && !places) return;
     // The actions menu and the estimate popover are portalled to the body: their keys still
     // bubble up this React tree, but they are not the row and must not plan it.
     const target = e.target as HTMLElement | null;
@@ -510,7 +596,8 @@ export function TaskRow({
     e.preventDefault();
     // The row has claimed the letter: the window's `g p` chord must not read it as a jump too.
     e.stopPropagation();
-    if (blocks) onBlockNow?.();
+    if (places) onPlace?.();
+    else if (blocks) onBlockNow?.();
     else planFromKey();
   }
 

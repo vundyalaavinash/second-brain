@@ -27,7 +27,9 @@ export function CapacityLine({ capacity, planned, meetings, onHours }: Props) {
         {planned} planned · <span className={CAPACITY_TONE_CLASS[tone]}>{formatMinutes(capacity.plannedMinutes)}</span> of {formatMinutes(capacity.freeMinutes)} free
         {capacity.unestimated > 0 && ` (${capacity.unestimated} unestimated)`}
         {/* How much of the plan has a place on the timeline; nothing blocked says nothing. */}
-        {capacity.blockedMinutes > 0 && <> · {formatMinutes(capacity.blockedMinutes)} blocked</>} · {count(meetings, "meeting")}
+        {capacity.blockedMinutes > 0 && <> · {formatMinutes(capacity.blockedMinutes)} blocked</>}
+        {/* And how much of it the day had no room for, after the blocked figure it follows from. */}
+        {capacity.unplacedMinutes > 0 && <> · {formatMinutes(capacity.unplacedMinutes)} unplaced</>} · {count(meetings, "meeting")}
         {/* The tone says it in colour and the title on hover; a reader that has neither hears it. */}
         {title && <span className="sr-only">. {title}</span>}
       </span>

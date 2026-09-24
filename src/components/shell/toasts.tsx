@@ -24,11 +24,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timers.current.push(timer);
   }, []);
   // Anything in the app can raise a toast without reaching for the context: the planner's rows
-  // and the palette both fire this event from handlers that have no provider above them.
+  // and the palette both fire this event from handlers that have no provider above them. A
+  // detail may carry one action — "Place tomorrow" after a place that left time over — whose
+  // handler belongs to whatever raised the event, not to the provider.
   useEffect(() => {
     function onToast(e: Event) {
-      const text = (e as CustomEvent<{ text?: string }>).detail?.text;
-      if (text) push({ text });
+      const detail = (e as CustomEvent<{ text?: string; action?: { label: string; onClick(): void } }>).detail;
+      if (detail?.text) push({ text: detail.text, action: detail.action });
     }
     window.addEventListener("sb:toast", onToast);
     return () => window.removeEventListener("sb:toast", onToast);

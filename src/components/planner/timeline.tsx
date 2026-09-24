@@ -112,12 +112,16 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
     };
   }, []);
 
-  // A time chip on a plan row asks for its block: the column brings the task's first session
-  // into view and hands it the keyboard, so the arrows move it straight away.
+  // A time chip on a plan row asks for its session: the column brings it into view and hands it
+  // the keyboard, so the arrows move it straight away. The chip names the session it speaks for;
+  // an older caller that names only a task gets the first of that task's sessions, which is the
+  // order the column renders them in.
   useEffect(() => {
     function onFocusBlock(e: Event) {
-      const taskId = (e as CustomEvent<{ taskId: number }>).detail?.taskId;
-      const block = document.querySelector<HTMLElement>(`[data-task-block="${taskId}"]`);
+      const detail = (e as CustomEvent<{ taskId: number; blockId?: number }>).detail;
+      const block =
+        (detail?.blockId === undefined ? null : document.querySelector<HTMLElement>(`[data-block-id="${detail.blockId}"]`)) ??
+        document.querySelector<HTMLElement>(`[data-task-block="${detail?.taskId}"]`);
       block?.scrollIntoView?.({ block: "center" });
       block?.focus();
     }

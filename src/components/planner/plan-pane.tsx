@@ -10,7 +10,7 @@ import { sessionsFor } from "@/lib/scheduler";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
-import { minutesToIso, SNAP_MINUTES } from "./block-math";
+import { blocksOn, minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
 import { PLAN_DRAG_MIME, planMinutesType } from "./drag-mime";
@@ -185,6 +185,48 @@ export function PlanPane({ day, today, onRefresh }: Props) {
   const carryOver = () => void send("/api/plan/carry-over", "POST", { from: addDaysLocal(day.date, -1), to: day.date }, "sb:plan-changed");
   const sortByTime = () => void send("/api/plan/sort", "POST", { date: day.date }, "sb:plan-changed");
 
+  /**
+   * Spec §3: lays a task's sessions — or, with no task, every unplaced plan task's — into the
+   * day's free slots, and says what happened. `offerNext` carries the toast's way out: what the
+   * day had no room for can go on the next one, which is the same run a day later.
+   */
+  async function place(date: string, taskId: number | null, offerNext: boolean) {
+    const body = taskId === null ? { date } : { date, taskId };
+    const res = await fetch("/api/plan/place", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
+    if (!res.ok) {
+      setError(SAVE_ERROR);
+      return;
+    }
+    setError(null);
+    const { placed, unplacedMinutes } = (await res.json()) as { placed: number; unplacedMinutes: number };
+    window.dispatchEvent(new Event("sb:tasks-changed"));
+    const text =
+      placed === 0
+        ? "Nothing to place"
+        : unplacedMinutes > 0
+          ? `Placed ${count(placed, "session")}, ${formatMinutes(unplacedMinutes)} unplaced`
+          : `Placed ${count(placed, "session")}`;
+    // Only the first run offers the next day: a toast that offered it again would walk the task
+    // off into a week nobody asked about.
+    const action = offerNext && unplacedMinutes > 0 ? { label: "Place tomorrow", onClick: () => void placeTomorrow(taskId) } : undefined;
+    window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text, action } }));
+  }
+
+  /** The toast's action: tomorrow has to hold the task before it can place it. A whole-day fill
+   * plans nothing new — it places what tomorrow already carries. */
+  async function placeTomorrow(taskId: number | null) {
+    const date = addDaysLocal(day.date, 1);
+    if (taskId !== null && !(await send("/api/plan", "POST", { date, taskId }, "sb:plan-changed"))) return;
+    await place(date, taskId, false);
+  }
+
+  /** Spec §4: how long each of the task's sessions should be. A task that already holds sessions
+   * on the day is laid out again at the new length rather than left half-split. */
+  async function split(task: TaskDTO, minutes: number | null) {
+    if (!(await send(`/api/tasks/${task.id}`, "PATCH", { sessionMinutes: minutes }))) return;
+    if (blocksOn(task, day.date).length > 0) await place(day.date, task.id, true);
+  }
+
   /** Takes a task off the plan and says where the keyboard goes once the day comes back. */
   async function unplan(taskId: number) {
     const ids = day.plan.map((t) => t.id);
@@ -248,8 +290,15 @@ export function PlanPane({ day, today, onRefresh }: Props) {
         // The pane is one day's plan, so a chip here only leads to a block that is on it.
         blockDate={day.date}
         // "Now" only means something on the day being lived through; other days are placed by hand.
-        onBlockNow={day.date === today ? () => patch(task.id, { scheduledAt: minutesToIso(today, nextSlot(nowMinutes())) }) : undefined}
-        onUnblock={() => patch(task.id, { scheduledAt: null })}
+        onBlockNow={
+          day.date === today
+            ? () => void send("/api/blocks", "POST", { taskId: task.id, startsAt: minutesToIso(today, nextSlot(nowMinutes())), minutes: dropLength(task) })
+            : undefined
+        }
+        // Spec §4: the row's own unblock takes the whole day, not one session of it.
+        onUnblock={() => void send(`/api/tasks/${task.id}/blocks?date=${day.date}`, "DELETE")}
+        onPlace={() => void place(day.date, task.id, true)}
+        onSplit={(minutes) => void split(task, minutes)}
         planned
         draggable
         onDragStart={(e) => {
@@ -314,6 +363,18 @@ export function PlanPane({ day, today, onRefresh }: Props) {
           />
           {menuOpen && (
             <div ref={menuPanelRef} role="menu" aria-label="Plan actions" className="panel absolute right-0 top-full mt-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-40 z-50">
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM}
+                onClick={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                  void place(day.date, null, true);
+                }}
+              >
+                Fill the day
+              </button>
               <button
                 type="button"
                 role="menuitem"

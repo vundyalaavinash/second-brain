@@ -18,6 +18,8 @@ interface ExtraProps {
   onPlan?: () => void;
   onBlockNow?: () => void;
   onUnblock?: () => void;
+  onPlace?: () => void;
+  onSplit?: (minutes: number | null) => void;
   blockDate?: string;
   onEstimate?: (minutes: number | null) => void;
   onPlanDate?: (date: string) => void;
@@ -309,7 +311,8 @@ describe("TaskRow blocks", () => {
     try {
       renderRow({ onBlockNow, onUnblock, blockDate: "2026-09-16" }, { ...task, blocks: [{ id: 1, taskId: task.id, startsAt: "2026-09-16T10:30:00", minutes: 25 }] });
       fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
-      expect(focus).toEqual([{ taskId: task.id }]);
+      // The chip names the session it speaks for, not only the task that holds it.
+      expect(focus).toEqual([{ taskId: task.id, blockId: 1 }]);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
       fireEvent.click(screen.getByRole("menuitem", { name: "Take off the timeline" }));
       expect(onUnblock).toHaveBeenCalled();
@@ -358,6 +361,44 @@ describe("TaskRow blocks", () => {
     expect(onPlan).not.toHaveBeenCalled();
   });
 
+  it("counts the day's other sessions on the chip and speaks for the first", () => {
+    const focus: unknown[] = [];
+    const listen = (e: Event) => focus.push((e as CustomEvent).detail);
+    window.addEventListener("sb:timeline-focus", listen);
+    try {
+      renderRow(
+        { blockDate: "2026-09-16" },
+        {
+          ...task,
+          blocks: [
+            { id: 4, taskId: task.id, startsAt: "2026-09-16T10:30:00", minutes: 45 },
+            { id: 5, taskId: task.id, startsAt: "2026-09-16T14:00:00", minutes: 45 },
+          ],
+        },
+      );
+      const chip = screen.getByRole("button", { name: "Blocked at 10:30, 2 sessions" });
+      expect(chip.textContent).toBe("10:30+1");
+      fireEvent.click(chip);
+      expect(focus).toEqual([{ taskId: task.id, blockId: 4 }]);
+    } finally {
+      window.removeEventListener("sb:timeline-focus", listen);
+    }
+  });
+
+  it("counts only the sessions the row's own day holds", () => {
+    renderRow(
+      { blockDate: "2026-09-16" },
+      {
+        ...task,
+        blocks: [
+          { id: 4, taskId: task.id, startsAt: "2026-09-16T10:30:00", minutes: 45 },
+          { id: 5, taskId: task.id, startsAt: "2026-09-17T09:00:00", minutes: 45 },
+        ],
+      },
+    );
+    expect(screen.getByRole("button", { name: "Blocked at 10:30" }).textContent).toBe("10:30");
+  });
+
   it("keeps the n it handled from reaching the window", () => {
     const seen: string[] = [];
     const onKey = (e: KeyboardEvent) => seen.push(e.key);
@@ -369,5 +410,85 @@ describe("TaskRow blocks", () => {
     } finally {
       window.removeEventListener("keydown", onKey);
     }
+  });
+});
+
+describe("TaskRow placing and splitting", () => {
+  const twoHours: TaskDTO = { ...task, estimateMinutes: 120 };
+
+  it("places from the menu and from f, and leaves f alone where it is not offered", () => {
+    const onPlace = vi.fn();
+    renderRow({ onPlace }, twoHours);
+    fireEvent.click(within(openMenuPanel()).getByRole("menuitem", { name: "Place in free slots" }));
+    expect(onPlace).toHaveBeenCalledTimes(1);
+
+    const title = screen.getByRole("button", { name: task.title });
+    title.focus();
+    fireEvent.keyDown(title, { key: "f" });
+    expect(onPlace).toHaveBeenCalledTimes(2);
+
+    // No handler, no letter: a row outside the plan pane keeps f for whatever else wants it.
+    cleanup();
+    const onPlan = vi.fn();
+    renderRow({ onPlan }, twoHours);
+    expect(within(openMenuPanel()).queryByRole("menuitem", { name: "Place in free slots" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("button", { name: task.title }), { key: "f" });
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+
+  it("refuses f on a row that is already finished", () => {
+    const onPlace = vi.fn();
+    renderRow({ onPlace }, { ...twoHours, status: "done" });
+    fireEvent.keyDown(screen.getByRole("button", { name: task.title }), { key: "f" });
+    expect(onPlace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the f it handled from reaching the window", () => {
+    const seen: string[] = [];
+    const onKey = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", onKey);
+    try {
+      renderRow({ onPlace: vi.fn() }, twoHours);
+      fireEvent.keyDown(screen.getByRole("button", { name: task.title }), { key: "f" });
+      expect(seen).toEqual([]);
+    } finally {
+      window.removeEventListener("keydown", onKey);
+    }
+  });
+
+  it("offers the session lengths, marks the one in force and saves a choice", () => {
+    const onSplit = vi.fn();
+    renderRow({ onSplit }, { ...twoHours, sessionMinutes: 45 });
+    const trigger = within(openMenuPanel()).getByRole("menuitem", { name: "Split into" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    fireEvent.click(trigger);
+    const lengths = screen.getByRole("menu", { name: "Split into" });
+    expect(Array.from(lengths.querySelectorAll('[role="menuitemradio"]')).map((el) => el.textContent)).toEqual([
+      "25m", "45m", "1h", "1h 30m", "One session",
+    ]);
+    expect(screen.getByRole("menuitemradio", { name: "45m" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "45m" }));
+    expect(onSplit).toHaveBeenCalledWith(45);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("puts the whole estimate in one session, and says so while it is unset", () => {
+    const onSplit = vi.fn();
+    renderRow({ onSplit }, twoHours);
+    fireEvent.click(within(openMenuPanel()).getByRole("menuitem", { name: "Split into" }));
+    expect(screen.getByRole("menuitemradio", { name: "One session" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "One session" }));
+    expect(onSplit).toHaveBeenCalledWith(null);
+  });
+
+  it("escape backs out of the lengths before it closes the menu", () => {
+    renderRow({ onSplit: vi.fn() }, twoHours);
+    const trigger = within(openMenuPanel()).getByRole("menuitem", { name: "Split into" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Split into" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });
