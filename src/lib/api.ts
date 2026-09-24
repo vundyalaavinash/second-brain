@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock } from "@/db/schema";
@@ -12,9 +13,10 @@ import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
+import { GoalError, type GoalWithMeasure } from "@/domain/goals";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
-import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -207,6 +209,24 @@ export function serializeMeeting(ev: CalendarEvent): ActivityMeetingDTO {
   };
 }
 
+export function serializeGoal(g: GoalWithMeasure): GoalDTO {
+  return {
+    id: g.id,
+    title: g.title,
+    outcome: g.outcome,
+    horizon: g.horizon,
+    targetDate: g.targetDate,
+    status: g.status,
+    notes: g.notes,
+    sortOrder: g.sortOrder,
+    closedAt: g.closedAt,
+    measure: g.measure,
+    containers: g.containers,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+  };
+}
+
 export function serializePerson(p: Person & { itemCount?: number }, itemCount?: number): PersonDTO {
   return {
     id: p.id,
@@ -243,6 +263,11 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof DuplicateError) {
     return NextResponse.json({ error: err.message, existingId: err.existingId }, { status: err.status });
   }
+  // A body that fails schema validation is a client mistake, not a server one: it reads as 400
+  // here so a route that parses straight through zod never needs its own catch for it.
+  if (err instanceof ZodError) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
   if (
     err instanceof CaptureError ||
     err instanceof ContainerError ||
@@ -251,7 +276,8 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof MeetingError ||
     err instanceof AttachmentError ||
     err instanceof TaskError ||
-    err instanceof BlockError
+    err instanceof BlockError ||
+    err instanceof GoalError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

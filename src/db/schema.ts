@@ -11,10 +11,12 @@ import {
   TASK_PRIORITIES,
   MEETING_STATUSES,
   CALENDAR_SOURCES,
+  GOAL_HORIZONS,
+  GOAL_STATUSES,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource, GoalHorizon, GoalStatus } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -307,6 +309,47 @@ export const dailyPlanEntries = sqliteTable(
   (t) => [uniqueIndex("daily_plan_date_task_idx").on(t.date, t.taskId), index("daily_plan_date_idx").on(t.date)],
 );
 export type DailyPlanEntry = typeof dailyPlanEntries.$inferSelect;
+
+/**
+ * An outcome with a date, a level above projects. Progress is never stored here: it is read
+ * from the tasks of the containers linked to it, because a hand-typed percentage is the first
+ * thing to go stale.
+ */
+export const goals = sqliteTable(
+  "goals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    title: text("title").notNull(),
+    /** One sentence describing what being finished looks like. */
+    outcome: text("outcome").notNull().default(""),
+    horizon: text("horizon", { enum: GOAL_HORIZONS }).notNull(),
+    targetDate: text("target_date").notNull(),
+    status: text("status", { enum: GOAL_STATUSES }).notNull().default("active"),
+    notes: text("notes").notNull().default(""),
+    sortOrder: integer("sort_order").notNull().default(0),
+    closedAt: text("closed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("goals_status_target_idx").on(t.status, t.targetDate)],
+);
+export type Goal = typeof goals.$inferSelect;
+
+/** Which projects and areas serve a goal. The link is the whole mechanism of its progress. */
+export const goalLinks = sqliteTable(
+  "goal_links",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    goalId: integer("goal_id")
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    containerId: integer("container_id")
+      .notNull()
+      .references(() => containers.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("goal_links_pair_idx").on(t.goalId, t.containerId), index("goal_links_container_idx").on(t.containerId)],
+);
+export type GoalLink = typeof goalLinks.$inferSelect;
 
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;

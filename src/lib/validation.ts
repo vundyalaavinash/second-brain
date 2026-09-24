@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES } from "@/db/enums";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
@@ -51,3 +51,19 @@ export const StartRecordingBody = z
     adhoc: z.boolean().optional(),
   })
   .strict();
+
+export const CreateGoalBody = z
+  .object({
+    title: z.string().min(1),
+    outcome: z.string().optional(),
+    horizon: z.enum(GOAL_HORIZONS),
+    targetDate: DateString,
+    notes: z.string().optional(),
+  })
+  .strict();
+
+export const PatchGoalBody = CreateGoalBody.partial()
+  .extend({ status: z.enum(GOAL_STATUSES).optional(), sortOrder: z.number().int().optional() })
+  .strict();
+
+export const GoalLinksBody = z.object({ containerIds: z.array(z.number().int().positive()) }).strict();
