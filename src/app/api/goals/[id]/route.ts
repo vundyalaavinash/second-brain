@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { localDay } from "@/domain/activity";
-import { closeGoal, deleteGoal, getGoal, goalsWithMeasure, recentCloses, reopenGoal, updateGoal } from "@/domain/goals";
+import { deleteGoal, goalsWithMeasure, recentCloses, updateGoal } from "@/domain/goals";
 import { containerProgress } from "@/domain/tasks";
 import { crossSite, errorResponse, forbidden, parseId, serializeGoal } from "@/lib/api";
 import { PatchGoalBody } from "@/lib/validation";
@@ -37,14 +37,13 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
   if (crossSite(req)) return forbidden();
   try {
     const id = parseId((await ctx.params).id);
-    const { status, ...fields } = PatchGoalBody.parse(await req.json());
+    // A body that is not JSON at all reads as null rather than throwing here, so it fails the
+    // schema the same way any other bad body does instead of leaking a raw SyntaxError as a 500.
+    const patch = PatchGoalBody.parse(await req.json().catch(() => null));
     const db = getDb();
-    // Existence is checked either by the update itself, or, when the patch carries nothing but
-    // a status, by hand — a status-only patch never touches updateGoal at all.
-    if (Object.keys(fields).length) updateGoal(db, id, fields);
-    else if (!getGoal(db, id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (status === "active") reopenGoal(db, id);
-    else if (status !== undefined) closeGoal(db, id, status);
+    // updateGoal owns the status/closedAt invariant itself — a status of "active" reopens, any
+    // other status closes, and it 404s on its own when the goal does not exist.
+    updateGoal(db, id, patch);
     const today = localDay(new Date().toISOString());
     const [goal] = goalsWithMeasure(db, { id }, today);
     return NextResponse.json(serializeGoal(goal));

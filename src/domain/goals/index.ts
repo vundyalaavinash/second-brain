@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { containers, goalLinks, goals, tasks, type Goal } from "@/db/schema";
 import type { ContainerKind, GoalHorizon, GoalStatus } from "@/db/enums";
-import { addDays, localDay } from "@/domain/activity";
+import { addDays, dayBounds, localDay } from "@/domain/activity";
+import { containerProgress } from "@/domain/tasks";
 import { nowIso } from "@/lib/time";
 
 /** Closes inside this many days are what "movement" counts. */
@@ -95,24 +96,37 @@ export function updateGoal(
   patch: { title?: string; outcome?: string; horizon?: GoalHorizon; targetDate?: string; notes?: string; sortOrder?: number; status?: GoalStatus },
 ): Goal {
   requireGoal(db, id);
-  const set: Partial<typeof goals.$inferInsert> = { updatedAt: nowIso() };
-  if (patch.title !== undefined) {
-    const title = patch.title.trim();
+  const { status, ...fields } = patch;
+  const set: Partial<typeof goals.$inferInsert> = {};
+  if (fields.title !== undefined) {
+    const title = fields.title.trim();
     if (!title) throw new GoalError("A goal needs a title");
     set.title = title;
   }
-  if (patch.outcome !== undefined) set.outcome = patch.outcome.trim();
-  if (patch.horizon !== undefined) set.horizon = patch.horizon;
-  if (patch.targetDate !== undefined) {
-    if (!DAY.test(patch.targetDate)) throw new GoalError("A goal needs a target date");
-    set.targetDate = patch.targetDate;
+  if (fields.outcome !== undefined) set.outcome = fields.outcome.trim();
+  if (fields.horizon !== undefined) set.horizon = fields.horizon;
+  if (fields.targetDate !== undefined) {
+    if (!DAY.test(fields.targetDate)) throw new GoalError("A goal needs a target date");
+    set.targetDate = fields.targetDate;
   }
-  if (patch.notes !== undefined) set.notes = patch.notes;
-  if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
-  if (patch.status !== undefined) set.status = patch.status;
-  const row = db.update(goals).set(set).where(eq(goals.id, id)).returning().get();
-  if (!row) throw new GoalError("Goal not found", 404);
-  return row;
+  if (fields.notes !== undefined) set.notes = fields.notes;
+  if (fields.sortOrder !== undefined) set.sortOrder = fields.sortOrder;
+
+  let row: Goal | undefined;
+  if (Object.keys(set).length > 0) {
+    row = db
+      .update(goals)
+      .set({ ...set, updatedAt: nowIso() })
+      .where(eq(goals.id, id))
+      .returning()
+      .get();
+    if (!row) throw new GoalError("Goal not found", 404);
+  }
+  // Status and closedAt move together, so a status change is always routed through closeGoal
+  // or reopenGoal rather than written here directly: that is what stops a caller writing a
+  // closed status with no closedAt, or a closedAt that survives a reopen.
+  if (status !== undefined) row = status === "active" ? reopenGoal(db, id) : closeGoal(db, id, status);
+  return row ?? requireGoal(db, id);
 }
 
 /** Records the outcome and the time it closed. `reopenGoal` is the only way to clear both. */
@@ -135,15 +149,20 @@ export function deleteGoal(db: DB, id: number): void {
   if (res.changes === 0) throw new GoalError("Goal not found", 404);
 }
 
-/** Replaces the whole link set in one transaction, after checking every id exists. */
+/**
+ * Replaces the whole link set in one transaction. Both existence checks run inside it, on the
+ * same snapshot as the writes: a container deleted between an outside check and the insert
+ * would otherwise abort the transaction with a raw foreign-key error instead of this function's
+ * own 400, for a race that is easy to hit and hard to tell apart from a bad request.
+ */
 export function setGoalLinks(db: DB, goalId: number, containerIds: number[]): void {
-  if (!getGoal(db, goalId)) throw new GoalError("Goal not found", 404);
   const ids = [...new Set(containerIds)];
-  if (ids.length > 0) {
-    const found = db.select({ id: containers.id }).from(containers).where(inArray(containers.id, ids)).all();
-    if (found.length !== ids.length) throw new GoalError("A linked container does not exist");
-  }
   db.transaction((tx) => {
+    if (!tx.select({ id: goals.id }).from(goals).where(eq(goals.id, goalId)).get()) throw new GoalError("Goal not found", 404);
+    if (ids.length > 0) {
+      const found = tx.select({ id: containers.id }).from(containers).where(inArray(containers.id, ids)).all();
+      if (found.length !== ids.length) throw new GoalError("A linked container does not exist");
+    }
     tx.delete(goalLinks).where(eq(goalLinks.goalId, goalId)).run();
     if (ids.length > 0) tx.insert(goalLinks).values(ids.map((containerId) => ({ goalId, containerId }))).run();
   });
@@ -198,42 +217,56 @@ export function goalRefsByContainer(db: DB, containerIds: number[]): Map<number,
 }
 
 /**
- * The measure is two grouped queries plus the link rows already fetched elsewhere — never one
- * query per goal. One query counts open and done tasks per goal through the link table, a
- * second reads the closes inside the movement window and the newest close of all.
+ * The counting half of the measure, shared with `goalsWithMeasure` so a link map it already has
+ * to build for the `containers` field is not built a second time. Open and done counts come
+ * from `containerProgress` — the same arithmetic `GET /api/goals/[id]` serves per link — summed
+ * per goal over its linked container ids, so a goal's headline percent and its per-link percent
+ * read the same numbers and can never drift apart. What is left is genuinely this module's own:
+ * the movement window and the last close, from one query bounded to the stalled window (the
+ * wider of the two), never a goal's whole close history.
  */
-export function measureGoals(db: DB, goalIds: number[], today: string): Map<number, GoalMeasure> {
+function measureFromLinks(db: DB, goalIds: number[], today: string, links: Map<number, ContainerRef[]>): Map<number, GoalMeasure> {
   const empty = (): GoalMeasure => ({ open: 0, done: 0, total: 0, percent: 0, movement: 0, lastClosedAt: null, stalled: true });
   const out = new Map<number, GoalMeasure>(goalIds.map((id) => [id, empty()]));
   if (goalIds.length === 0) return out;
 
-  const counts = db
-    .select({ goalId: goalLinks.goalId, status: tasks.status, c: sql<number>`count(*)` })
-    .from(goalLinks)
-    .innerJoin(tasks, eq(tasks.containerId, goalLinks.containerId))
-    .where(and(inArray(goalLinks.goalId, goalIds), inArray(tasks.status, ["open", "done"])))
-    .groupBy(goalLinks.goalId, tasks.status)
-    .all();
-  for (const row of counts) {
-    const m = out.get(row.goalId);
+  const containerIds = [...new Set([...links.values()].flatMap((refs) => refs.map((r) => r.id)))];
+  const progress = containerProgress(db, containerIds);
+  for (const [goalId, refs] of links) {
+    const m = out.get(goalId);
     if (!m) continue;
-    if (row.status === "open") m.open = Number(row.c);
-    else m.done = Number(row.c);
+    for (const ref of refs) {
+      const p = progress.get(ref.id);
+      if (!p) continue;
+      m.open += p.open;
+      m.done += p.done;
+    }
   }
 
   // `completed_at` is a UTC instant; the windows are local days, so it is compared as a day.
+  // Bounded to the stalled window in SQL: nothing closed before it can move `movement` or
+  // change `stalled`, so the query never reads further back than the wider of the two windows.
   const since = addDays(today, -MOVEMENT_DAYS);
   const stalledSince = addDays(today, -STALLED_DAYS);
   const closes = db
     .select({ goalId: goalLinks.goalId, completedAt: tasks.completedAt })
     .from(goalLinks)
     .innerJoin(tasks, eq(tasks.containerId, goalLinks.containerId))
-    .where(and(inArray(goalLinks.goalId, goalIds), eq(tasks.status, "done"), isNotNull(tasks.completedAt)))
+    .where(
+      and(
+        inArray(goalLinks.goalId, goalIds),
+        eq(tasks.status, "done"),
+        isNotNull(tasks.completedAt),
+        gte(tasks.completedAt, dayBounds(stalledSince).start),
+      ),
+    )
     .all();
   for (const row of closes) {
     const m = out.get(row.goalId);
     if (!m || !row.completedAt) continue;
     const day = localDay(row.completedAt);
+    // Inclusive on both windows: a close exactly MOVEMENT_DAYS (or STALLED_DAYS) ago still
+    // counts as motion, the same reading design §3.2 uses for "the last N days".
     if (day >= since) m.movement += 1;
     if (m.lastClosedAt === null || row.completedAt > m.lastClosedAt) m.lastClosedAt = row.completedAt;
   }
@@ -245,6 +278,11 @@ export function measureGoals(db: DB, goalIds: number[], today: string): Map<numb
     m.stalled = m.lastClosedAt === null || localDay(m.lastClosedAt) < stalledSince;
   }
   return out;
+}
+
+export function measureGoals(db: DB, goalIds: number[], today: string): Map<number, GoalMeasure> {
+  if (goalIds.length === 0) return new Map();
+  return measureFromLinks(db, goalIds, today, goalLinksFor(db, goalIds));
 }
 
 /**
@@ -271,8 +309,8 @@ export function goalsWithMeasure(db: DB, filter: { status?: GoalStatus; id?: num
     )
     .all();
   const ids = rows.map((r) => r.id);
-  const measures = measureGoals(db, ids, today);
   const links = goalLinksFor(db, ids);
+  const measures = measureFromLinks(db, ids, today, links);
   return rows.map((row) => ({ ...row, measure: measures.get(row.id)!, containers: links.get(row.id) ?? [] }));
 }
 

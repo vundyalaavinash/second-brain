@@ -16,6 +16,14 @@ let r: {
 const json = (method: string, url: string, body?: unknown) =>
   new Request(`http://localhost${url}`, { method, headers: body ? { "content-type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
 
+/** The same request as `json`, but from a page on another origin — what `crossSite` gates on. */
+const foreign = (method: string, url: string, body?: unknown) =>
+  new Request(`http://localhost${url}`, {
+    method,
+    headers: { origin: "https://evil.example", ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
 beforeAll(async () => {
   dir = makeTempDataDir();
   r = {
@@ -60,5 +68,45 @@ describe("goals api", () => {
   it("answers 404 for a goal that is not there", async () => {
     const res = await r.goal.GET(json("GET", "/api/goals/9999"), { params: Promise.resolve({ id: "9999" }) });
     expect(res.status).toBe(404);
+  });
+
+  it("answers 400, not 500, for a body that is not JSON at all", async () => {
+    const notJson = new Request("http://localhost/api/goals", { method: "POST", headers: { "content-type": "application/json" }, body: "not json" });
+    expect((await r.goals.POST(notJson)).status).toBe(400);
+    const noBody = new Request("http://localhost/api/goals", { method: "POST" });
+    expect((await r.goals.POST(noBody)).status).toBe(400);
+    const noBodyPatch = new Request("http://localhost/api/goals/1", { method: "PATCH" });
+    expect((await r.goal.PATCH(noBodyPatch, { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
+  });
+
+  it("gates POST, PATCH, DELETE and PUT on the same-origin guard", async () => {
+    expect((await r.goals.POST(foreign("POST", "/api/goals", { title: "x", horizon: "quarter", targetDate: "2026-12-31" }))).status).toBe(403);
+    expect((await r.goal.PATCH(foreign("PATCH", "/api/goals/1", { status: "hit" }), { params: Promise.resolve({ id: "1" }) })).status).toBe(403);
+    expect((await r.goal.DELETE(foreign("DELETE", "/api/goals/1"), { params: Promise.resolve({ id: "1" }) })).status).toBe(403);
+    expect((await r.links.PUT(foreign("PUT", "/api/goals/1/links", { containerIds: [] }), { params: Promise.resolve({ id: "1" }) })).status).toBe(403);
+  });
+
+  it("deletes a goal, its links cascading with it", async () => {
+    const made = await r.goals.POST(json("POST", "/api/goals", { title: "Temp", horizon: "quarter", targetDate: "2026-12-31" }));
+    const goal = (await made.json()) as GoalDTO;
+    const project = await r.containers.POST(json("POST", "/api/containers", { kind: "project", name: "Temp project" }));
+    const { id: containerId } = (await project.json()) as { id: number };
+    await r.links.PUT(json("PUT", `/api/goals/${goal.id}/links`, { containerIds: [containerId] }), { params: Promise.resolve({ id: String(goal.id) }) });
+
+    const deleted = await r.goal.DELETE(json("DELETE", `/api/goals/${goal.id}`), { params: Promise.resolve({ id: String(goal.id) }) });
+    expect(deleted.status).toBe(204);
+    expect((await r.goal.GET(json("GET", `/api/goals/${goal.id}`), { params: Promise.resolve({ id: String(goal.id) }) })).status).toBe(404);
+  });
+
+  it("refuses linking a container that does not exist", async () => {
+    const made = await r.goals.POST(json("POST", "/api/goals", { title: "Temp2", horizon: "quarter", targetDate: "2026-12-31" }));
+    const goal = (await made.json()) as GoalDTO;
+    const res = await r.links.PUT(json("PUT", `/api/goals/${goal.id}/links`, { containerIds: [999999] }), { params: Promise.resolve({ id: String(goal.id) }) });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unknown ?status= rather than answering an empty list", async () => {
+    const res = await r.goals.GET(json("GET", "/api/goals?status=bogus"));
+    expect(res.status).toBe(400);
   });
 });

@@ -14,7 +14,9 @@ export async function PUT(req: Request, ctx: Ctx): Promise<Response> {
   if (crossSite(req)) return forbidden();
   try {
     const id = parseId((await ctx.params).id);
-    const { containerIds } = GoalLinksBody.parse(await req.json());
+    // A body that is not JSON at all reads as null rather than throwing here, so it fails the
+    // schema the same way any other bad body does instead of leaking a raw SyntaxError as a 500.
+    const { containerIds } = GoalLinksBody.parse(await req.json().catch(() => null));
     const db = getDb();
     setGoalLinks(db, id, containerIds);
     const today = localDay(new Date().toISOString());
