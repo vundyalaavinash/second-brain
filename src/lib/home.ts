@@ -1,7 +1,7 @@
 import { inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { tasks } from "@/db/schema";
-import { getDay, getHelperState, localDay } from "@/domain/activity";
+import { getDay, getHelperState, localDay, topApps } from "@/domain/activity";
 import { listBlocks } from "@/domain/blocks";
 import { listContainers } from "@/domain/containers";
 import { countInbox, listItems, parseMeta } from "@/domain/items";
@@ -145,23 +145,10 @@ function activityToday(db: DB, date: string): HomeDTO["activity"] {
   const report = getDay(db, date);
   const ms = (s: { startedAt: string; endedAt: string }) => Date.parse(s.endedAt) - Date.parse(s.startedAt);
   const awake = report.sessions.filter((s) => !s.afk);
-  const byApp = new Map<string, { label: string; ms: number; domains: Map<string, number> }>();
-  for (const s of awake) {
-    const key = s.appId ?? s.appName ?? "unknown";
-    const row = byApp.get(key) ?? { label: s.appName ?? s.appId ?? "Unknown", ms: 0, domains: new Map<string, number>() };
-    row.ms += ms(s);
-    if (s.domain) row.domains.set(s.domain, (row.domains.get(s.domain) ?? 0) + ms(s));
-    byApp.set(key, row);
-  }
-  const top = [...byApp.values()]
-    .map((row) => {
-      const onSites = [...row.domains.values()].reduce((n, x) => n + x, 0);
-      const busiest = [...row.domains.entries()].sort((a, b) => b[1] - a[1])[0];
-      // A browser is its pages: naming it "Chrome" says nothing the person did not already know.
-      return { label: busiest && onSites > row.ms / 2 ? busiest[0] : row.label, ms: row.ms };
-    })
-    .sort((a, b) => b.ms - a.ms)
-    .slice(0, TOP_ACTIVITY);
+  const top = topApps(
+    awake.map((s) => ({ appId: s.appId, appName: s.appName, domain: s.domain, ms: ms(s) })),
+    TOP_ACTIVITY,
+  );
   return { activeMs: report.activeMs, top };
 }
 

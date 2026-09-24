@@ -135,6 +135,40 @@ export function getDay(db: DB, day: string): ActivityDay {
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }
 
+/** A slice of time spent in one app, already trimmed to whatever window the caller cares about
+ * (a whole day, or the part of a session that overlaps something shorter, like a focus run). */
+export interface AppTime {
+  appId: string | null;
+  appName: string | null;
+  domain: string | null;
+  ms: number;
+}
+
+/**
+ * Ranks apps by time spent, at most `limit`. A browser is named by the domain that took most of
+ * its time when that domain accounts for over half of it — "Chrome" says nothing the person did
+ * not already know, but the site it spent that time on does. Shared by `activityToday` (home.ts)
+ * and `focusWhere` (domain/focus) so the naming rule lives in exactly one place.
+ */
+export function topApps(sessions: AppTime[], limit: number): { label: string; ms: number }[] {
+  const byApp = new Map<string, { label: string; ms: number; domains: Map<string, number> }>();
+  for (const s of sessions) {
+    const key = s.appId ?? s.appName ?? "unknown";
+    const row = byApp.get(key) ?? { label: s.appName ?? s.appId ?? "Unknown", ms: 0, domains: new Map<string, number>() };
+    row.ms += s.ms;
+    if (s.domain) row.domains.set(s.domain, (row.domains.get(s.domain) ?? 0) + s.ms);
+    byApp.set(key, row);
+  }
+  return [...byApp.values()]
+    .map((row) => {
+      const onSites = [...row.domains.values()].reduce((n, x) => n + x, 0);
+      const busiest = [...row.domains.entries()].sort((a, b) => b[1] - a[1])[0];
+      return { label: busiest && onSites > row.ms / 2 ? busiest[0] : row.label, ms: row.ms };
+    })
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, limit);
+}
+
 export function addDays(day: string, n: number): string {
   const [y, m, d] = day.split("-").map(Number);
   const dt = new Date(y, m - 1, d + n);

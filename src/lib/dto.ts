@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome } from "@/db/enums";
 
 export interface ContainerRefDTO {
   id: number;
@@ -358,4 +358,31 @@ export interface GoalDetailDTO extends GoalDTO {
   /** Each linked container with its own progress, so the goal page shows where the work is. */
   links: { container: ContainerRefDTO; progress: ProgressDTO }[];
   recentCloses: { id: number; title: string; completedAt: string; containerName: string }[];
+}
+
+/** One stretch of focused work on a task, live or finished. `endedAt`, `actualMinutes` and
+ * `outcome` are null while the run is still going. */
+export interface FocusRunDTO {
+  id: number;
+  taskId: number;
+  taskTitle: string;
+  blockId: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  plannedMinutes: number;
+  actualMinutes: number | null;
+  outcome: FocusOutcome | null;
+}
+
+export interface FocusSettingsDTO {
+  defaultMinutes: number;
+  shortBreak: number;
+  longBreak: number;
+  longBreakEvery: number;
+}
+
+export interface FocusSummaryDTO {
+  minutes: number;
+  runs: number;
+  byTask: { taskId: number; title: string; minutes: number; runs: number }[];
 }

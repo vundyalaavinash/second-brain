@@ -13,10 +13,11 @@ import {
   CALENDAR_SOURCES,
   GOAL_HORIZONS,
   GOAL_STATUSES,
+  FOCUS_OUTCOMES,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource, GoalHorizon, GoalStatus } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource, GoalHorizon, GoalStatus, FocusOutcome } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -359,3 +360,29 @@ export type Tag = typeof tags.$inferSelect;
 export type Container = typeof containers.$inferSelect;
 export type NewContainer = typeof containers.$inferInsert;
 export type Person = typeof people.$inferSelect;
+
+/**
+ * One stretch of focused work on a task. There is no timer on the server: a live run is a row
+ * with no end, and the countdown is arithmetic from its start, so a reload resumes it exactly
+ * where it was and a closed browser loses nothing.
+ */
+export const focusRuns = sqliteTable(
+  "focus_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    /** The session this run was started from, when it was started from one. */
+    blockId: integer("block_id").references(() => taskBlocks.id, { onDelete: "set null" }),
+    startedAt: text("started_at").notNull(),
+    /** Null while the run is live. */
+    endedAt: text("ended_at"),
+    plannedMinutes: integer("planned_minutes").notNull(),
+    /** Null while the run is live; zero for an abandoned one. */
+    actualMinutes: integer("actual_minutes"),
+    outcome: text("outcome", { enum: FOCUS_OUTCOMES }),
+  },
+  (t) => [index("focus_runs_task_idx").on(t.taskId), index("focus_runs_started_idx").on(t.startedAt)],
+);
+export type FocusRun = typeof focusRuns.$inferSelect;

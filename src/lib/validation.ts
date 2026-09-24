@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
@@ -67,3 +67,23 @@ export const PatchGoalBody = CreateGoalBody.partial()
   .strict();
 
 export const GoalLinksBody = z.object({ containerIds: z.array(z.number().int().positive()) }).strict();
+
+export const StartFocusBody = z
+  .object({
+    taskId: z.number().int().positive(),
+    blockId: z.number().int().positive().nullable().optional(),
+    minutes: z.number().int().min(5).max(480).optional(),
+  })
+  .strict();
+
+export const FinishFocusBody = z.object({ outcome: z.enum(FOCUS_OUTCOMES) }).strict();
+
+export const FocusSettingsBody = z
+  .object({
+    defaultMinutes: z.number().int().min(5).max(480),
+    shortBreak: z.number().int().min(1).max(60),
+    longBreak: z.number().int().min(1).max(60),
+    longBreakEvery: z.number().int().min(2).max(12),
+  })
+  .partial()
+  .strict();

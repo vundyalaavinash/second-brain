@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock } from "@/db/schema";
+import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock, type FocusRun } from "@/db/schema";
 import { domainOf } from "@/lib/text";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
@@ -14,9 +14,10 @@ import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
 import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type GoalWithMeasure } from "@/domain/goals";
+import { FocusError } from "@/domain/focus";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
-import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO, FocusRunDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -261,6 +262,22 @@ export function goalDetail(db: DB, id: number, today: string): GoalDetailDTO | u
   };
 }
 
+/** `taskTitle` is passed in rather than read here, the same as `serializeTask`'s blocks and
+ * goals: the task is already in hand at every call site, so this reads no second row. */
+export function serializeFocusRun(run: FocusRun, taskTitle: string): FocusRunDTO {
+  return {
+    id: run.id,
+    taskId: run.taskId,
+    taskTitle,
+    blockId: run.blockId,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    plannedMinutes: run.plannedMinutes,
+    actualMinutes: run.actualMinutes,
+    outcome: run.outcome,
+  };
+}
+
 export function serializePerson(p: Person & { itemCount?: number }, itemCount?: number): PersonDTO {
   return {
     id: p.id,
@@ -311,7 +328,8 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof AttachmentError ||
     err instanceof TaskError ||
     err instanceof BlockError ||
-    err instanceof GoalError
+    err instanceof GoalError ||
+    err instanceof FocusError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
