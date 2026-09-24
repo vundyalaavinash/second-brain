@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, type ReviewStep } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -100,5 +100,15 @@ export const SaveReviewBody = z.discriminatedUnion("step", [
   z.object({ week: DateString, step: z.literal("goals"), value: z.record(z.string(), z.string()) }).strict(),
   z.object({ week: DateString, step: z.literal("ahead"), value: z.string() }).strict(),
 ]);
+
+/** Ties the four literals above to `REVIEW_STEPS` without building the union programmatically
+ * (which `z.discriminatedUnion` can't infer a literal tuple type from): `StepsMatch` is `true`
+ * only when the two string unions have exactly the same members, so a step added to, removed
+ * from, or renamed in `REVIEW_STEPS` without a matching edit here fails to compile instead of
+ * type-checking everywhere and being silently rejected at the route. */
+type StepsMatch<A extends string, B extends string> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type SaveReviewStep = z.infer<typeof SaveReviewBody>["step"];
+const _reviewStepsTiedToSaveReviewBody: StepsMatch<ReviewStep, SaveReviewStep> = true;
+void _reviewStepsTiedToSaveReviewBody;
 
 export const ReviewPlanBody = z.object({ week: DateString, taskIds: z.array(z.number().int().positive()) }).strict();

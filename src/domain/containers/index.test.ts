@@ -163,4 +163,17 @@ describe("containers domain", () => {
     expect(getTask(t.db, auto.id)?.status).toBe("open");
     expect(getTask(t.db, manual.id)?.status).toBe("dropped");
   });
+
+  it("stamps droppedAt on the tasks a bulk archive drops, and clears it on restore", () => {
+    const p = createContainer(t.db, { kind: "project", name: "Bulk-dropped" });
+    const task = createTask(t.db, { title: "one", containerId: p.id });
+    expect(getTask(t.db, task.id)?.droppedAt).toBeNull();
+
+    archiveContainer(t.db, p.id);
+    expect(getTask(t.db, task.id)).toMatchObject({ status: "dropped" });
+    expect(getTask(t.db, task.id)?.droppedAt).not.toBeNull();
+
+    restoreContainer(t.db, p.id);
+    expect(getTask(t.db, task.id)).toMatchObject({ status: "open", droppedAt: null });
+  });
 });

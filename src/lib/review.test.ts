@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { replaceCalendarEvents } from "@/domain/activity";
-import { createContainer } from "@/domain/containers";
+import { archiveContainer, createContainer } from "@/domain/containers";
 import { finishFocus, startFocus } from "@/domain/focus";
 import { createGoal, setGoalLinks } from "@/domain/goals";
 import { createItem } from "@/domain/items";
@@ -147,6 +147,18 @@ describe("reviewPayload", () => {
     expect(payload.back.done).toBe(0);
     // A task dropped this week stays counted here even after a later, unrelated edit moves
     // `updated_at` into a different month entirely.
+    expect(payload.back.dropped).toBe(1);
+  });
+
+  it("counts a task dropped by archiving its project, same as a hand-dropped task", () => {
+    const p = project("Sunset");
+    const task = createTask(t.db, { title: "Task", containerId: p.id });
+    archiveContainer(t.db, p.id);
+    // archiveContainer stamps the real clock; pin it inside the reviewed week like every other
+    // fixture here does.
+    const ts = noon("2026-09-22");
+    t.db.run(`update tasks set dropped_at = '${ts}', updated_at = '${ts}' where id = ${task.id}`);
+    const payload = reviewPayload(t.db, WEEK, NOW);
     expect(payload.back.dropped).toBe(1);
   });
 
