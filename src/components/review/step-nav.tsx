@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { REVIEW_STEPS, type ReviewStep } from "@/db/enums";
 import type { ReviewAnswersDTO } from "@/lib/dto";
 
@@ -17,9 +17,22 @@ function isAnswered(step: ReviewStep, answers: ReviewAnswersDTO): boolean {
 }
 
 /** The four steps across the top: a landmark of its own, so the keyboard can jump straight to
- * it, the open step named as the page's current position rather than merely "selected", and a
- * step already answered marked so without waiting for its own pane to say so again. */
-export function StepNav({ current, answers, onSelect }: { current: ReviewStep; answers: ReviewAnswersDTO; onSelect: (step: ReviewStep) => void }) {
+ * it, the open step named as the page's current position rather than merely "selected", a step
+ * already answered marked so without waiting for its own pane to say so again — and a step
+ * whose last save failed marked here too, so it stays visible from every other step rather than
+ * only from the one pane a person has since left. */
+export function StepNav({
+  current,
+  answers,
+  unsaved,
+  onSelect,
+}: {
+  current: ReviewStep;
+  answers: ReviewAnswersDTO;
+  /** Steps whose most recent save attempt failed and has not since succeeded. */
+  unsaved: Set<ReviewStep>;
+  onSelect: (step: ReviewStep) => void;
+}) {
   return (
     // Two columns until there is room for a single row of four — "Clear the decks" needs more
     // than a quarter of 400px to sit on one line — so a phone gets a 2x2 grid rather than
@@ -28,6 +41,7 @@ export function StepNav({ current, answers, onSelect }: { current: ReviewStep; a
       {REVIEW_STEPS.map((step) => {
         const active = step === current;
         const done = isAnswered(step, answers);
+        const failed = unsaved.has(step);
         return (
           <button
             key={step}
@@ -35,14 +49,20 @@ export function StepNav({ current, answers, onSelect }: { current: ReviewStep; a
             aria-current={active ? "step" : undefined}
             onClick={() => onSelect(step)}
             className={`focus-ring min-[560px]:flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-sm text-[12.5px] font-medium whitespace-nowrap transition-colors duration-150 ${
-              active ? "bg-violet text-on-violet" : "text-fg-muted hover:text-fg hover:bg-layer-2"
+              active ? "bg-violet text-on-violet" : failed ? "text-danger hover:bg-danger/10" : "text-fg-muted hover:text-fg hover:bg-layer-2"
             }`}
           >
-            {done && !active && <Check className="w-3 h-3 text-fg-faint" aria-hidden />}
+            {failed ? (
+              <AlertTriangle className="w-3 h-3" aria-hidden />
+            ) : (
+              done && !active && <Check className="w-3 h-3 text-fg-faint" aria-hidden />
+            )}
             {STEP_LABELS[step]}
-            {/* The tick is decoration; this is the mark — in the accessible name itself, not
-              * only in a shape a screen reader has no reason to describe. */}
-            {done && !active && <span className="sr-only">, answered</span>}
+            {/* The icon is decoration; these are the marks — in the accessible name itself, not
+              * only in a shape a screen reader has no reason to describe. A step can be both
+              * answered and failed (an edit since the last good save didn't land); failed wins,
+              * since it is the one a person needs to act on. */}
+            {failed ? <span className="sr-only">, not saved</span> : done && !active && <span className="sr-only">, answered</span>}
           </button>
         );
       })}

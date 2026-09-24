@@ -3,7 +3,7 @@ import { localDay } from "@/domain/activity";
 import { Crumb } from "@/components/shell/crumb";
 import { ReviewPage } from "@/components/review/review-page";
 import { reviewPayload } from "@/lib/review";
-import { DateString } from "@/lib/validation";
+import { CalendarDateString } from "@/lib/validation";
 import { weekStart } from "@/lib/week";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function Review({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const { week } = await searchParams;
-  const parsed = DateString.safeParse(week);
+  const parsed = CalendarDateString.safeParse(week);
   const shown = weekStart(parsed.success ? parsed.data : localDay(new Date().toISOString()));
   return (
     <>

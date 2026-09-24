@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { ReviewPage, SAVE_ERROR } from "./review-page";
@@ -222,6 +223,8 @@ describe("ReviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" })); // clear -> back, save fails
     await waitFor(() => expect(screen.getByLabelText("How did the week go")).toBeTruthy());
     expect(screen.queryByRole("alert")).toBeNull(); // the failure belongs to "clear", not shown here
+    // But it stays visible from here, in the nav — a person on "back" can see "clear" never stored.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Clear the decks, not saved" })).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText("How did the week go"), { target: { value: "will succeed" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" })); // back -> goals, save succeeds
@@ -248,6 +251,80 @@ describe("ReviewPage", () => {
     fireEvent(window, new Event("beforeunload"));
     await waitFor(() => expect(patchCalls(fn).length).toBeGreaterThanOrEqual(1));
     expect(patchCalls(fn)[0]).toMatchObject({ step: "clear", value: "closing the tab" });
+  });
+
+  it("saves every dirty step when the page goes, not only the one left open", async () => {
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/review" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { step: ReviewStep };
+        // "clear" always fails — the exact shape of the bug: a step that failed earlier and
+        // was left behind must still be retried when the page goes, not only the step that
+        // happens to be open at that moment.
+        if (body.step === "clear") return new Response(null, { status: 500 });
+        return Response.json(payload());
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+
+    const { unmount } = render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "PRECIOUS PROSE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // clear -> back; clear's save fails
+    await waitFor(() => expect(screen.getByLabelText("How did the week go")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("How did the week go"), { target: { value: "typed but never left" } });
+    unmount(); // back is still open and dirty; clear is dirty from the earlier failure
+
+    await waitFor(() => {
+      const calls = patchCalls(fn);
+      expect(calls.some((c) => c.step === "clear" && c.value === "PRECIOUS PROSE")).toBe(true);
+      expect(calls.some((c) => c.step === "back" && c.value === "typed but never left")).toBe(true);
+    });
+  });
+
+  it("saves every dirty step on beforeunload too", async () => {
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/review" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { step: ReviewStep };
+        if (body.step === "clear") return new Response(null, { status: 500 });
+        return Response.json(payload());
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+
+    render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "PRECIOUS PROSE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByLabelText("How did the week go")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("How did the week go"), { target: { value: "closing on back" } });
+    fireEvent(window, new Event("beforeunload"));
+
+    await waitFor(() => {
+      const calls = patchCalls(fn);
+      expect(calls.some((c) => c.step === "clear" && c.value === "PRECIOUS PROSE")).toBe(true);
+      expect(calls.some((c) => c.step === "back" && c.value === "closing on back")).toBe(true);
+    });
+  });
+
+  it("the step-change heading has no aria-live — focus alone is the announcement", () => {
+    stubFetch(payload());
+    render(<ReviewPage initial={payload()} />);
+    const heading = screen.getByText("Clear the decks step");
+    expect(heading.hasAttribute("aria-live")).toBe(false);
+  });
+
+  it("does not steal focus on first paint, even under StrictMode's double-invoked effect", () => {
+    stubFetch(payload());
+    render(
+      <StrictMode>
+        <ReviewPage initial={payload()} />
+      </StrictMode>,
+    );
+    expect(document.activeElement?.tagName).not.toBe("H2");
   });
 
   it("shows a visible Finish on the last step instead of a disabled Next, and leaves for Home once it saves", async () => {

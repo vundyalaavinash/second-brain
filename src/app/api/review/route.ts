@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { localDay } from "@/domain/activity";
-import { saveReviewStep, type ReviewSnapshot } from "@/domain/review";
+import { getReview, nextStep, reviewAnswers, saveReviewStep, type ReviewSnapshot } from "@/domain/review";
 import { crossSite, errorResponse, forbidden } from "@/lib/api";
 import { reviewPayload } from "@/lib/review";
 import { CalendarDateString, SaveReviewBody } from "@/lib/validation";
@@ -48,19 +48,25 @@ export async function PATCH(req: Request): Promise<Response> {
     // §5.2's snapshot, frozen at the moment of *this* save: the figures a review's own item
     // carries are read off the domains that own them (never off the review item itself, which
     // holds only the answers and this snapshot), so computing it before the write below is safe
-    // — nothing `saveReviewStep` touches can change what these figures are.
-    const before = reviewPayload(db, week, new Date());
+    // — nothing `saveReviewStep` touches can change what these figures are. That also means the
+    // response can reuse this same read rather than running every query in `reviewPayload`
+    // (leftover tasks, done/dropped, focus summary, meetings, goals with measure, next week's
+    // tasks and deadlines) a second time for an answer that cannot have moved any of them: only
+    // `answers`/`step`/`savedAt` need a fresh look, straight off the item the save just touched.
+    const current = reviewPayload(db, week, new Date());
     const snapshot: ReviewSnapshot = {
-      done: before.back.done,
-      dropped: before.back.dropped,
-      slipped: before.back.slipped,
-      focusMinutes: before.back.focusMinutes,
-      focusRuns: before.back.focusRuns,
-      meetings: before.back.meetings,
-      projects: before.back.projects.map((p) => ({ containerId: p.container.id, name: p.container.name, closed: p.closed, percent: p.percent })),
+      done: current.back.done,
+      dropped: current.back.dropped,
+      slipped: current.back.slipped,
+      focusMinutes: current.back.focusMinutes,
+      focusRuns: current.back.focusRuns,
+      meetings: current.back.meetings,
+      projects: current.back.projects.map((p) => ({ containerId: p.container.id, name: p.container.name, closed: p.closed, percent: p.percent })),
     };
     saveReviewStep(db, week, body.step, body.value, snapshot);
-    return NextResponse.json(reviewPayload(db, week, new Date()));
+    const item = getReview(db, week)!;
+    const answers = reviewAnswers(item);
+    return NextResponse.json({ ...current, answers, step: nextStep(answers), savedAt: item.updatedAt });
   } catch (err) {
     return errorResponse(err);
   }

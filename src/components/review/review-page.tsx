@@ -131,13 +131,20 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
     setStep(next);
   }
 
+  /** Every step whose draft has not yet made it to the server, attempted in parallel — one
+   * step's failure does not hold up another's, and each still goes through its own per-step
+   * queue, so this can never race a save already in flight for the same step. */
+  function saveAllDirty(keepalive: boolean) {
+    for (const s of REVIEW_STEPS) void saveStep(s, keepalive);
+  }
+
   // The page going, by any route: unmounting (a dock link, the browser's own back button — any
-  // client-side navigation away from /review) saves whatever step is open when it goes.
+  // client-side navigation away from /review) saves every step that still has an unsaved draft,
+  // not only whichever one happened to be open — a step that failed earlier and was left behind
+  // gets exactly the same chance to land as the one on screen when the page goes.
   useEffect(() => {
-    return () => {
-      void saveStep(stepRef.current, true);
-    };
-    // Registered once: refs carry whatever is current when this actually runs.
+    return () => saveAllDirty(true);
+    // Registered once: `saveStep` reads refs for whatever is current when this actually runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,7 +152,7 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
   // that coming, and only a `keepalive` request can survive past it.
   useEffect(() => {
     function onBeforeUnload() {
-      void saveStep(stepRef.current, true);
+      saveAllDirty(true);
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
@@ -154,13 +161,16 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
 
   // The step just changed — for a keyboard or screen-reader user, focus follows it: not to the
   // Next/Back button, which may itself be about to go `disabled`, but to a landmark naming
-  // where the review now stands. Skipped on the very first render, so opening the page does not
-  // steal focus from wherever the browser put it.
-  const mounted = useRef(false);
+  // where the review now stands. Compared against the previous step actually seen (written
+  // inside this same effect), not against "is this the first run": a ref survives React
+  // StrictMode's dev-only double-invoke of a fresh effect, so guarding on "have I run before"
+  // still fires on that synthetic second run and steals focus on first paint. Comparing step
+  // values instead only ever fires on a real change.
   const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const prevStepRef = useRef<ReviewStep | null>(null);
   useEffect(() => {
-    if (mounted.current) headingRef.current?.focus();
-    else mounted.current = true;
+    if (prevStepRef.current !== null && prevStepRef.current !== step) headingRef.current?.focus();
+    prevStepRef.current = step;
   }, [step]);
 
   /** Everything that mutates a task or the plan from here reloads the whole payload, rather
@@ -217,17 +227,19 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
 
   const idx = REVIEW_STEPS.indexOf(step);
   const isLast = idx === REVIEW_STEPS.length - 1;
+  const unsaved = new Set(Object.keys(errors) as ReviewStep[]);
 
   return (
     <div className="w-full max-w-3xl mx-auto px-6 lg:px-8 pt-8 pb-16 flex flex-col gap-5">
       <PageHeader title={payload.label} meta={payload.savedAt ? `Saved ${relativeTime(payload.savedAt)}` : "Not saved yet"} />
 
-      <StepNav current={step} answers={payload.answers} onSelect={goTo} />
+      <StepNav current={step} answers={payload.answers} unsaved={unsaved} onSelect={goTo} />
 
-      {/* Named and focused on every step change; `aria-live` covers an AT that does not
-        * reliably announce a programmatic focus move on its own. Invisible otherwise — the
-        * visible position is `StepNav`'s highlighted button. */}
-      <h2 ref={headingRef} tabIndex={-1} aria-live="polite" className="sr-only">
+      {/* Named and focused on every step change — the focus move is the announcement; no
+        * `aria-live` alongside it, which would have most assistive tech announce the change
+        * twice (the live-region update and the focused element, independently). Invisible
+        * otherwise — the visible position is `StepNav`'s highlighted button. */}
+      <h2 ref={headingRef} tabIndex={-1} className="sr-only">
         {STEP_LABELS[step]} step
       </h2>
 
