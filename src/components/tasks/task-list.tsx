@@ -108,6 +108,7 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
       if (parsed.priority === "high") body.priority = "high";
       if (parsed.dueDate) body.dueDate = parsed.dueDate;
       if (parsed.estimateMinutes !== null) body.estimateMinutes = parsed.estimateMinutes;
+      if (parsed.sessionMinutes !== null) body.sessionMinutes = parsed.sessionMinutes;
       const res = await fetch("/api/tasks", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (!res.ok) {
         setError(SAVE_ERROR);

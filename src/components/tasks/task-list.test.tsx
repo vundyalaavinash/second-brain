@@ -44,6 +44,23 @@ describe("TaskList", () => {
     expect(await screen.findByText("Ship it")).toBeTruthy();
   });
 
+  it("adds a task with a session length from ~2h/45m", async () => {
+    const calls: unknown[] = [];
+    stub(async (url, init) => {
+      if (init?.method === "POST" && url === "/api/tasks") {
+        calls.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ...base, id: 2, title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
+    });
+    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    const input = screen.getByPlaceholderText("Add a task") as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "Deep work ~2h/45m" } });
+    await act(async () => { fireEvent.keyDown(input, { key: "Enter" }); });
+    expect(calls[0]).toMatchObject({ title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 });
+  });
+
   it("refetches the list and the progress when a task changes elsewhere", async () => {
     const added: TaskDTO = { ...base, id: 3, title: "Booked from the prompt bar", sortOrder: 1 };
     const refreshed = { open: 2, done: 0, total: 2, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };

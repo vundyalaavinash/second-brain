@@ -102,6 +102,15 @@ describe("PlanPicker", () => {
     expect(posts[1].body).toEqual({ date: TODAY, taskId: 99 });
   });
 
+  it("creates a task with a session length from ~2h/45m", async () => {
+    const posts = stub();
+    render(<PlanPicker day={day()} today={TODAY} />);
+    fireEvent.change(field(), { target: { value: "Deep work ~2h/45m" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await waitFor(() => expect(posts.map((p) => p.url)).toEqual(["/api/tasks", "/api/plan"]));
+    expect(posts[0].body).toMatchObject({ title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 });
+  });
+
   it("browses one home from the chips, closes on Escape and on a click away", () => {
     stub();
     render(

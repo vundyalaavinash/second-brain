@@ -9,8 +9,8 @@ describe("detectIntent", () => {
     expect(detectIntent(" https://example.com/x ")).toEqual({ kind: "link", url: "https://example.com/x" });
   });
   it("tasks with + and /task", () => {
-    expect(detectIntent("+ Call the bank fri", now)).toEqual({ kind: "task", title: "Call the bank", priority: "normal", dueDate: "2026-09-25", estimateMinutes: null });
-    expect(detectIntent("/task !Ship it", now)).toEqual({ kind: "task", title: "Ship it", priority: "high", dueDate: null, estimateMinutes: null });
+    expect(detectIntent("+ Call the bank fri", now)).toEqual({ kind: "task", title: "Call the bank", priority: "normal", dueDate: "2026-09-25", estimateMinutes: null, sessionMinutes: null });
+    expect(detectIntent("/task !Ship it", now)).toEqual({ kind: "task", title: "Ship it", priority: "high", dueDate: null, estimateMinutes: null, sessionMinutes: null });
   });
   it("search with ? and /search", () => {
     expect(detectIntent("?tax forms")).toEqual({ kind: "search", query: "tax forms" });
@@ -23,7 +23,7 @@ describe("detectIntent", () => {
     expect(detectIntent("/note")).toEqual({ kind: "note", body: "" });
     expect(detectIntent("/search")).toEqual({ kind: "search", query: "" });
     expect(detectIntent("?")).toEqual({ kind: "search", query: "" });
-    expect(detectIntent("/task", now)).toEqual({ kind: "task", title: "", priority: "normal", dueDate: null, estimateMinutes: null });
+    expect(detectIntent("/task", now)).toEqual({ kind: "task", title: "", priority: "normal", dueDate: null, estimateMinutes: null, sessionMinutes: null });
     expect(detectIntent("/link")).toEqual({ kind: "link", url: "" });
   });
   it("notes by default and with /note", () => {
@@ -33,5 +33,9 @@ describe("detectIntent", () => {
 
   it("carries the estimate on a task intent", () => {
     expect(detectIntent("+ Write ~25m")).toMatchObject({ kind: "task", title: "Write", estimateMinutes: 25 });
+  });
+
+  it("carries the session length on a task intent", () => {
+    expect(detectIntent("+ Deep work ~2h/45m")).toMatchObject({ kind: "task", title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 });
   });
 });

@@ -139,7 +139,14 @@ export function PromptBar({
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: JSON_HEADERS,
-          body: JSON.stringify({ title: current.title, priority: current.priority, dueDate: current.dueDate, estimateMinutes: current.estimateMinutes, containerId }),
+          body: JSON.stringify({
+            title: current.title,
+            priority: current.priority,
+            dueDate: current.dueDate,
+            estimateMinutes: current.estimateMinutes,
+            ...(current.sessionMinutes !== null ? { sessionMinutes: current.sessionMinutes } : {}),
+            containerId,
+          }),
         });
         if (!res.ok) {
           const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -345,8 +352,13 @@ export function PromptBar({
         <span className="shrink-0 mt-0.5 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-hairline text-[12px] text-fg-muted">
           <mode.icon className="w-3.5 h-3.5" aria-hidden />
           {mode.label}
-          {/* The parser's reading of "~25m", so the size is seen before the task is filed. */}
-          {intent.kind === "task" && intent.estimateMinutes !== null && <span className="font-mono text-[11px] text-fg-faint">~{formatMinutes(intent.estimateMinutes)}</span>}
+          {/* The parser's reading of "~25m" or "~2h/45m", so the size is seen before the task is filed. */}
+          {intent.kind === "task" && intent.estimateMinutes !== null && (
+            <span className="font-mono text-[11px] text-fg-faint">
+              ~{formatMinutes(intent.estimateMinutes)}
+              {intent.sessionMinutes !== null && ` · ${formatMinutes(intent.sessionMinutes)} sessions`}
+            </span>
+          )}
         </span>
         {multiline ? (
           <textarea

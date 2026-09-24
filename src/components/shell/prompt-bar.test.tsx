@@ -55,6 +55,15 @@ describe("PromptBar", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ title: "Call the bank", containerId: 4, estimateMinutes: 25 });
   });
 
+  it("posts a session length from ~2h/45m", async () => {
+    const fetchFn = mockFetch({ id: 9, title: "Deep work" });
+    mount();
+    type("+ Deep work ~2h/45m");
+    await waitFor(() => expect(screen.getByText("Task added")).toBeTruthy());
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ title: "Deep work", estimateMinutes: 120, sessionMinutes: 45 });
+  });
+
   it("plans the new task for the day the planner is showing", async () => {
     const fetchFn = mockFetch({ id: 9, title: "Call the bank" });
     const changed = vi.fn();
@@ -179,6 +188,13 @@ describe("PromptBar", () => {
     expect(estimate.parentElement?.textContent).toBe("Task~25m");
     fireEvent.change(input, { target: { value: "+ Write" } });
     expect(screen.queryByText("~25m")).toBeNull();
+  });
+
+  it("reads the session length back in the task chip as ~2h · 45m sessions", () => {
+    mount();
+    const input = field();
+    fireEvent.change(input, { target: { value: "+ Deep work ~2h/45m" } });
+    expect(screen.getByText("~2h · 45m sessions")).toBeTruthy();
   });
 
   it("opens the prompt menu on a leading slash and inserts the chosen word", () => {

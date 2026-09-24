@@ -15,24 +15,34 @@ function dateFromToken(token: string, now: Date): string | null {
   return localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + delta));
 }
 
-/** `~25m`, `~1h`, `~1h30m`: one token, anywhere, at most 8 hours. Priority marks (`!`) must
- * already be stripped: the token has to end at a space or the end of the text. */
-const ESTIMATE_RE = /(?:^|\s)~(?:(\d{1,2})h)?(?:(\d{1,3})m)?(?=\s|$)/i;
+/** `~25m`, `~1h`, `~1h30m`, and an optional `/45m|1h|1h30m` session length: one token, anywhere,
+ * at most 8 hours. Priority marks (`!`) must already be stripped: the token has to end at a
+ * space or the end of the text. */
+const ESTIMATE_RE = /(?:^|\s)~(?:(\d{1,2})h)?(?:(\d{1,3})m)?(?:\/(?:(\d{1,2})h)?(?:(\d{1,3})m)?)?(?=\s|$)/i;
 
-export function estimateFromToken(text: string): { title: string; estimateMinutes: number | null } {
+/** Floor and ceiling for a session length; it must also come in strictly under the estimate. */
+const SESSION_MIN = 15;
+const SESSION_MAX = 480;
+
+export function estimateFromToken(text: string): { title: string; estimateMinutes: number | null; sessionMinutes: number | null } {
   const m = text.match(ESTIMATE_RE);
-  if (!m || (m[1] === undefined && m[2] === undefined)) return { title: text, estimateMinutes: null };
+  if (!m || (m[1] === undefined && m[2] === undefined)) return { title: text, estimateMinutes: null, sessionMinutes: null };
   const minutes = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
-  if (minutes < 5 || minutes > 480) return { title: text, estimateMinutes: null };
+  if (minutes < 5 || minutes > 480) return { title: text, estimateMinutes: null, sessionMinutes: null };
   const title = (text.slice(0, m.index) + " " + text.slice(m.index! + m[0].length)).replace(/\s+/g, " ").trim();
-  return { title, estimateMinutes: minutes };
+  let sessionMinutes: number | null = null;
+  if (m[3] !== undefined || m[4] !== undefined) {
+    const session = Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
+    if (session >= SESSION_MIN && session <= SESSION_MAX && session < minutes) sessionMinutes = session;
+  }
+  return { title, estimateMinutes: minutes, sessionMinutes };
 }
 
 /** Parse "! Title fri" style shortcuts from an add-task input. Pure; `now` is injectable. */
 export function quickParse(
   input: string,
   now: Date = new Date(),
-): { title: string; priority: "high" | "normal"; dueDate: string | null; estimateMinutes: number | null } {
+): { title: string; priority: "high" | "normal"; dueDate: string | null; estimateMinutes: number | null; sessionMinutes: number | null } {
   let title = input.trim();
   let priority: "high" | "normal" = "normal";
   if (title.startsWith("!")) {
@@ -59,5 +69,5 @@ export function quickParse(
       }
     }
   }
-  return { title: title.trim(), priority, dueDate, estimateMinutes: est.estimateMinutes };
+  return { title: title.trim(), priority, dueDate, estimateMinutes: est.estimateMinutes, sessionMinutes: est.sessionMinutes };
 }

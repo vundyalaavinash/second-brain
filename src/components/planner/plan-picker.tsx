@@ -150,6 +150,7 @@ export function PlanPicker({ day, today }: Props) {
         const parsed = quickParse(option.create);
         const body: Record<string, unknown> = { title: parsed.title, priority: parsed.priority, dueDate: parsed.dueDate };
         if (parsed.estimateMinutes !== null) body.estimateMinutes = parsed.estimateMinutes;
+        if (parsed.sessionMinutes !== null) body.sessionMinutes = parsed.sessionMinutes;
         const res = await post("/api/tasks", body);
         if (!res.ok) throw new Error("create");
         taskId = ((await res.json()) as { id: number }).id;
