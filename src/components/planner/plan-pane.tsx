@@ -11,7 +11,6 @@ import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
 import { FocusButton } from "../focus/focus-button";
-import { BreakOffer } from "../focus/break-offer";
 import { blocksOn, minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
 import { placeDay, SAVE_ERROR } from "./place-day";
@@ -382,8 +381,6 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
           <div className="absolute inset-y-0 left-0 rounded-full bg-violet-bright transition-[width] duration-300" style={{ width: `${blockedFill}%` }} />
         )}
       </div>
-
-      <BreakOffer />
 
       {day.unfinishedYesterday.length > 0 && !showRitual && (
         <div className="flex items-center gap-3 rounded-md bg-layer-2 border border-hairline px-3 py-2">

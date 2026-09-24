@@ -55,9 +55,13 @@ export function BreakOffer() {
 
   const minutes = offer.completedToday > 0 && offer.completedToday % offer.settings.longBreakEvery === 0 ? offer.settings.longBreak : offer.settings.shortBreak;
 
+  // Mounted once in the shell rather than any one page, so it floats free like the dock and the
+  // toasts do — a fixed line, not something laid into whatever page happens to be showing.
+  const shell = "fixed top-4 left-1/2 -translate-x-1/2 z-40 panel rounded-full h-10 px-4 flex items-center gap-2 text-[12.5px] text-fg-muted m-0 whitespace-nowrap";
+
   if (breakEndAt !== null) {
     return (
-      <p className="text-[12.5px] text-fg-muted m-0 flex items-center gap-2">
+      <p className={shell}>
         <span>
           Back to it in <span className="font-mono tabular-nums">{clock(breakEndAt - now)}</span>
         </span>
@@ -76,7 +80,7 @@ export function BreakOffer() {
   }
 
   return (
-    <p className="text-[12.5px] text-fg-muted m-0 flex items-center gap-2">
+    <p className={shell}>
       <span>Take {minutes} minutes?</span>
       <Button size="sm" variant="ghost" onClick={() => setBreakEndAt(Date.now() + minutes * 60_000)}>
         Take a break

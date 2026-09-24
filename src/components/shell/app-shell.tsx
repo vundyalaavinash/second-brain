@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { TopBar } from "./top-bar";
 import { ToastProvider } from "./toasts";
 import { Dock } from "../dock/dock";
+import { BreakOffer } from "../focus/break-offer";
 
 /** The frame every page sits in: breadcrumb bar, rail slot, dock, toasts. */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -29,6 +30,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {/* The dock floats over the last rows of the page; the padding leaves it room. */}
           <main className="flex-1 min-w-0 pb-28">{children}</main>
           <Dock />
+          {/* Mounted once for the whole app, not per page: a run can finish while the person is
+            * anywhere, and the offer that follows it should reach them wherever that is. */}
+          <BreakOffer />
         </div>
         {railOpen && (
           <button

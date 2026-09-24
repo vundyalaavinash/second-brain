@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { FocusChip } from "./focus-chip";
+import { resetFocusStore } from "./focus-store";
 import type { FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
 
 const STARTED_AT = "2026-09-25T10:00:00.000Z";
@@ -36,11 +37,16 @@ function stubFetch(live: FocusRunDTO | null) {
   return fn;
 }
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  vi.restoreAllMocks();
 });
 
 describe("FocusChip", () => {
