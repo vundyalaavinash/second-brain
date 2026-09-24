@@ -167,10 +167,23 @@ describe("homePayload", () => {
     recordHelperSeen(t.db, NOW.toISOString());
     const activity = homePayload(t.db, NOW).activity;
     expect(activity?.activeMs).toBe(605_000 + 300_000);
-    // Apps and sites in one list, longest first, three of them; a browser and the site inside it
-    // are two entries, which is what "apps or sites" asks for.
-    expect(activity?.top).toHaveLength(3);
-    expect(activity?.top.map((x) => x.label)).toEqual(["Code", "Chrome", "github.com"]);
-    expect(activity?.top[2].ms).toBe(300_000);
+    // One line per app, longest first: the browser is named by the site it spent its time on,
+    // so the same five minutes are never counted twice.
+    expect(activity?.top).toHaveLength(2);
+    expect(activity?.top.map((x) => x.label)).toEqual(["Code", "github.com"]);
+    expect(activity?.top[1].ms).toBe(300_000);
+    expect(activity?.top.reduce((n, x) => n + x.ms, 0)).toBe(activity?.activeMs);
+  });
+
+  it("names an app by itself when its time is not mostly on the web", () => {
+    const S = new Date(2026, 8, 22, 9, 0, 0).getTime();
+    const stamp = (s: number) => new Date(S + s * 1000).toISOString();
+    // Ten minutes in the editor, one of them reading a page inside it.
+    ingestHeartbeat(t.db, { at: stamp(0), appId: "com.microsoft.VSCode", appName: "Code", title: null, url: null });
+    ingestHeartbeat(t.db, { at: stamp(540), appId: "com.microsoft.VSCode", appName: "Code", title: null, url: null });
+    ingestHeartbeat(t.db, { at: stamp(545), appId: "com.microsoft.VSCode", appName: "Code", title: "Docs", url: "https://docs.example.com/a" });
+    ingestHeartbeat(t.db, { at: stamp(605), appId: "com.microsoft.VSCode", appName: "Code", title: "Docs", url: "https://docs.example.com/a" });
+    recordHelperSeen(t.db, NOW.toISOString());
+    expect(homePayload(t.db, NOW).activity?.top.map((x) => x.label)).toEqual(["Code"]);
   });
 });

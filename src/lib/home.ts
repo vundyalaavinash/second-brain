@@ -115,14 +115,31 @@ function recentItems(db: DB): RecentItemDTO[] {
   });
 }
 
-/** Active time and the three apps or sites that took most of it; null until the helper has ever reported. */
+/**
+ * Active time and the three things that took most of it; null until the helper has ever
+ * reported. One line per app, never an app and its own pages as two, so the three add up to
+ * something. An app whose time is mostly on the web is named by the site it spent it on.
+ */
 function activityToday(db: DB, date: string): HomeDTO["activity"] {
   if (getHelperState(db).lastSeen === null) return null;
   const report = getDay(db, date);
-  const top = [
-    ...report.byApp.map((a) => ({ label: a.appName ?? a.appId ?? "Unknown", ms: a.ms })),
-    ...report.bySite.map((s) => ({ label: s.label, ms: s.ms })),
-  ]
+  const ms = (s: { startedAt: string; endedAt: string }) => Date.parse(s.endedAt) - Date.parse(s.startedAt);
+  const awake = report.sessions.filter((s) => !s.afk);
+  const byApp = new Map<string, { label: string; ms: number; domains: Map<string, number> }>();
+  for (const s of awake) {
+    const key = s.appId ?? s.appName ?? "unknown";
+    const row = byApp.get(key) ?? { label: s.appName ?? s.appId ?? "Unknown", ms: 0, domains: new Map<string, number>() };
+    row.ms += ms(s);
+    if (s.domain) row.domains.set(s.domain, (row.domains.get(s.domain) ?? 0) + ms(s));
+    byApp.set(key, row);
+  }
+  const top = [...byApp.values()]
+    .map((row) => {
+      const onSites = [...row.domains.values()].reduce((n, x) => n + x, 0);
+      const busiest = [...row.domains.entries()].sort((a, b) => b[1] - a[1])[0];
+      // A browser is its pages: naming it "Chrome" says nothing the person did not already know.
+      return { label: busiest && onSites > row.ms / 2 ? busiest[0] : row.label, ms: row.ms };
+    })
     .sort((a, b) => b.ms - a.ms)
     .slice(0, TOP_ACTIVITY);
   return { activeMs: report.activeMs, top };
