@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, items, type CalendarEvent, type CalendarSource, type Item, type MeetingStatus } from "@/db/schema";
 import { createItem } from "@/domain/items";
 import { ActivityError, listCategories } from "./rules";
+import { localDay } from "@/lib/time";
 
 export interface CalendarEventInput {
   externalId: string;
@@ -31,11 +32,10 @@ export function joinUrlFrom(...texts: (string | null | undefined)[]): string | n
   return joined.match(PROVIDER_RE)?.[0] ?? joined.match(ANY_RE)?.[0] ?? null;
 }
 
-/** Local calendar day (YYYY-MM-DD) of an ISO timestamp. */
-export function localDay(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+/** Local calendar day (YYYY-MM-DD) of an ISO timestamp. Defined in `@/lib/time` so the
+ * client components that label the same instants can share one implementation; re-exported
+ * here because the whole app already reads it off the activity barrel. */
+export { localDay };
 
 /** Local midnight to next local midnight, as UTC ISO strings. */
 export function dayBounds(day: string): { start: string; end: string } {
