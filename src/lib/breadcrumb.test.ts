@@ -23,7 +23,11 @@ describe("crumbsFor", () => {
   it("leaves the whole trail to the container page", () => {
     expect(crumbsFor("/c/launch-newsletter")).toEqual([]);
   });
+  // Home supplies its own tail, so the route trail is empty there too.
+  it("leaves the whole trail to Home", () => {
+    expect(crumbsFor("/")).toEqual([]);
+  });
   it("falls back to Home", () => {
-    expect(crumbsFor("/")).toEqual([{ label: "Home" }]);
+    expect(crumbsFor("/nowhere")).toEqual([{ label: "Home" }]);
   });
 });

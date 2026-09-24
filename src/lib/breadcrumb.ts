@@ -15,6 +15,9 @@ export function crumbsFor(pathname: string): Crumb[] {
   // A container page supplies both halves itself — `<Crumb parent title>` names the kind it
   // belongs to ("Projects", "Areas", "Resources"), so a trail here would repeat the parent.
   if (pathname.startsWith("/c/")) return [];
+  // Home names itself through `<Crumb title="Home">`, the way a container page does, so the
+  // route trail here would only repeat it.
+  if (pathname === "/") return [];
   if (pathname.startsWith("/items/")) return [{ label: "Library", href: "/library" }];
   if (pathname.startsWith("/people/")) return [{ label: "People", href: "/people" }];
   return [{ label: "Home" }];

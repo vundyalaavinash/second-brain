@@ -44,7 +44,7 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 | Keys | Action |
 |---|---|
 | `⌘K` | Command palette |
-| `g i` `g p` `g a` `g r` `g e` `g l` `g x` `g s` `g c` | Inbox, Projects, Areas, Resources, People, Library, Archive, Search, Capture |
+| `g h` `g d` `g i` `g p` `g a` `g r` `g e` `g t` `g l` `g x` `g s` `g c` | Home, Planner, Inbox, Projects, Areas, Resources, People, Activity, Library, Archive, Search, Capture |
 | `/` | Focus search |
 | `⌘↵` | Capture |
 | `⌘S` | Save item, container, or person |

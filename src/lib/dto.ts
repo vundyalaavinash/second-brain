@@ -266,3 +266,53 @@ export interface PlannerMeetingsDTO {
   meetings: MeetingListDTO[];
   calendar: PlannerCalendarDTO;
 }
+
+/** One timed thing on the day: the meeting or session Home shows as now, or as what comes next. */
+export interface HomeItemDTO {
+  kind: "meeting" | "session";
+  title: string;
+  /** A meeting's own instant (UTC), a session's local wall clock — each as its source records it. */
+  startsAt: string;
+  endsAt: string;
+  meetingId?: number;
+  joinUrl?: string;
+  taskId?: number;
+  blockId?: number;
+}
+
+/** An active project as Home's compact card reads it. */
+export interface ProjectCardDTO {
+  id: number;
+  name: string;
+  slug: string;
+  open: number;
+  done: number;
+  nextTask: { id: number; title: string } | null;
+  deadline: string | null;
+  updatedAt: string;
+}
+
+/** One of the last items touched; `meeting` is set only on a meeting item, for its chip. */
+export interface RecentItemDTO {
+  id: number;
+  type: ItemType;
+  title: string;
+  updatedAt: string;
+  status: ItemStatus;
+  meeting?: { hasTranscript: boolean; hasSummary: boolean };
+}
+
+/** Where the day stands, in one payload: the Planner's day plus what Home adds around it. */
+export interface HomeDTO {
+  date: string;
+  today: string;
+  day: PlannerDayDTO;
+  counts: { planned: number; meetings: number; inbox: number };
+  now: HomeItemDTO | null;
+  /** Up to two, in start order, never the one `now` holds. */
+  next: HomeItemDTO[];
+  projects: ProjectCardDTO[];
+  recent: RecentItemDTO[];
+  /** Null until the helper has reported at all, which is what hides the section. */
+  activity: { activeMs: number; top: { label: string; ms: number }[] } | null;
+}

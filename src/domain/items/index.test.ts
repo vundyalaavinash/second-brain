@@ -74,6 +74,16 @@ describe("items domain", () => {
     expect(listItems(t.db, { to: "2020-12-31" }).map((i) => i.id)).toEqual([old.id]);
   });
 
+  it("orders by what was touched last only when asked to", () => {
+    const first = createItem(t.db, { type: "note", title: "first" });
+    const second = createItem(t.db, { type: "note", title: "second" });
+    t.db.$client.prepare("UPDATE items SET created_at = ?, updated_at = ? WHERE id = ?").run("2026-01-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z", first.id);
+    t.db.$client.prepare("UPDATE items SET created_at = ?, updated_at = ? WHERE id = ?").run("2026-02-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z", second.id);
+
+    expect(listItems(t.db).map((i) => i.id)).toEqual([second.id, first.id]);
+    expect(listItems(t.db, { orderBy: "updated" }).map((i) => i.id)).toEqual([first.id, second.id]);
+  });
+
   it("compares date filters against local calendar days, not UTC instants", () => {
     const item = createItem(t.db, { type: "note", title: "evening" });
     // A local-evening instant that would fall on the next UTC calendar day for timezones behind UTC.

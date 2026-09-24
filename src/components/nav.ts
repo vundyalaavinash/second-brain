@@ -1,4 +1,4 @@
-export type IconName = "planner" | "inbox" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture";
+export type IconName = "home" | "planner" | "inbox" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture";
 
 export interface NavItem {
   href: string;
@@ -11,6 +11,7 @@ export interface NavItem {
 
 /** Order is the dock order. Every entry has a `g` + letter shortcut. */
 export const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Home", shortcut: "g h", icon: "home", section: "brain" },
   { href: "/planner", label: "Planner", shortcut: "g d", icon: "planner", section: "brain" },
   { href: "/inbox", label: "Inbox", shortcut: "g i", icon: "inbox", badge: "inbox", section: "brain" },
   { href: "/projects", label: "Projects", shortcut: "g p", icon: "project", section: "brain" },
@@ -25,3 +26,12 @@ export const NAV_ITEMS: NavItem[] = [
 /** Search and Capture are dock buttons rather than links, and keep their shortcuts and palette entries. */
 export const SEARCH_ITEM: NavItem = { href: "/search", label: "Search", shortcut: "g s", icon: "search", section: "tools" };
 export const CAPTURE_ITEM: NavItem = { href: "/capture", label: "Capture", shortcut: "g c", icon: "capture", section: "tools" };
+
+/**
+ * Whether a nav entry owns the open page. Home is the one href that is a prefix of every other,
+ * so it matches only itself; the rest also claim what sits under them.
+ */
+export function isNavActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

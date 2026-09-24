@@ -1,0 +1,156 @@
+import { inArray } from "drizzle-orm";
+import type { DB } from "@/db/client";
+import { tasks } from "@/db/schema";
+import { todayLocal } from "@/components/activity/format";
+import { getDay, getHelperState } from "@/domain/activity";
+import { listBlocks } from "@/domain/blocks";
+import { listContainers } from "@/domain/containers";
+import { countInbox, listItems, parseMeta } from "@/domain/items";
+import { containerProgress } from "@/domain/tasks";
+import { plannerDay } from "./planner";
+import type { HomeDTO, HomeItemDTO, ProjectCardDTO, RecentItemDTO } from "./dto";
+
+/** How many project cards the right column holds. */
+const MAX_PROJECTS = 6;
+/** How many items Recent lists. */
+const RECENT_LIMIT = 5;
+/** How many apps or sites the activity line names. */
+const TOP_ACTIVITY = 3;
+/** How many timed things stand under the current one. */
+const NEXT_LIMIT = 2;
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A session's end in the same local wall-clock spelling its start uses. */
+function sessionEnd(startsAt: string, minutes: number): string {
+  const at = new Date(Date.parse(startsAt) + minutes * 60_000);
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+}
+
+/**
+ * Every timed thing on the day, in start order: meetings a person has not declined, and the
+ * sessions of tasks still open. An all-day block holds no hour, so it names no "now", and a
+ * session of a task already ticked off or dropped is not work still to do.
+ */
+function timedItems(db: DB, day: HomeDTO["day"], date: string): HomeItemDTO[] {
+  const meetings: HomeItemDTO[] = day.meetings
+    .filter((m) => !m.allDay && m.status !== "declined")
+    .map((m) => ({
+      kind: "meeting" as const,
+      title: m.title,
+      startsAt: m.startsAt,
+      endsAt: m.endsAt,
+      meetingId: m.id,
+      ...(m.joinUrl ? { joinUrl: m.joinUrl } : {}),
+    }));
+  const blocks = listBlocks(db, { date });
+  // One query for every session's task rather than one per session.
+  const open = new Map(
+    blocks.length === 0
+      ? []
+      : db
+          .select({ id: tasks.id, title: tasks.title, status: tasks.status })
+          .from(tasks)
+          .where(inArray(tasks.id, [...new Set(blocks.map((b) => b.taskId))]))
+          .all()
+          .filter((t) => t.status === "open")
+          .map((t) => [t.id, t.title] as const),
+  );
+  const sessions: HomeItemDTO[] = blocks
+    .filter((b) => open.has(b.taskId))
+    .map((b) => ({
+      kind: "session" as const,
+      title: open.get(b.taskId)!,
+      startsAt: b.startsAt,
+      endsAt: sessionEnd(b.startsAt, b.minutes),
+      taskId: b.taskId,
+      blockId: b.id,
+    }));
+  return [...meetings, ...sessions].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+}
+
+/**
+ * What is happening now and what stands under it. A meeting in progress wins over a session in
+ * progress — the meeting is where the person has to be — and `next` is the two soonest things
+ * still to start, so whatever `now` holds can never appear under it as well.
+ */
+function nowAndNext(items: HomeItemDTO[], at: number): { now: HomeItemDTO | null; next: HomeItemDTO[] } {
+  const running = items.filter((i) => Date.parse(i.startsAt) <= at && at < Date.parse(i.endsAt));
+  const now = running.find((i) => i.kind === "meeting") ?? running[0] ?? null;
+  return { now, next: items.filter((i) => Date.parse(i.startsAt) > at).slice(0, NEXT_LIMIT) };
+}
+
+/** Nearest deadline first, the undated behind them, and the most recently touched first within a tie. */
+function byDeadlineThenUpdated(a: ProjectCardDTO, b: ProjectCardDTO): number {
+  if (a.deadline !== b.deadline) {
+    if (a.deadline === null) return 1;
+    if (b.deadline === null) return -1;
+    return a.deadline.localeCompare(b.deadline);
+  }
+  return b.updatedAt.localeCompare(a.updatedAt);
+}
+
+/** The active projects Home shows, at most six, each with its counts and its next open task. */
+function projectCards(db: DB): ProjectCardDTO[] {
+  const shown = listContainers(db, { kind: "project", status: "active" })
+    .map((c) => ({ id: c.id, name: c.name, slug: c.slug, open: 0, done: 0, nextTask: null, deadline: c.deadline, updatedAt: c.updatedAt }) satisfies ProjectCardDTO)
+    .sort(byDeadlineThenUpdated)
+    .slice(0, MAX_PROJECTS);
+  // Counts and the next task for the six that made the cut, in grouped queries rather than a
+  // pair per card — the same numbers a project's own card shows elsewhere.
+  const progress = containerProgress(db, shown.map((c) => c.id));
+  return shown.map((c) => {
+    const p = progress.get(c.id);
+    return { ...c, open: p?.open ?? 0, done: p?.done ?? 0, nextTask: p?.nextTask ? { id: p.nextTask.id, title: p.nextTask.title } : null };
+  });
+}
+
+/** The last five items touched; a meeting item carries what its chip says about it. */
+function recentItems(db: DB): RecentItemDTO[] {
+  return listItems(db, { limit: RECENT_LIMIT, orderBy: "updated" }).map((item) => {
+    const row: RecentItemDTO = { id: item.id, type: item.type, title: item.title, updatedAt: item.updatedAt, status: item.status };
+    if (item.type !== "meeting") return row;
+    const meta = parseMeta(item);
+    return { ...row, meeting: { hasTranscript: !!meta.transcript, hasSummary: !!meta.summary } };
+  });
+}
+
+/** Active time and the three apps or sites that took most of it; null until the helper has ever reported. */
+function activityToday(db: DB, date: string): HomeDTO["activity"] {
+  if (getHelperState(db).lastSeen === null) return null;
+  const report = getDay(db, date);
+  const top = [
+    ...report.byApp.map((a) => ({ label: a.appName ?? a.appId ?? "Unknown", ms: a.ms })),
+    ...report.bySite.map((s) => ({ label: s.label, ms: s.ms })),
+  ]
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, TOP_ACTIVITY);
+  return { activeMs: report.activeMs, top };
+}
+
+/**
+ * Where the day stands, in one payload. The Planner's own day is reused whole — Home draws the
+ * same plan rows and the same capacity line — and the counts are read back off it rather than
+ * asked for again, so the figures and the rows under them can never disagree.
+ */
+export function homePayload(db: DB, now: Date): HomeDTO {
+  const date = todayLocal(now);
+  const day = plannerDay(db, date);
+  const { now: current, next } = nowAndNext(timedItems(db, day, date), now.getTime());
+  return {
+    date,
+    today: date,
+    day,
+    counts: {
+      planned: day.plan.filter((t) => t.status === "open").length,
+      meetings: day.meetings.filter((m) => !m.allDay).length,
+      // The dock's badge count, called rather than counted again.
+      inbox: countInbox(db),
+    },
+    now: current,
+    next,
+    projects: projectCards(db),
+    recent: recentItems(db),
+    activity: activityToday(db, date),
+  };
+}

@@ -9,6 +9,7 @@ import {
   CalendarCheck,
   DotsThree,
   Flag,
+  House,
   ListBullets,
   MagnifyingGlass,
   Plus,
@@ -18,7 +19,7 @@ import {
   Users,
   type Icon as Glyph,
 } from "@phosphor-icons/react";
-import { CAPTURE_ITEM, NAV_ITEMS, SEARCH_ITEM, type IconName, type NavItem } from "../nav";
+import { CAPTURE_ITEM, NAV_ITEMS, SEARCH_ITEM, isNavActive, type IconName, type NavItem } from "../nav";
 import { PromptBar } from "../shell/prompt-bar";
 import { DockItem, type DockItemProps } from "./dock-item";
 import { DockSheet } from "./dock-sheet";
@@ -36,6 +37,7 @@ const DIM_THROTTLE_MS = 300;
 const NARROW = "(max-width: 719px)";
 
 const ICONS: Record<IconName, Glyph> = {
+  home: House,
   planner: CalendarCheck,
   inbox: Tray,
   project: Flag,
@@ -252,10 +254,6 @@ export function Dock() {
 
   const status = paused ? "Paused" : helperDown ? "Not recording" : "Recording";
 
-  function isActive(href: string): boolean {
-    return pathname === href || pathname.startsWith(`${href}/`);
-  }
-
   function navSlot(item: NavItem): DockItemProps & { key: string } {
     return {
       key: item.href,
@@ -263,7 +261,7 @@ export function Dock() {
       label: item.label,
       shortcut: item.shortcut,
       icon: ICONS[item.icon],
-      active: isActive(item.href),
+      active: isNavActive(pathname, item.href),
       badge: item.badge === "inbox" && inboxCount > 0 ? inboxCount : undefined,
       dot: item.badge === "activity" && helperDown,
       title: item.badge === "activity" ? status : undefined,

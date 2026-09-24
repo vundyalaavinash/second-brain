@@ -58,6 +58,12 @@ export interface ListItemsFilter {
   onlyArchived?: boolean;
   /** Filter to pinned (true) or unpinned (false) items. Omit for either. */
   pinned?: boolean;
+  /**
+   * What "first" means. The default is creation order, newest first, which is how every
+   * existing caller reads a list; "updated" asks for the last touched instead, which is what
+   * Home's Recent shows. Neither changes where pinned items sort when a home is named.
+   */
+  orderBy?: "created" | "updated";
 }
 
 export function createItem(db: DB, input: CreateItemInput): Item {
@@ -139,7 +145,8 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   if (filter.onlyArchived) conds.push(isNotNull(items.archivedAt));
   else if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
   if (filter.pinned !== undefined) conds.push(eq(items.pinned, filter.pinned ? 1 : 0));
-  const order = filter.containerId !== undefined ? [desc(items.pinned), desc(items.createdAt), desc(items.id)] : [desc(items.createdAt), desc(items.id)];
+  const by = filter.orderBy === "updated" ? items.updatedAt : items.createdAt;
+  const order = filter.containerId !== undefined ? [desc(items.pinned), desc(by), desc(items.id)] : [desc(by), desc(items.id)];
   return db
     .select()
     .from(items)

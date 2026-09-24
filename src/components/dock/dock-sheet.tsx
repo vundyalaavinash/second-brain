@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import type { Icon as Glyph } from "@phosphor-icons/react";
-import type { IconName, NavItem } from "../nav";
+import { isNavActive, type IconName, type NavItem } from "../nav";
 import { Kbd } from "../ui";
 
 /** The views the narrow pill has no room for, listed above it. */
@@ -52,7 +52,7 @@ export function DockSheet({
       >
         {items.map((item, i) => {
           const Icon = icons[item.icon];
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = isNavActive(pathname, item.href);
           return (
             <li key={item.href}>
               <Link
