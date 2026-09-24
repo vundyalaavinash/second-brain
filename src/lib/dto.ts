@@ -1,4 +1,5 @@
 import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome } from "@/db/enums";
+import type { ReviewStep } from "@/domain/review";
 
 export interface ContainerRefDTO {
   id: number;
@@ -393,4 +394,56 @@ export interface FocusSummaryDTO {
   minutes: number;
   runs: number;
   byTask: { taskId: number; title: string; minutes: number; runs: number }[];
+}
+
+/** What a review has answered so far, one entry per step; `goals` is a note per goal id. */
+export interface ReviewAnswersDTO {
+  clear?: string;
+  back?: string;
+  goals?: Record<string, string>;
+  ahead?: string;
+}
+
+/**
+ * The week's review, assembled: what the week itself looked like — done, dropped, still open,
+ * booked focus time, the projects that moved — and what is coming in the week after, read from
+ * the same domains Home and the Planner already read them from, so the two screens can never
+ * disagree about the same week.
+ */
+export interface ReviewDTO {
+  /** The Monday the review is for. */
+  week: string;
+  label: string;
+  days: string[];
+  /** Whether the week being reviewed is the one the app is being used in. */
+  current: boolean;
+  /** Where to resume: the first step with no answer yet, or the last step once every one does. */
+  step: ReviewStep;
+  answers: ReviewAnswersDTO;
+  clear: {
+    inbox: number;
+    /** Still open on any day of the week, each counted once even if planned on several. */
+    leftover: PlanTaskDTO[];
+  };
+  back: {
+    done: number;
+    dropped: number;
+    /** Planned in the week and still open — the same set `clear.leftover` lists, as a count. */
+    slipped: number;
+    focusMinutes: number;
+    focusRuns: number;
+    /** Meetings not declined and not all-day — the same rule `homePayload` counts by. */
+    meetings: number;
+    projects: { container: ContainerRefDTO; closed: number; percent: number }[];
+  };
+  /** Active goals, each with its measure. */
+  goals: GoalDTO[];
+  ahead: {
+    /** Next Monday. */
+    week: string;
+    due: TaskDTO[];
+    deadlines: { container: ContainerRefDTO; deadline: string }[];
+    meetings: ActivityMeetingDTO[];
+  };
+  savedAt: string | null;
 }

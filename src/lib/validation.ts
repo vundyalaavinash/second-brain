@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
+import { REVIEW_STEPS } from "@/domain/review";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
@@ -88,3 +89,13 @@ export const FocusSettingsBody = z
   })
   .partial()
   .strict();
+
+export const SaveReviewBody = z
+  .object({
+    week: DateString,
+    step: z.enum(REVIEW_STEPS),
+    value: z.union([z.string(), z.record(z.string(), z.string())]),
+  })
+  .strict();
+
+export const ReviewPlanBody = z.object({ week: DateString, taskIds: z.array(z.number().int().positive()) }).strict();

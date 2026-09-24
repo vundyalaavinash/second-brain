@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pause, SlidersHorizontal } from "lucide-react";
 import { Button, Chip, IconButton, PageHeader } from "../ui";
 import { addDaysLocal, formatDayHeading, formatDuration, todayLocal } from "./format";
+import { weekStart as mondayOf } from "@/lib/week";
 import { StatusStrip } from "./status-strip";
 import { Timeline } from "./timeline";
 import { Totals } from "./totals";
@@ -16,12 +17,6 @@ import type { ActivityDayDTO, ActivityWeekDTO, ItemDTO } from "@/lib/dto";
 const POLL_MS = 30_000;
 
 type View = "day" | "week";
-
-/** Monday of the week containing `day`, as a local YYYY-MM-DD string. */
-function mondayOf(day: string): string {
-  const [y, m, d] = day.split("-").map(Number);
-  return addDaysLocal(day, -((new Date(y, m - 1, d).getDay() + 6) % 7));
-}
 
 export function ActivityPage() {
   const router = useRouter();
