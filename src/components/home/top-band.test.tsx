@@ -19,7 +19,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
-function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, runs: 0, running: null }) {
+function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }) {
   render(<TopBand day={day()} counts={counts} focus={focus} onHours={() => {}} />);
 }
 
@@ -75,7 +75,7 @@ describe("TopBand", () => {
   });
 
   it("names the day's booked minutes beside the counts, as plain text rather than a link", () => {
-    band({ planned: 3, meetings: 2, inbox: 4 }, { minutes: 80, runs: 2, running: null });
+    band({ planned: 3, meetings: 2, inbox: 4 }, { minutes: 80, running: null });
     const line = screen.getByText("1h 20m focused");
     expect(line.tagName).toBe("LI");
     expect(screen.getAllByRole("link")).toHaveLength(3);

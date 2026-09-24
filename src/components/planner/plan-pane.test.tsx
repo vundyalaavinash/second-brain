@@ -33,9 +33,8 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
-/** Every task row's own FocusButton (and the header's, for whichever task is next up) asks
- * `/api/focus` for itself on mount — background noise the trackers below leave out, since
- * nothing here is about focus runs. */
+/** The store makes exactly one `/api/focus` call for the whole page on mount, not one per row —
+ * background noise the trackers below leave out, since nothing here is about focus runs. */
 const isFocusPoll = (url: string) => url === "/api/focus";
 
 /** Records every request the pane makes, answering each one with a bare 200. */
@@ -81,8 +80,8 @@ function mount(date = TODAY) {
   vi.stubGlobal("fetch", fetchMock);
   const onRefresh = vi.fn();
   render(<PlanPane day={day({ date })} today={TODAY} onRefresh={onRefresh} />);
-  // Every row's own FocusButton (and the header's) asks `/api/focus` for itself on mount;
-  // cleared so a test's own first call is still `calls[0]`.
+  // The store makes one `/api/focus` call for the whole page on mount, not one per row; cleared
+  // so a test's own first call is still `calls[0]`.
   fetchMock.mockClear();
   return { fetchMock, onRefresh };
 }

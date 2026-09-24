@@ -26,6 +26,10 @@ export interface FocusCompletedDetail {
   run: FocusRunDTO;
   completedToday: number;
   settings: FocusSettingsDTO;
+  /** Design §4.5: where the machine actually was during the run, from `PATCH /api/focus/[id]`'s
+   * own `where`, carried through rather than discarded — `[]` when the activity helper has never
+   * reported, or reported nothing that overlaps this run. */
+  where: { label: string; ms: number }[];
 }
 
 export interface FocusStoreState {
@@ -38,9 +42,14 @@ export interface FocusStoreState {
   remainingMs: number;
   busy: boolean;
   error: string | null;
+  /** Whether the store's own `GET /api/focus` has landed at least once. `false` cannot be told
+   * apart from "loaded and there is no run" by `run` alone — a caller with a server-rendered
+   * payload of its own (Home's first paint) must read `loaded` to know whether `run` is this
+   * store's real answer yet, rather than falling back to a run that may already be over. */
+  loaded: boolean;
 }
 
-const INITIAL_STATE: FocusStoreState = { run: null, settings: DEFAULT_SETTINGS, completedToday: 0, remainingMs: 0, busy: false, error: null };
+const INITIAL_STATE: FocusStoreState = { run: null, settings: DEFAULT_SETTINGS, completedToday: 0, remainingMs: 0, busy: false, error: null, loaded: false };
 
 /** The run's planned end, in epoch ms — the one place it is computed, so the countdown and the
  * auto-finish check can never disagree about when zero is reached. */
@@ -48,7 +57,10 @@ function plannedEnd(run: FocusRunDTO): number {
   return Date.parse(run.startedAt) + run.plannedMinutes * 60_000;
 }
 
-function remainingFor(run: FocusRunDTO | null): number {
+/** Exported so a component with a run of its own from elsewhere — Home's server-rendered
+ * `focus.running`, before this store has loaded — can compute its remaining time with the same
+ * arithmetic the store ticks with, rather than a second copy of it (F8). */
+export function remainingFor(run: FocusRunDTO | null): number {
   return run ? Math.max(0, plannedEnd(run) - Date.now()) : 0;
 }
 
@@ -73,6 +85,11 @@ let onFocusChanged: (() => void) | null = null;
  * same call that reads it, whether that call is the tick noticing zero or a manual Stop, so
  * whichever loses the race sees the guard already up and never sends a second PATCH. */
 let finishingId: number | null = null;
+/** The id of a run whose automatic (tick-triggered) finish PATCH has already failed once.
+ * Sticky until a `load()` that happens on its own account — the poll, another tab's own
+ * `sb:focus-changed`, or a remount — next replaces `state.run`; the tick checks it so a failed
+ * attempt is not refired every second, but a manual Stop (`finish`) is never gated by it. */
+let autoFinishFailedId: number | null = null;
 /** True whenever there is no subscriber to serve. Checked by `load()` after every `await`, so a
  * request already in flight when the last subscriber unmounts cannot write to `state` (and, by
  * calling `setState`, arm a tick interval) after the engine believes it has stopped. */
@@ -104,9 +121,9 @@ function tick(): void {
   const remainingMs = remainingFor(run);
   state = { ...state, remainingMs };
   for (const listener of listeners) listener();
-  if (remainingMs <= 0 && finishingId !== run.id) {
+  if (remainingMs <= 0 && finishingId !== run.id && autoFinishFailedId !== run.id) {
     finishingId = run.id;
-    void finishRun(run.id, "completed");
+    void finishRun(run.id, "completed", { auto: true });
   }
 }
 
@@ -116,14 +133,18 @@ async function load(): Promise<void> {
     if (!res.ok || engineStopped) return;
     const data = (await res.json()) as { run: FocusRunDTO | null; settings: FocusSettingsDTO; completedToday: number };
     if (engineStopped) return;
-    setState({ run: data.run, settings: data.settings, completedToday: data.completedToday, remainingMs: remainingFor(data.run) });
+    // A load reflects the server's own truth, so it is the one thing allowed to give the tick
+    // another chance at a run whose auto-finish previously failed (F9).
+    autoFinishFailedId = null;
+    setState({ run: data.run, settings: data.settings, completedToday: data.completedToday, remainingMs: remainingFor(data.run), loaded: true });
   } catch {
     /* offline: the next poll or event retries */
   }
 }
 
-async function finishRun(id: number, outcome: FocusOutcome): Promise<void> {
+async function finishRun(id: number, outcome: FocusOutcome, opts: { auto?: boolean } = {}): Promise<void> {
   setState({ busy: true });
+  let failed = false;
   try {
     const res = await fetch(`/api/focus/${id}`, {
       method: "PATCH",
@@ -132,10 +153,11 @@ async function finishRun(id: number, outcome: FocusOutcome): Promise<void> {
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
+      failed = true;
       setState({ error: (body as { error?: string } | null)?.error ?? "Could not finish the run" });
       return;
     }
-    const finished = (body as { run: FocusRunDTO }).run;
+    const { run: finished, where } = body as { run: FocusRunDTO; where: { label: string; ms: number }[] };
     // Read straight from the store's own state, not from inside a `setState` updater: there is
     // no queued function to run later, only a plain variable, so "including this one" below is
     // exact rather than a guess at whatever the next poll happens to see.
@@ -144,15 +166,23 @@ async function finishRun(id: number, outcome: FocusOutcome): Promise<void> {
     setState({ run: null, remainingMs: 0, error: null });
     if (finished.outcome === "completed") {
       window.dispatchEvent(
-        new CustomEvent<FocusCompletedDetail>("sb:focus-completed", { detail: { run: finished, completedToday, settings } }),
+        new CustomEvent<FocusCompletedDetail>("sb:focus-completed", { detail: { run: finished, completedToday, settings, where } }),
       );
     }
   } catch {
+    failed = true;
     setState({ error: "Could not finish the run" });
   } finally {
     setState({ busy: false });
     finishingId = null;
-    window.dispatchEvent(new Event("sb:focus-changed"));
+    // A failed automatic attempt marks itself instead of dispatching: dispatching here would
+    // have the store's own `sb:focus-changed` listener call `load()` right back, clear the guard
+    // a moment later, and let the very next tick retry — exactly the 1 Hz loop being fixed (F9).
+    if (opts.auto && failed) {
+      autoFinishFailedId = id;
+    } else {
+      window.dispatchEvent(new Event("sb:focus-changed"));
+    }
   }
 }
 
@@ -247,5 +277,6 @@ export function resetFocusStore(): void {
   listeners.clear();
   subscriberCount = 0;
   finishingId = null;
+  autoFinishFailedId = null;
   state = INITIAL_STATE;
 }

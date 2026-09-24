@@ -48,6 +48,23 @@ describe("SpentLine", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  // F2: the API's own PatchTaskBody rejects an estimateMinutes under 5 or over 480. Offering to
+  // set one outside that range is a button that always fails, with no clamp to hide it — the
+  // spent figure itself must never be adjusted to make the offer fit.
+  it("shows the spent figure but offers no correction when it is under the API's minimum", () => {
+    stubFetch();
+    render(<SpentLine taskId={1} estimateMinutes={null} spentMinutes={3} />);
+    expect(screen.getByText("Spent 3m")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows the spent figure but offers no correction when it is over the API's maximum", () => {
+    stubFetch();
+    render(<SpentLine taskId={1} estimateMinutes={45} spentMinutes={500} />);
+    expect(screen.getByText("Estimated 45m, spent 8h 20m")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("PATCHes the task with the real figure and tells the app the task changed", async () => {
     const calls = stubFetch();
     render(<SpentLine taskId={9} estimateMinutes={45} spentMinutes={80} />);

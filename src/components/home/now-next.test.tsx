@@ -6,7 +6,7 @@ import { resetFocusStore } from "../focus/focus-store";
 import type { FocusRunDTO, FocusSettingsDTO, HomeDTO, HomeItemDTO, PlannerDayDTO, PlanTaskDTO, RecorderStatusDTO } from "@/lib/dto";
 
 const DATE = "2026-09-22";
-const NO_FOCUS: HomeDTO["focus"] = { minutes: 0, runs: 0, running: null };
+const NO_FOCUS: HomeDTO["focus"] = { minutes: 0, running: null };
 const FOCUS_SETTINGS: FocusSettingsDTO = { defaultMinutes: 25, shortBreak: 5, longBreak: 15, longBreakEvery: 4 };
 
 const planTask = (over: Partial<PlanTaskDTO> = {}): PlanTaskDTO => ({
@@ -145,7 +145,7 @@ describe("NowNext", () => {
 
   it("shows a live run in place of a running session, with the remaining time and a Stop", async () => {
     stub({}, undefined, focusRun({ startedAt: "2026-09-22T10:00:00.000Z", plannedMinutes: 25 }));
-    mount({ now: sessionNow, focus: { minutes: 0, runs: 0, running: focusRun({ startedAt: "2026-09-22T10:00:00.000Z", plannedMinutes: 25 }) } });
+    mount({ now: sessionNow, focus: { minutes: 0, running: focusRun({ startedAt: "2026-09-22T10:00:00.000Z", plannedMinutes: 25 }) } });
     const region = await screen.findByRole("status");
     expect(region.textContent).toContain("Write the brief");
     expect(screen.queryByRole("checkbox", { name: "Write the brief" })).toBeNull();
@@ -154,15 +154,29 @@ describe("NowNext", () => {
 
   it("never lets a live run take the slot from a meeting in progress", async () => {
     stub({}, undefined, focusRun());
-    mount({ now: meetingNow, focus: { minutes: 0, runs: 0, running: focusRun() } });
+    mount({ now: meetingNow, focus: { minutes: 0, running: focusRun() } });
     const region = screen.getByRole("status");
     expect(region.textContent).toContain("Design review");
     expect(screen.queryByRole("button", { name: /Stop focusing/ })).toBeNull();
   });
 
+  it("F1: trusts the server payload only until the store's own load lands, then trusts the store alone — even a run that is already gone", async () => {
+    // The store's own GET says there is no run; the payload handed to first paint still carries
+    // one. Before the store has loaded, the payload is the only honest answer there is.
+    stub();
+    mount({ now: null, focus: { minutes: 0, running: focusRun() } });
+    expect(screen.getByRole("status").textContent).toContain("Write the brief");
+    expect(screen.getByRole("button", { name: "Stop focusing on Write the brief" })).toBeTruthy();
+
+    // Once the store's own load lands and says there is no run, that wins — the payload's run is
+    // dropped, not shown as a frozen countdown under a Stop button that would send nothing.
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Nothing on right now"));
+    expect(screen.queryByRole("button", { name: /Stop focusing/ })).toBeNull();
+  });
+
   it("stops the live run from the Now slot", async () => {
     const calls = stub({}, undefined, focusRun());
-    mount({ now: null, focus: { minutes: 0, runs: 0, running: focusRun() } });
+    mount({ now: null, focus: { minutes: 0, running: focusRun() } });
     fireEvent.click(await screen.findByRole("button", { name: "Stop focusing on Write the brief" }));
     await waitFor(() => {
       expect(calls.some((c) => c.url === "/api/focus/5" && c.method === "PATCH")).toBe(true);

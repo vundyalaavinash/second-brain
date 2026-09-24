@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button, IconButton } from "../ui";
+import { formatDuration } from "../activity/format";
 import type { FocusCompletedDetail } from "./use-focus";
 
 function clock(ms: number): string {
@@ -10,6 +11,15 @@ function clock(ms: number): string {
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Design §4.5, said once: "48m focused — 39m on Code, 6m on github.com." No score, no
+ * judgement — just where the machine was. `null` when there is nothing to say. */
+function whereLine(offer: FocusCompletedDetail): string | null {
+  if (offer.where.length === 0) return null;
+  const total = formatDuration((offer.run.actualMinutes ?? offer.run.plannedMinutes) * 60_000);
+  const parts = offer.where.map((w) => `${formatDuration(w.ms)} on ${w.label}`);
+  return `${total} focused — ${parts.join(", ")}`;
 }
 
 /**
@@ -85,9 +95,14 @@ export function BreakOffer() {
     );
   }
 
+  const where = whereLine(offer);
+
   return (
     <p className={shell}>
-      <span>Take {minutes} minutes?</span>
+      <span className="flex flex-col gap-0.5 min-w-0">
+        <span>Take {minutes} minutes?</span>
+        {where && <span className="text-[11px] text-fg-faint">{where}</span>}
+      </span>
       <Button size="sm" variant="ghost" onClick={() => setBreakEndAt(Date.now() + minutes * 60_000)}>
         Take a break
       </Button>

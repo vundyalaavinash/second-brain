@@ -163,10 +163,10 @@ export function homePayload(db: DB, now: Date): HomeDTO {
   const date = localDay(now.toISOString());
   const day = plannerDay(db, date);
   const { now: current, next } = nowAndNext(timedItems(db, day, date), now.getTime());
-  // A live run is demonstrably what the person is doing, so it wins the "Now" slot over a
-  // session — but never over a meeting, which is where they have to be regardless.
+  // Reconciled here so `focus.running` is never stale, but which of a live run, a session or a
+  // meeting wins the "Now" slot is decided once, client-side, in now-next.tsx — not repeated
+  // here, where it would have nothing but a stale run to fall back on if the two ever disagreed.
   const running = runningFocus(db, now);
-  const nowSlot = running && current?.kind === "session" ? null : current;
   const focusToday = focusSummary(db, { from: date, to: addDays(date, 1) }, now);
   return {
     date,
@@ -182,14 +182,13 @@ export function homePayload(db: DB, now: Date): HomeDTO {
       // The dock's badge count, called rather than counted again.
       inbox: countInbox(db),
     },
-    now: nowSlot,
+    now: current,
     next,
     projects: projectCards(db, date),
     recent: recentItems(db),
     activity: activityToday(db, date),
     focus: {
       minutes: focusToday.minutes,
-      runs: focusToday.runs,
       running: running ? serializeFocusRun(running, getTask(db, running.taskId)?.title ?? "") : null,
     },
   };

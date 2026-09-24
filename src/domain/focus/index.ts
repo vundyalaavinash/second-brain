@@ -214,8 +214,8 @@ export function runningFocus(db: DB, now = new Date()): FocusRun | null {
 }
 
 /** Minutes actually run, per task, for runs that booked anything at all — an abandoned run is
- * never in this map, not even at zero. (Unused in production today; Task 3's task-detail
- * reporting is its consumer.) */
+ * never in this map, not even at zero. Consumed by `serializeTasks`/`serializePlanTasks` in
+ * `src/lib/api.ts`, which feed `spentMinutes` into every `TaskDTO`/`PlanTaskDTO`. */
 export function focusMinutesByTask(db: DB, taskIds: number[]): Map<number, number> {
   const out = new Map<number, number>();
   if (taskIds.length === 0) return out;

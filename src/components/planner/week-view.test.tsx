@@ -34,8 +34,8 @@ function mount(): { fetchMock: ReturnType<typeof vi.fn>; onRefresh: ReturnType<t
   vi.stubGlobal("fetch", fetchMock);
   const onRefresh = vi.fn();
   render(<WeekView week={week()} today={TODAY} onRefresh={onRefresh} />);
-  // Each due task's own FocusButton asks `/api/focus` for itself on mount; cleared so the
-  // assertions below only see the calls a test's own action makes.
+  // The store makes one `/api/focus` call for the whole page on mount, not one per row; cleared
+  // so the assertions below only see the calls a test's own action makes.
   fetchMock.mockClear();
   return { fetchMock, onRefresh };
 }

@@ -9,6 +9,14 @@ const JSON_HEADERS = { "content-type": "application/json" };
 /** Close enough that correcting the estimate would only be noise. */
 const AGREEMENT_MINUTES = 5;
 
+/** `PatchTaskBody.estimateMinutes` in `src/lib/validation.ts`, a server module this client
+ * component cannot import — the constant is small and stable enough to duplicate rather than
+ * couple a task row to the domain's db-backed modules. Never used to clamp what is offered: a
+ * spent figure outside this range is still shown honestly, only the correction button is
+ * withheld, since silently offering 480 for 500 spent minutes would be quietly wrong (F2). */
+const MIN_OFFERABLE_ESTIMATE = 5;
+const MAX_OFFERABLE_ESTIMATE = 480;
+
 interface Props {
   taskId: number;
   estimateMinutes: number | null;
@@ -32,7 +40,12 @@ export function SpentLine({ taskId, estimateMinutes, spentMinutes }: Props) {
   const spent = formatDuration(spentMinutes * 60_000);
   const line =
     estimateMinutes !== null ? `Estimated ${formatDuration(estimateMinutes * 60_000)}, spent ${spent}` : `Spent ${spent}`;
-  const offCourse = estimateMinutes === null || Math.abs(estimateMinutes - spentMinutes) > AGREEMENT_MINUTES;
+  const disagrees = estimateMinutes === null || Math.abs(estimateMinutes - spentMinutes) > AGREEMENT_MINUTES;
+  // The spent figure is shown either way — it is what actually happened. The offer to correct
+  // the estimate from it is withheld outside the API's own bounds rather than clamped into them:
+  // clamping would offer a number that was never the real one (F2).
+  const offerable = spentMinutes >= MIN_OFFERABLE_ESTIMATE && spentMinutes <= MAX_OFFERABLE_ESTIMATE;
+  const offCourse = disagrees && offerable;
 
   function useAsEstimate() {
     setBusy(true);

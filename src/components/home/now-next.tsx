@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { FocusRunDTO, HomeDTO, HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
+import type { HomeDTO, HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
 import { formatClock, formatDuration } from "../activity/format";
 import { Button, Chip } from "../ui";
 import { blocksOn } from "../planner/block-math";
 import { placeDay, SAVE_ERROR } from "../planner/place-day";
 import { useRecorder } from "../planner/use-recorder";
 import { useFocus } from "../focus/use-focus";
+import { remainingFor } from "../focus/focus-store";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -33,13 +34,6 @@ interface Props {
   focus: HomeDTO["focus"];
 }
 
-/** The run's remaining time, from its own planned end — the same arithmetic `focus-store.ts`
- * runs, recomputed here rather than imported so this reads correctly even before that store's
- * own fetch has caught up with what the page was handed on its first paint. */
-function remainingFor(run: FocusRunDTO): number {
-  return Math.max(0, Date.parse(run.startedAt) + run.plannedMinutes * 60_000 - Date.now());
-}
-
 /**
  * What is happening now, what stands under it, and — on a day whose plan has nowhere to go
  * yet — the one button that gives it somewhere. The current item is a status region, so a
@@ -48,10 +42,13 @@ function remainingFor(run: FocusRunDTO): number {
 export function NowNext({ day, today, now, next, focus }: Props) {
   const [error, setError] = useState<string | null>(null);
   const recorder = useRecorder();
-  // The one store every focus surface reads — no fetch of its own. Its own run wins once it
-  // has loaded; until then the payload's own `focus.running` keeps the first paint honest.
-  const { run: liveRun, finish, busy: focusBusy } = useFocus();
-  const activeRun = liveRun ?? focus.running;
+  // The one store every focus surface reads — no fetch of its own. Its own run wins once it has
+  // loaded (F1): `liveRun ?? focus.running` could not tell "not loaded yet" from "loaded, and
+  // there is no run", and fell through to a payload run that had already ended, under a Stop
+  // button that sent nothing. Until the store has loaded, the payload's own `focus.running`
+  // keeps the first paint honest.
+  const { run: liveRun, loaded: focusLoaded, finish, busy: focusBusy } = useFocus();
+  const activeRun = focusLoaded ? liveRun : focus.running;
   // The dock's chip owns a running session; here it is only news, in place of the button that
   // could no longer start anything.
   const recording = recorder.status.state === "recording" || recorder.status.state === "stopping";

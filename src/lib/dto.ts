@@ -327,7 +327,7 @@ export interface HomeDTO {
    * one is — the same live run a focus-aware surface reads through `useFocus()`, carried here
    * too so the page's first paint already knows it rather than waiting on that store's own
    * fetch. */
-  focus: { minutes: number; runs: number; running: FocusRunDTO | null };
+  focus: { minutes: number; running: FocusRunDTO | null };
 }
 
 export interface GoalMeasureDTO {

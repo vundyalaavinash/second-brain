@@ -23,7 +23,7 @@ function run(over: Partial<FocusRunDTO> = {}): FocusRunDTO {
 }
 
 function complete(over: Partial<FocusCompletedDetail> = {}) {
-  const detail: FocusCompletedDetail = { run: run(), completedToday: 1, settings: SETTINGS, ...over };
+  const detail: FocusCompletedDetail = { run: run(), completedToday: 1, settings: SETTINGS, where: [], ...over };
   act(() => {
     window.dispatchEvent(new CustomEvent<FocusCompletedDetail>("sb:focus-completed", { detail }));
   });
@@ -80,6 +80,27 @@ describe("BreakOffer", () => {
     });
     expect(screen.queryByText(/Back to it in/)).toBeNull();
     expect(screen.queryByText(/Take \d+ minutes\?/)).toBeNull();
+  });
+
+  // F4: design §4.5 — the machine's own record of where the time went, said once, at the moment
+  // it is most useful: right when the run's break is offered.
+  it("says where the time went, once, beside the break offer", async () => {
+    render(<BreakOffer />);
+    complete({
+      run: run({ actualMinutes: 48 }),
+      where: [
+        { label: "Code", ms: 39 * 60_000 },
+        { label: "github.com", ms: 6 * 60_000 },
+      ],
+    });
+    expect(await screen.findByText("48m focused — 39m on Code, 6m on github.com")).toBeTruthy();
+  });
+
+  it("says nothing about where the time went when the helper never reported, or reported nothing for the run", async () => {
+    render(<BreakOffer />);
+    complete({ where: [] });
+    await screen.findByText(/Take \d+ minutes\?/);
+    expect(screen.queryByText(/focused —/)).toBeNull();
   });
 
   it("dismissing the offer removes the line without starting a break", async () => {

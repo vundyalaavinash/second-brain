@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
+import { getDb } from "@/db/client";
+import { startFocus, finishFocus } from "@/domain/focus";
 
 let dir: string;
 let r: {
@@ -10,6 +12,8 @@ let r: {
   containers: typeof import("./containers/route");
   container: typeof import("./containers/[id]/route");
   archive: typeof import("./containers/[id]/archive/route");
+  goals: typeof import("./goals/route");
+  goalLinks: typeof import("./goals/[id]/links/route");
 };
 const json = (method: string, url: string, body?: unknown) =>
   new Request(`http://localhost${url}`, { method, headers: body ? { "content-type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
@@ -24,6 +28,8 @@ beforeAll(async () => {
     containers: await import("./containers/route"),
     container: await import("./containers/[id]/route"),
     archive: await import("./containers/[id]/archive/route"),
+    goals: await import("./goals/route"),
+    goalLinks: await import("./goals/[id]/links/route"),
   };
 });
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -94,5 +100,30 @@ describe("tasks api", () => {
     expect((await r.task.PATCH(json("PATCH", `/api/tasks/${est.id}`, { estimateMinutes: 600 }), params(est.id))).status).toBe(400);
     const cleared = await r.task.PATCH(json("PATCH", `/api/tasks/${est.id}`, { estimateMinutes: null }), params(est.id));
     expect(((await cleared.json()) as { estimateMinutes: number | null }).estimateMinutes).toBeNull();
+  });
+
+  // F10: the PATCH response used to always claim `goals: []` and `spentMinutes: 0`, whatever the
+  // task's real container goals or booked focus time were. Nothing reads that body today, which
+  // is exactly why it must not quietly lie once something does.
+  it("answers a PATCH with the task's real goals and spent minutes, not always empty and zero", async () => {
+    const project = await r.containers.POST(json("POST", "/api/containers", { kind: "project", name: "Ship goals fix" }));
+    const { id: containerId } = (await project.json()) as { id: number };
+    const goal = await r.goals.POST(json("POST", "/api/goals", { title: "Ship it", horizon: "quarter", targetDate: "2026-12-31" }));
+    const { id: goalId } = (await goal.json()) as { id: number };
+    await r.goalLinks.PUT(json("PUT", `/api/goals/${goalId}/links`, { containerIds: [containerId] }), params(goalId));
+
+    const created = await r.tasks.POST(json("POST", "/api/tasks", { title: "Do the work", containerId }));
+    const { id: taskId } = (await created.json()) as { id: number };
+
+    // Through the domain directly, with an explicit clock, so the run actually books 25 minutes
+    // rather than the ~0 elapsed ms a same-instant API round trip would abandon.
+    const db = getDb();
+    const run = startFocus(db, { taskId, minutes: 25 }, new Date(2026, 8, 22, 9, 0, 0));
+    finishFocus(db, run.id, "completed", new Date(2026, 8, 22, 9, 25, 0));
+
+    const patched = await r.task.PATCH(json("PATCH", `/api/tasks/${taskId}`, { priority: "high" }), params(taskId));
+    const body = (await patched.json()) as { goals: { id: number; title: string }[]; spentMinutes: number };
+    expect(body.goals).toEqual([{ id: goalId, title: "Ship it" }]);
+    expect(body.spentMinutes).toBe(25);
   });
 });

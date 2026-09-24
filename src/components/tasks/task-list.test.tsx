@@ -72,8 +72,9 @@ describe("TaskList", () => {
     const refreshed = { open: 2, done: 0, total: 2, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
     const urls: string[] = [];
     stub(async (url) => {
-      // Every row's own FocusButton asks `/api/focus` for itself on mount, background noise
-      // unrelated to what this list refetches when a task changes elsewhere.
+      // The store makes exactly one `/api/focus` call for the whole page, not one per row, but
+      // it is still background noise unrelated to what this list refetches when a task changes
+      // elsewhere.
       if (url !== "/api/focus") urls.push(url);
       return new Response(JSON.stringify({ tasks: [base, added], progress: refreshed }), { status: 200 });
     });

@@ -35,7 +35,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
     projects: [{ id: 4, name: "Launch", slug: "launch", open: 2, done: 2, nextTask: null, deadline: null, updatedAt: "2026-09-21T09:00:00.000Z" }],
     recent: [{ id: 9, type: "note", title: "Kickoff notes", updatedAt: "2026-09-22T10:00:00.000Z", status: "ready" }],
     activity: { activeMs: 3_600_000, top: [{ label: "Code", ms: 3_600_000 }] },
-    focus: { minutes: 0, runs: 0, running: null },
+    focus: { minutes: 0, running: null },
     ...over,
   };
 }

@@ -116,7 +116,7 @@ describe("homePayload", () => {
     finishFocus(t.db, run.id, "completed", new Date(2026, 8, 22, 8, 45, 0));
 
     const home = homePayload(t.db, NOW);
-    expect(home.focus).toEqual({ minutes: 45, runs: 1, running: null });
+    expect(home.focus).toEqual({ minutes: 45, running: null });
   });
 
   it("lets a live run take the Now slot in place of a running session, never in place of a meeting", () => {
@@ -126,7 +126,10 @@ describe("homePayload", () => {
     const run = startFocus(t.db, { taskId: task.id, blockId: block.id, minutes: 45 }, new Date(2026, 8, 22, 10, 0, 0));
 
     const withoutMeeting = homePayload(t.db, NOW);
-    expect(withoutMeeting.now).toBeNull();
+    // The server no longer nulls the session out from under a live run — the client alone
+    // decides which of the two wins the Now slot (F3), so Home still has the session to fall
+    // back on if the run turns out to be gone by the time this payload is read.
+    expect(withoutMeeting.now).toMatchObject({ kind: "session", title: "Write the spec", taskId: task.id });
     expect(withoutMeeting.focus.running).toMatchObject({ id: run.id, taskId: task.id, taskTitle: "Write the spec", plannedMinutes: 45 });
 
     replaceCalendarEvents(t.db, [{ externalId: "m1", title: "Standup", startsAt: at(10), endsAt: at(11), attendees: 3, hasCallLink: false }]);

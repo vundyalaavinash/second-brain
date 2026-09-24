@@ -265,4 +265,34 @@ describe("useFocus", () => {
     expect(patchCalls).toBe(1);
     expect(outcomes).toEqual(["completed"]);
   });
+
+  it("F9: a failed auto-finish PATCH is not refired from the next tick, once a second", async () => {
+    const live: FocusRunDTO = run({ plannedMinutes: 1 });
+    let patchCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/focus" && !init?.method) return Response.json({ run: live, settings: SETTINGS, completedToday: 0 });
+      if (url === "/api/focus/1" && init?.method === "PATCH") {
+        patchCalls += 1;
+        return Response.json({ error: "offline" }, { status: 500 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse(STARTED_AT));
+
+    renderHook(() => useFocus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    // Well past the one-minute plan, one second at a time — every tick after the first failure
+    // would fire another PATCH without the guard.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(65_000);
+    });
+
+    expect(patchCalls).toBe(1);
+  });
 });

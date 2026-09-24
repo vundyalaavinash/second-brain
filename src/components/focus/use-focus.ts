@@ -9,6 +9,11 @@ export type { StartFocusInput, FocusCompletedDetail } from "./focus-store";
 
 export interface UseFocusResult {
   run: FocusRunDTO | null;
+  /** Whether the store's own `GET /api/focus` has landed yet. A caller holding a run of its own
+   * from elsewhere — a server-rendered payload — must read this before falling back to it:
+   * `false` and "loaded, and there is no run" both leave `run` null, and only `loaded` tells
+   * them apart. */
+  loaded: boolean;
   settings: FocusSettingsDTO;
   completedToday: number;
   /** Milliseconds left in the live run, zero while idle. Ticks once a second; never asks the
@@ -32,6 +37,7 @@ export function useFocus(): UseFocusResult {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   return {
     run: state.run,
+    loaded: state.loaded,
     settings: state.settings,
     completedToday: state.completedToday,
     remainingMs: state.remainingMs,
