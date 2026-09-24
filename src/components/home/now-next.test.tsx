@@ -8,7 +8,7 @@ const DATE = "2026-09-22";
 
 const planTask = (over: Partial<PlanTaskDTO> = {}): PlanTaskDTO => ({
   id: 7, title: "Write the brief", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
   ...over,
 });
 

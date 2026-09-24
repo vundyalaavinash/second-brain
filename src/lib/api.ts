@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock } from "@/db/schema";
@@ -12,9 +13,10 @@ import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
+import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type GoalWithMeasure } from "@/domain/goals";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
-import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -124,9 +126,9 @@ export function serializeBlock(b: TaskBlock): BlockDTO {
   return { id: b.id, taskId: b.taskId, startsAt: b.startsAt, minutes: b.minutes };
 }
 
-/** A task and its sessions. Sessions are passed in rather than read here, so a list pays for one
- * query instead of one per row. */
-export function serializeTask(t: Task, blocks: TaskBlock[] = []): TaskDTO {
+/** A task, its sessions and the active goals its container serves. Both are passed in rather
+ * than read here, so a list pays for one query each instead of one per row. */
+export function serializeTask(t: Task, blocks: TaskBlock[] = [], goals: GoalRefDTO[] = []): TaskDTO {
   return {
     id: t.id,
     title: t.title,
@@ -139,6 +141,7 @@ export function serializeTask(t: Task, blocks: TaskBlock[] = []): TaskDTO {
     estimateMinutes: t.estimateMinutes,
     sessionMinutes: t.sessionMinutes,
     blocks: blocks.map(serializeBlock),
+    goals,
     completedAt: t.completedAt,
     sortOrder: t.sortOrder,
     createdAt: t.createdAt,
@@ -147,8 +150,8 @@ export function serializeTask(t: Task, blocks: TaskBlock[] = []): TaskDTO {
 }
 
 /** The plan entry's order wins over the task's own: on a plan, position means the day's order. */
-export function serializePlanTask(t: Task & { planId: number; sortOrder: number }, blocks: TaskBlock[] = []): PlanTaskDTO {
-  return { ...serializeTask(t, blocks), sortOrder: t.sortOrder, planId: t.planId };
+export function serializePlanTask(t: Task & { planId: number; sortOrder: number }, blocks: TaskBlock[] = [], goals: GoalRefDTO[] = []): PlanTaskDTO {
+  return { ...serializeTask(t, blocks, goals), sortOrder: t.sortOrder, planId: t.planId };
 }
 
 /** How many days either side of today a task list carries sessions for: last week, because a
@@ -162,21 +165,34 @@ export function taskBlockWindow(today: string = localDay(new Date().toISOString(
   return { from: addDays(today, -WINDOW_BEFORE), to: addDays(today, WINDOW_AFTER) };
 }
 
-/** A list of tasks with their sessions, in one query for the lot. The window bounds what each
- * row carries: without one a task placed every day for a year would serialize all of it. */
-export function serializeTasks(db: DB, list: Task[], window: { from: string; to: string } = taskBlockWindow()): TaskDTO[] {
-  const byTask = blocksByTask(db, list.map((t) => t.id), window);
-  return list.map((t) => serializeTask(t, byTask.get(t.id) ?? []));
+/** Every listed task's container's active goals, in one query for the distinct container ids
+ * rather than one per task: the same shape `blocksByTask` already reads for sessions. */
+function goalsByTask(db: DB, list: { id: number; containerId: number | null }[]): Map<number, GoalRefDTO[]> {
+  const containerIds = [...new Set(list.map((t) => t.containerId).filter((id): id is number => id !== null))];
+  const byContainer = goalRefsByContainer(db, containerIds);
+  const out = new Map<number, GoalRefDTO[]>();
+  for (const t of list) out.set(t.id, (t.containerId !== null ? byContainer.get(t.containerId) : undefined) ?? []);
+  return out;
 }
 
-/** A day's plan with its sessions, in one query for the lot. */
+/** A list of tasks with their sessions and goals, in one query each for the lot. The window
+ * bounds what each row carries: without one a task placed every day for a year would serialize
+ * all of it. */
+export function serializeTasks(db: DB, list: Task[], window: { from: string; to: string } = taskBlockWindow()): TaskDTO[] {
+  const byTask = blocksByTask(db, list.map((t) => t.id), window);
+  const goals = goalsByTask(db, list);
+  return list.map((t) => serializeTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? []));
+}
+
+/** A day's plan with its sessions and goals, in one query each for the lot. */
 export function serializePlanTasks(
   db: DB,
   list: (Task & { planId: number; sortOrder: number })[],
   window: { from: string; to: string } = taskBlockWindow(),
 ): PlanTaskDTO[] {
   const byTask = blocksByTask(db, list.map((t) => t.id), window);
-  return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? []));
+  const goals = goalsByTask(db, list);
+  return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? []));
 }
 
 /**
@@ -204,6 +220,44 @@ export function serializeMeeting(ev: CalendarEvent): ActivityMeetingDTO {
     status: ev.status,
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
+  };
+}
+
+export function serializeGoal(g: GoalWithMeasure): GoalDTO {
+  return {
+    id: g.id,
+    title: g.title,
+    outcome: g.outcome,
+    horizon: g.horizon,
+    targetDate: g.targetDate,
+    status: g.status,
+    notes: g.notes,
+    sortOrder: g.sortOrder,
+    closedAt: g.closedAt,
+    measure: g.measure,
+    containers: g.containers,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+  };
+}
+
+/** How many of a goal's most recently closed tasks its detail page carries. */
+const RECENT_CLOSES = 10;
+
+/**
+ * The goal detail payload, built once here rather than separately by the server-rendered page
+ * and its API route — the two are the same three calls in the same order, and having only one
+ * of them means there is nothing left to drift out of sync. Undefined when the goal does not
+ * exist, so each caller keeps its own choice of 404.
+ */
+export function goalDetail(db: DB, id: number, today: string): GoalDetailDTO | undefined {
+  const [goal] = goalsWithMeasure(db, { id }, today);
+  if (!goal) return undefined;
+  const progress = containerProgress(db, goal.containers.map((c) => c.id));
+  return {
+    ...serializeGoal(goal),
+    links: goal.containers.map((container) => ({ container, progress: progress.get(container.id)! })),
+    recentCloses: recentCloses(db, id, RECENT_CLOSES),
   };
 }
 
@@ -243,6 +297,11 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof DuplicateError) {
     return NextResponse.json({ error: err.message, existingId: err.existingId }, { status: err.status });
   }
+  // A body that fails schema validation is a client mistake, not a server one: it reads as 400
+  // here so a route that parses straight through zod never needs its own catch for it.
+  if (err instanceof ZodError) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
   if (
     err instanceof CaptureError ||
     err instanceof ContainerError ||
@@ -251,7 +310,8 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof MeetingError ||
     err instanceof AttachmentError ||
     err instanceof TaskError ||
-    err instanceof BlockError
+    err instanceof BlockError ||
+    err instanceof GoalError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus } from "@/db/enums";
 
 export interface ContainerRefDTO {
   id: number;
@@ -81,6 +81,8 @@ export interface TaskDTO {
   sessionMinutes: number | null;
   /** The task's sessions, ordered by start, across every day it holds one. */
   blocks: BlockDTO[];
+  /** The active goals the task's container serves; empty with no container or none active. */
+  goals: GoalRefDTO[];
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -318,4 +320,42 @@ export interface HomeDTO {
   recent: RecentItemDTO[];
   /** Null until the helper has reported at all, which is what hides the section. */
   activity: { activeMs: number; top: { label: string; ms: number }[] } | null;
+}
+
+export interface GoalMeasureDTO {
+  open: number;
+  done: number;
+  total: number;
+  percent: number;
+  movement: number;
+  lastClosedAt: string | null;
+  stalled: boolean;
+}
+
+/** The goal a task's project serves, as a row chip shows it. */
+export interface GoalRefDTO {
+  id: number;
+  title: string;
+}
+
+export interface GoalDTO {
+  id: number;
+  title: string;
+  outcome: string;
+  horizon: GoalHorizon;
+  targetDate: string;
+  status: GoalStatus;
+  notes: string;
+  sortOrder: number;
+  closedAt: string | null;
+  measure: GoalMeasureDTO;
+  containers: ContainerRefDTO[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoalDetailDTO extends GoalDTO {
+  /** Each linked container with its own progress, so the goal page shows where the work is. */
+  links: { container: ContainerRefDTO; progress: ProgressDTO }[];
+  recentCloses: { id: number; title: string; completedAt: string; containerName: string }[];
 }

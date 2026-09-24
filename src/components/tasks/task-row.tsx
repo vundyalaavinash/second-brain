@@ -328,6 +328,21 @@ export function TaskRow({
     )
   );
 
+  // The goal the task's project serves, named faintly right after the title: a second one
+  // shows as a count rather than a second name, so the row never reads as a list of goals.
+  const goalRef = task.goals[0];
+  const moreGoals = task.goals.length - 1;
+  const goalChip = goalRef && (
+    <Chip
+      href={`/goals/${goalRef.id}`}
+      title={goalRef.title}
+      className="text-fg-faint h-5 px-1.5 text-[11px] shrink-0 max-w-[9rem]"
+    >
+      <span className="truncate">{goalRef.title}</span>
+      {moreGoals > 0 && <span className="shrink-0">+{moreGoals}</span>}
+    </Chip>
+  );
+
   const actions = (
     <>
       {done ? (
@@ -633,6 +648,7 @@ export function TaskRow({
         {checkbox}
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           {titleNode}
+          {goalChip}
           {dueNode}
           {(onEstimate || blockNode) && (
             <span className="flex items-center gap-2">
@@ -653,6 +669,7 @@ export function TaskRow({
       </span>
       {checkbox}
       {titleNode}
+      {goalChip}
       {task.priority === "high" && (
         <Chip as="span" className="text-warn border-warn/40 shrink-0">
           High

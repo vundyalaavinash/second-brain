@@ -39,3 +39,9 @@ export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 
 export const CALENDAR_SOURCES = ["eventkit", "feed"] as const;
 export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
+
+export const GOAL_HORIZONS = ["quarter", "year"] as const;
+export type GoalHorizon = (typeof GOAL_HORIZONS)[number];
+
+export const GOAL_STATUSES = ["active", "hit", "missed", "dropped"] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];

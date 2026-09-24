@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const task: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
 interface ExtraProps {
@@ -171,6 +171,27 @@ describe("TaskRow compact", () => {
     // The due date moves under the title, still in mono; the priority chip is dropped.
     expect(screen.getByRole("button", { name: "Fri 18" }).className).toContain("font-mono");
     expect(screen.queryByText("High")).toBeNull();
+  });
+});
+
+describe("TaskRow goal", () => {
+  it("names the goal its container serves, faintly and linked to the goal", () => {
+    renderRow({}, { ...task, goals: [{ id: 3, title: "Launch v2" }] });
+    const chip = screen.getByRole("link", { name: "Launch v2" });
+    expect(chip.getAttribute("href")).toBe("/goals/3");
+    expect(chip.className).toContain("text-fg-faint");
+  });
+
+  it("shows the first goal and a count for the rest", () => {
+    renderRow({}, { ...task, goals: [{ id: 3, title: "Launch v2" }, { id: 4, title: "Ship the API" }] });
+    const chip = screen.getByRole("link", { name: "Launch v2+1" });
+    expect(chip.getAttribute("href")).toBe("/goals/3");
+    expect(screen.queryByText("Ship the API")).toBeNull();
+  });
+
+  it("renders exactly as it does today when the task has no goal", () => {
+    renderRow({}, task);
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 

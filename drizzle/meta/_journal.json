@@ -85,6 +85,13 @@
       "when": 1790216761045,
       "tag": "0011_task_blocks",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790274094775,
+      "tag": "0012_goals",
+      "breakpoints": true
     }
   ]
 }

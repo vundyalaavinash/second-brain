@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarDays, ChevronRight } from "lucide-react";
-import type { ContainerDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
+import type { ContainerDTO, GoalRefDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
 import { setCurrentContainer } from "@/lib/current-container";
@@ -18,6 +18,7 @@ import { CompleteProjectDialog } from "./complete-project-dialog";
 import { ProgressRing } from "./tasks/progress-ring";
 import { TaskList } from "./tasks/task-list";
 import { ContainerRail } from "./containers/container-rail";
+import { GoalsLine } from "./containers/goals-line";
 import { LinksSection } from "./containers/links-section";
 import { NotesSection } from "./containers/notes-section";
 
@@ -40,12 +41,15 @@ export function ContainerEditor({
   initial,
   items,
   tasks,
+  goals = [],
   today,
   onEditorReady,
 }: {
   initial: ContainerDTO;
   items: ItemDTO[];
   tasks: TaskDTO[];
+  /** The active goals this container serves, for the line under its name. */
+  goals?: GoalRefDTO[];
   today: string;
   onEditorReady?: (editor: Editor) => void;
 }) {
@@ -326,6 +330,7 @@ export function ContainerEditor({
       {c.kind === "project" ? (
         <section className="pane p-6 flex flex-col gap-4">
           {nameInput}
+          <GoalsLine goals={goals} />
           <input
             value={goal}
             onChange={(e) => {
@@ -362,7 +367,10 @@ export function ContainerEditor({
           {aboutDisclosure}
         </section>
       ) : (
-        nameInput
+        <>
+          {nameInput}
+          <GoalsLine goals={goals} />
+        </>
       )}
 
       {c.kind === "area" && (
