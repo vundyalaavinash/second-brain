@@ -44,7 +44,7 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 | Keys | Action |
 |---|---|
 | `⌘K` | Command palette |
-| `g h` `g d` `g i` `g p` `g a` `g r` `g e` `g t` `g l` `g x` `g s` `g c` | Home, Planner, Inbox, Projects, Areas, Resources, People, Activity, Library, Archive, Search, Capture |
+| `g h` `g d` `g g` `g i` `g p` `g a` `g r` `g e` `g t` `g l` `g x` `g s` `g c` | Home, Planner, Goals, Inbox, Projects, Areas, Resources, People, Activity, Library, Archive, Search, Capture |
 | `/` | Focus search |
 | `⌘↵` | Capture |
 | `⌘S` | Save item, container, or person |
@@ -122,6 +122,10 @@ The activity helper reads macOS Calendar, so any account added in System Setting
 **Place in free slots** on a row menu, or `f` on the focused row, clears the task's sessions on the day and lays fresh ones into the gaps the calendar leaves, earliest first and never straddling a meeting or another session. On today it starts no earlier than now; on any other day it starts at the top of the working hours. Two sessions of the same task laid in one gap keep ten minutes apart — the break is not held for the task, so anything else placed after it may take that time. **Fill the day** in the plan's own menu does the same for every plan task that has no session yet, in plan order. What the day had no room for is **unplaced**: the toast after a place says "Placed 3 sessions, 1h 20m unplaced" and offers **Place tomorrow** (named for the day itself, **Place on Fri 25**, when the day on screen is not today), which from a single row plans the task for the next day and places it there; after **Fill the day** it plans nothing new — it places what the next day already carries. A toast with an offer stays for twenty seconds, `⌘.` takes it from anywhere, and Escape puts it away; the header's capacity line carries the unplaced figure after the blocked one.
 
 **Block now** on a plan row menu, or `n` on the focused row, starts one session at the next five minutes, and **Take off the timeline** clears the day's sessions. A row with a session shows when the first one starts, with a "+2" counting the others the day holds, and pressing it scrolls the timeline to that session and hands it the keyboard. The plan's menu sorts the day's rows by their first session with **Sort by time**, and rows with no session keep their order at the end. The header's capacity line says how much of the plan is blocked, the bar under the plan shows it as a brighter segment, and a day with blocked time carries a violet dot in the Week view.
+
+## Goals
+
+`/goals` holds the outcomes above your projects: a quarter or a year, a target date, and any number of projects or areas linked to it. A goal has no tasks of its own — its progress is the open and done count of whatever it is linked to, summed and read as one percent, so a goal and the projects under it can never disagree on where the work stands. **Stalled** means nothing has closed against a goal in 14 days, or it has nothing linked to close at all; the row says so in words, without alarm, rather than turning red. Closing a goal asks whether it was hit, missed, or dropped, and a closed goal drops off every task row and container page it used to badge — only an active goal's name follows its work around the app. `g g` opens Goals from anywhere.
 
 ## Design docs
 

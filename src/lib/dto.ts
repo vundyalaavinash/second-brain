@@ -81,6 +81,8 @@ export interface TaskDTO {
   sessionMinutes: number | null;
   /** The task's sessions, ordered by start, across every day it holds one. */
   blocks: BlockDTO[];
+  /** The active goals the task's container serves; empty with no container or none active. */
+  goals: GoalRefDTO[];
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;

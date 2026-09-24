@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { getContainerBySlug } from "@/domain/containers";
+import { goalRefsByContainer } from "@/domain/goals";
 import { listItems } from "@/domain/items";
 import { listTasks } from "@/domain/tasks";
 import { serializeContainer, serializeItem, serializeTasks } from "@/lib/api";
@@ -19,5 +20,6 @@ export default async function ContainerPage({ params }: { params: Promise<{ slug
     db,
     listTasks(db, { containerId: c.id, status: "all" }).filter((t) => t.status !== "dropped"),
   );
-  return <ContainerEditor key={c.id} initial={serializeContainer(db, c)} items={items} tasks={tasks} today={todayLocal()} />;
+  const goals = goalRefsByContainer(db, [c.id]).get(c.id) ?? [];
+  return <ContainerEditor key={c.id} initial={serializeContainer(db, c)} items={items} tasks={tasks} goals={goals} today={todayLocal()} />;
 }

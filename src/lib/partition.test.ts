@@ -12,6 +12,7 @@ const t = (id: number, dueDate: string | null) => ({
   sourceItemId: null,
   estimateMinutes: null,
   sessionMinutes: null, blocks: [],
+  goals: [],
   completedAt: null,
   sortOrder: 0,
   createdAt: "",

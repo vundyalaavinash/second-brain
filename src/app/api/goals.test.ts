@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
-import type { GoalDTO } from "@/lib/dto";
+import type { GoalDTO, TaskDTO } from "@/lib/dto";
 
 let dir: string;
 let r: {
@@ -58,6 +58,26 @@ describe("goals api", () => {
 
     const closed = await r.goal.PATCH(json("PATCH", `/api/goals/${goal.id}`, { status: "hit" }), { params: Promise.resolve({ id: String(goal.id) }) });
     expect(((await closed.json()) as GoalDTO).status).toBe("hit");
+  });
+
+  it("a task carries the goals its project serves, and drops them when the goal closes", async () => {
+    const made = await r.goals.POST(json("POST", "/api/goals", { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" }));
+    const goal = (await made.json()) as GoalDTO;
+    const goalId = goal.id;
+
+    const project = await r.containers.POST(json("POST", "/api/containers", { kind: "project", name: "Carry the goal" }));
+    const { id: containerId } = (await project.json()) as { id: number };
+    await r.links.PUT(json("PUT", `/api/goals/${goal.id}/links`, { containerIds: [containerId] }), { params: Promise.resolve({ id: String(goal.id) }) });
+
+    await r.tasks.POST(json("POST", "/api/tasks", { title: "one", containerId }));
+
+    const list = (await (await r.tasks.GET(json("GET", "/api/tasks"))).json()) as { tasks: TaskDTO[] };
+    expect(list.tasks[0].goals).toEqual([{ id: goalId, title: "Launch v2" }]);
+
+    await r.goal.PATCH(json("PATCH", `/api/goals/${goal.id}`, { status: "hit" }), { params: Promise.resolve({ id: String(goal.id) }) });
+
+    const after = (await (await r.tasks.GET(json("GET", "/api/tasks"))).json()) as { tasks: TaskDTO[] };
+    expect(after.tasks[0].goals).toEqual([]);
   });
 
   it("refuses a body it does not recognise", async () => {

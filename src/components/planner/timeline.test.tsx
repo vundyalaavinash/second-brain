@@ -43,6 +43,7 @@ const blocked: PlanTaskDTO = {
   estimateMinutes: 45,
   sessionMinutes: null,
   blocks: [{ id: 1, taskId: 12, startsAt: `${DATE}T10:30:00`, minutes: 45 }],
+  goals: [],
   completedAt: null,
   sortOrder: 0,
   createdAt: "",
