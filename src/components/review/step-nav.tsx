@@ -40,6 +40,9 @@ export function StepNav({ current, answers, onSelect }: { current: ReviewStep; a
           >
             {done && !active && <Check className="w-3 h-3 text-fg-faint" aria-hidden />}
             {STEP_LABELS[step]}
+            {/* The tick is decoration; this is the mark — in the accessible name itself, not
+              * only in a shape a screen reader has no reason to describe. */}
+            {done && !active && <span className="sr-only">, answered</span>}
           </button>
         );
       })}

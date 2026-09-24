@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ListChecks } from "lucide-react";
 import type { PlanTaskDTO } from "@/lib/dto";
 import { formatShortDate } from "../tasks/task-row";
@@ -8,7 +7,12 @@ import { Button, EmptyState, List, Row, SectionHeading, Textarea } from "../ui";
 import { InboxProcessor } from "../inbox-processor";
 
 interface Props {
+  inbox: number;
   leftover: PlanTaskDTO[];
+  /** Tasks this pass has already carried onto next Monday's plan — carrying does not remove a
+   * task from this week's own leftover list (it stays wherever else it already sits), so this
+   * is the only thing that tells the two clicks apart. */
+  carried: Set<number>;
   value: string;
   onChange: (value: string) => void;
   /** Moves the task onto next Monday's plan; it stays wherever else it already sits. */
@@ -22,13 +26,10 @@ interface Props {
  * the same widget `/inbox` renders — its own fetch, its own keyboard, nothing rebuilt here — so
  * a person who has already learned that screen needs nothing new to clear this one.
  */
-export function StepClear({ leftover, value, onChange, onCarry, onDrop }: Props) {
-  // Purely local, purely a mark that a row has been looked at and left as it stands: nothing
-  // here is written anywhere, so it does not survive leaving the step and back is fine.
-  const [left, setLeft] = useState<Set<number>>(new Set());
-
+export function StepClear({ inbox, leftover, carried, value, onChange, onCarry, onDrop }: Props) {
   return (
     <div className="flex flex-col gap-6">
+      <SectionHeading count={inbox}>Inbox</SectionHeading>
       <InboxProcessor />
 
       <section>
@@ -38,31 +39,20 @@ export function StepClear({ leftover, value, onChange, onCarry, onDrop }: Props)
         ) : (
           <List>
             {leftover.map((t) => {
-              const done = left.has(t.id);
+              const onNextWeek = carried.has(t.id);
               return (
-                <Row key={t.id} className={done ? "opacity-50" : ""}>
+                <Row key={t.id}>
                   <span className="flex-1 min-w-0 truncate text-[13px]">{t.title}</span>
                   {t.dueDate && <span className="font-mono text-[11px] text-fg-faint shrink-0">{formatShortDate(t.dueDate)}</span>}
-                  <Button size="sm" variant="secondary" onClick={() => onCarry(t.id)}>
-                    Carry
-                  </Button>
+                  {onNextWeek ? (
+                    <span className="text-[12px] text-fg-muted shrink-0">On next week&apos;s plan</span>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => onCarry(t.id)}>
+                      Carry
+                    </Button>
+                  )}
                   <Button size="sm" variant="danger" onClick={() => onDrop(t.id)}>
                     Drop
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-pressed={done}
-                    onClick={() =>
-                      setLeft((s) => {
-                        const next = new Set(s);
-                        if (next.has(t.id)) next.delete(t.id);
-                        else next.add(t.id);
-                        return next;
-                      })
-                    }
-                  >
-                    {done ? "Left" : "Leave"}
                   </Button>
                 </Row>
               );

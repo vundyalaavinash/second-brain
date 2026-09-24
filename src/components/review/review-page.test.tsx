@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { ReviewPage } from "./review-page";
-import type { ReviewDTO } from "@/lib/dto";
+import { ReviewPage, SAVE_ERROR } from "./review-page";
+import type { PlanTaskDTO, ReviewDTO } from "@/lib/dto";
 import type { ReviewStep } from "@/db/enums";
+
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push }) }));
 
 const WEEK = "2026-09-21";
 const NEXT_WEEK = "2026-09-28";
@@ -15,6 +18,7 @@ function payload(over: Partial<ReviewDTO> = {}): ReviewDTO {
     label: "Week of 21 September 2026",
     days: DAYS,
     today: WEEK,
+    asOf: WEEK,
     current: true,
     step: "clear",
     answers: {},
@@ -27,12 +31,41 @@ function payload(over: Partial<ReviewDTO> = {}): ReviewDTO {
   };
 }
 
+const planTask = (id: number, title: string): PlanTaskDTO => ({
+  id,
+  title,
+  notes: "",
+  status: "open",
+  priority: "normal",
+  dueDate: null,
+  containerId: null,
+  sourceItemId: null,
+  estimateMinutes: null,
+  sessionMinutes: null,
+  blocks: [],
+  goals: [],
+  spentMinutes: 0,
+  completedAt: null,
+  sortOrder: 0,
+  createdAt: "",
+  updatedAt: "",
+  planId: id,
+});
+
+type Handler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+function patchCalls(fn: ReturnType<typeof vi.fn>): { step: ReviewStep; value: unknown }[] {
+  return (fn.mock.calls as unknown as [RequestInfo | URL, RequestInit | undefined][])
+    .filter(([input, init]) => String(input) === "/api/review" && init?.method === "PATCH")
+    .map(([, init]) => JSON.parse(String(init!.body)) as { step: ReviewStep; value: unknown });
+}
+
 /** Answers `/api/inbox` (InboxProcessor's own fetch, embedded in the Clear pane) and `/api/review`
  * PATCH by merging the saved step into the answers the given payload holds — enough to prove a
  * save round-trips without a real server. Every other request is a 404 so it cannot be mistaken
  * for one that was meant to be answered. */
 function stubFetch(current: ReviewDTO) {
-  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fn = vi.fn<Handler>(async (input, init) => {
     const url = String(input);
     if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
     if (url === "/api/review" && init?.method === "PATCH") {
@@ -49,13 +82,14 @@ function stubFetch(current: ReviewDTO) {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  nav.push.mockClear();
 });
 
 describe("ReviewPage", () => {
   it("opens on the step the saved review left off at", async () => {
     stubFetch(payload());
     render(<ReviewPage initial={payload({ step: "back", answers: { clear: "Cleared the inbox out." } })} />);
-    expect(screen.getByRole("button", { name: "Look back" }).getAttribute("aria-current")).toBe("step");
+    expect(screen.getByRole("button", { name: /Look back/ }).getAttribute("aria-current")).toBe("step");
     // The Look back pane's own content is showing, not the Clear pane's.
     expect(screen.getByText("How did the week go")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Inbox" })).toBeNull();
@@ -76,23 +110,22 @@ describe("ReviewPage", () => {
     expect((screen.getByLabelText("Anything to flag before moving on") as HTMLTextAreaElement).value).toBe("Inbox is empty, three tasks left over.");
   });
 
-  it("names every step in the nav, and marks the answered ones", () => {
+  it("names every step in the nav, and gives the answered one — not the open one — an accessible mark, without touching the untouched ones", () => {
     stubFetch(payload());
     render(<ReviewPage initial={payload({ step: "back", answers: { clear: "Cleared the inbox out." } })} />);
-    const nav = screen.getByRole("navigation", { name: "Review steps" });
     for (const label of ["Clear the decks", "Look back", "Goals", "Look ahead"]) {
-      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: new RegExp(label) }).length).toBeGreaterThan(0);
     }
-    // Answered but not the one open: marked done.
-    const clearButton = screen.getByRole("button", { name: "Clear the decks" });
-    expect(clearButton.querySelector("svg")).toBeTruthy();
+    // Answered but not the one open: the mark is in the accessible name itself, not only in a
+    // decorative tick a screen reader has no reason to describe.
+    const clearButton = screen.getByRole("button", { name: "Clear the decks, answered" });
     expect(clearButton.getAttribute("aria-current")).toBeNull();
-    // Open but not yet answered: current, no tick.
+    // Open but not yet answered: current, no "answered" mark.
     const backButton = screen.getByRole("button", { name: "Look back" });
     expect(backButton.getAttribute("aria-current")).toBe("step");
-    expect(backButton.querySelector("svg")).toBeNull();
-    // Untouched steps: neither.
-    expect(nav.contains(screen.getByRole("button", { name: "Goals" }))).toBe(true);
+    // Untouched: neither current nor answered.
+    const goalsButton = screen.getByRole("button", { name: "Goals" });
+    expect(goalsButton.getAttribute("aria-current")).toBeNull();
   });
 
   it("says so when the week has nothing to show rather than rendering empty panes", async () => {
@@ -108,5 +141,154 @@ describe("ReviewPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(screen.getByText("Nothing due, booked, or planned for next week yet.")).toBeTruthy());
+  });
+
+  it("shows the inbox count on the step that owns it", () => {
+    stubFetch(payload());
+    render(<ReviewPage initial={payload({ clear: { inbox: 3, leftover: [] } })} />);
+    expect(screen.getByText("3", { selector: "span" })).toBeTruthy();
+  });
+
+  it("does not save an untouched step just by tabbing through it, and does not mark it answered", async () => {
+    const fn = stubFetch(payload());
+    render(<ReviewPage initial={payload()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.getByText("Nothing due, booked, or planned for next week yet.")).toBeTruthy());
+    expect(patchCalls(fn)).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(screen.getByLabelText("Anything to flag before moving on")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /answered/ })).toBeNull();
+  });
+
+  it("queues a second save for the same step behind the first, and sends whatever was typed most recently", async () => {
+    let current = payload();
+    let releaseFirst: (() => void) | null = null;
+    let patchCount = 0;
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/review" && init?.method === "PATCH") {
+        patchCount += 1;
+        const body = JSON.parse(String(init.body)) as { step: ReviewStep; value: string };
+        if (patchCount === 1) await new Promise<void>((resolve) => (releaseFirst = resolve));
+        current = { ...current, answers: { ...current.answers, [body.step]: body.value } };
+        return Response.json(current);
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+
+    render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "first draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // save #1 for "clear" — held
+    await waitFor(() => expect(patchCount).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" })); // "back" is untouched: no request
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "second draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // save #2 for "clear" — queued behind #1
+
+    expect(patchCount).toBe(1); // still queued, not yet sent
+    releaseFirst!();
+    await waitFor(() => expect(patchCount).toBe(2));
+
+    const calls = patchCalls(fn);
+    expect(calls[0]).toMatchObject({ step: "clear", value: "first draft" });
+    // The queued save read the draft at the moment it actually ran, not the moment it was
+    // enqueued — so the keystroke typed while the first save was in flight is not lost.
+    expect(calls[1]).toMatchObject({ step: "clear", value: "second draft" });
+  });
+
+  it("keeps a failed step's error until that step itself saves, not wiped by another step's success", async () => {
+    let current = payload();
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/review" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { step: ReviewStep; value: string };
+        if (body.step === "clear") return new Response(null, { status: 500 });
+        current = { ...current, answers: { ...current.answers, [body.step]: body.value } };
+        return Response.json(current);
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+
+    render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "will fail" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // clear -> back, save fails
+    await waitFor(() => expect(screen.getByLabelText("How did the week go")).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull(); // the failure belongs to "clear", not shown here
+
+    fireEvent.change(screen.getByLabelText("How did the week go"), { target: { value: "will succeed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // back -> goals, save succeeds
+    await waitFor(() => expect(screen.getByText("No active goals to check in on.")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" })); // goals -> back
+    fireEvent.click(screen.getByRole("button", { name: "Back" })); // back -> clear
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(SAVE_ERROR));
+  });
+
+  it("saves the open step when the page itself goes away, not only when the step changes", async () => {
+    const fn = stubFetch(payload());
+    const { unmount } = render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "typed but never left" } });
+    unmount();
+    await waitFor(() => expect(patchCalls(fn)).toHaveLength(1));
+    expect(patchCalls(fn)[0]).toMatchObject({ step: "clear", value: "typed but never left" });
+  });
+
+  it("saves the open step on beforeunload, for a hard close or reload the page never unmounts for", async () => {
+    const fn = stubFetch(payload());
+    render(<ReviewPage initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Anything to flag before moving on"), { target: { value: "closing the tab" } });
+    fireEvent(window, new Event("beforeunload"));
+    await waitFor(() => expect(patchCalls(fn).length).toBeGreaterThanOrEqual(1));
+    expect(patchCalls(fn)[0]).toMatchObject({ step: "clear", value: "closing the tab" });
+  });
+
+  it("shows a visible Finish on the last step instead of a disabled Next, and leaves for Home once it saves", async () => {
+    const fn = stubFetch(payload({ step: "ahead" }));
+    render(<ReviewPage initial={payload({ step: "ahead" })} />);
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("The intention for next week"), { target: { value: "Ship the review." } });
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/"));
+    expect(patchCalls(fn).some((c) => c.step === "ahead" && c.value === "Ship the review.")).toBe(true);
+  });
+
+  it("makes a carried task's new plan visible, and does not claim success when the carry fails", async () => {
+    const withLeftover = payload({ clear: { inbox: 0, leftover: [planTask(41, "Draft the doc")] } });
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/plan" && init?.method === "POST") return Response.json({ date: NEXT_WEEK, tasks: [] });
+      if (url.startsWith("/api/review?week=")) return Response.json(withLeftover);
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+    render(<ReviewPage initial={withLeftover} />);
+    fireEvent.click(screen.getByRole("button", { name: "Carry" }));
+    await waitFor(() => expect(screen.getByText("On next week's plan")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Carry" })).toBeNull();
+  });
+
+  it("leaves a failed carry looking like nothing happened, not like a success", async () => {
+    const withLeftover = payload({ clear: { inbox: 0, leftover: [planTask(41, "Draft the doc")] } });
+    const fn = vi.fn<Handler>(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url === "/api/plan" && init?.method === "POST") return new Response(null, { status: 500 });
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+    render(<ReviewPage initial={withLeftover} />);
+    fireEvent.click(screen.getByRole("button", { name: "Carry" }));
+    await waitFor(() => expect(fn.mock.calls.some(([i]) => String(i) === "/api/plan")).toBe(true));
+    expect(screen.queryByText("On next week's plan")).toBeNull();
+    expect(screen.getByRole("button", { name: "Carry" })).toBeTruthy();
   });
 });

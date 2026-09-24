@@ -27,13 +27,13 @@ afterEach(cleanup);
 
 describe("StepGoals", () => {
   it("lists each active goal with its own GoalRow and a one-line note box beneath it", () => {
-    render(<StepGoals goals={[goal()]} today={TODAY} value={{}} onChange={() => {}} />);
+    render(<StepGoals goals={[goal()]} asOf={TODAY} value={{}} onChange={() => {}} />);
     expect(screen.getByRole("link", { name: "Launch v2" })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Note for Launch v2" })).toBeTruthy();
   });
 
   it("says a stalled goal is stalled, once, in the muted tone — GoalRow's own wording, not repeated here", () => {
-    render(<StepGoals goals={[goal({ measure: { open: 2, done: 0, total: 2, percent: 0, movement: 0, lastClosedAt: null, stalled: true } })]} today={TODAY} value={{}} onChange={() => {}} />);
+    render(<StepGoals goals={[goal({ measure: { open: 2, done: 0, total: 2, percent: 0, movement: 0, lastClosedAt: null, stalled: true } })]} asOf={TODAY} value={{}} onChange={() => {}} />);
     const matches = screen.getAllByText(/nothing closed on this/i);
     expect(matches).toHaveLength(1);
     expect(matches[0].className).toContain("text-fg-faint");
@@ -41,7 +41,7 @@ describe("StepGoals", () => {
 
   it("keys each note by goal id and reports it on change", () => {
     const onChange = vi.fn();
-    render(<StepGoals goals={[goal({ id: 7 }), goal({ id: 9, title: "Ship the docs" })]} today={TODAY} value={{ "7": "On track" }} onChange={onChange} />);
+    render(<StepGoals goals={[goal({ id: 7 }), goal({ id: 9, title: "Ship the docs" })]} asOf={TODAY} value={{ "7": "On track" }} onChange={onChange} />);
     const first = screen.getByRole("textbox", { name: "Note for Launch v2" }) as HTMLInputElement;
     expect(first.value).toBe("On track");
     fireEvent.change(screen.getByRole("textbox", { name: "Note for Ship the docs" }), { target: { value: "Slipping a bit" } });
@@ -49,7 +49,7 @@ describe("StepGoals", () => {
   });
 
   it("says so when there are no active goals, rather than rendering an empty list", () => {
-    render(<StepGoals goals={[]} today={TODAY} value={{}} onChange={() => {}} />);
+    render(<StepGoals goals={[]} asOf={TODAY} value={{}} onChange={() => {}} />);
     expect(screen.getByText("No active goals to check in on.")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
   });

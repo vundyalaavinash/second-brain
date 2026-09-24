@@ -414,9 +414,14 @@ export interface ReviewDTO {
   week: string;
   label: string;
   days: string[];
-  /** The day this payload was assembled on — for date math a fixed figure elsewhere in the DTO
-   * cannot answer, `GoalRow`'s own deadline and stalled-since reading chief among them. */
+  /** The day this payload was assembled on — for date math that genuinely means "now",
+   * distinct from `asOf` below. */
   today: string;
+  /** The day `goals[].measure` was actually measured as of: today for the current week, the
+   * week's own last day for a closed one (design §5.1's "movement for the week" rule). Pass
+   * this to `GoalRow`, never `today` — a past week's `stalled`/`movement` were computed against
+   * its own end, not against whatever day the review happens to be read on. */
+  asOf: string;
   /** Whether the week being reviewed is the one the app is being used in. */
   current: boolean;
   /** Where to resume: the first step with no answer yet, or the last step once every one does. */

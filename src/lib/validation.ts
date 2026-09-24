@@ -5,6 +5,17 @@ import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
 
+/** `DateString`, plus a real calendar date: `2026-13-45` matches the regex but `new Date` rolls
+ * it over to 2027-02-08, and the review routes write a permanent record keyed by whatever date
+ * they are given, so a malformed-but-well-formed date must 400 here rather than silently open
+ * a different week's review. (The regex-only gap is pre-existing elsewhere in the app, e.g.
+ * `/api/plan` — out of scope to fix everywhere from this route.) */
+export const CalendarDateString = DateString.refine((s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}, "not a real calendar date");
+
 export const ContainerBody = z
   .object({
     name: z.string().min(1),
@@ -95,10 +106,10 @@ export const FocusSettingsBody = z
  * any other step, rendered as `[object Object]` in the body; the discriminant rules both out at
  * the door. */
 export const SaveReviewBody = z.discriminatedUnion("step", [
-  z.object({ week: DateString, step: z.literal("clear"), value: z.string() }).strict(),
-  z.object({ week: DateString, step: z.literal("back"), value: z.string() }).strict(),
-  z.object({ week: DateString, step: z.literal("goals"), value: z.record(z.string(), z.string()) }).strict(),
-  z.object({ week: DateString, step: z.literal("ahead"), value: z.string() }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("clear"), value: z.string() }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("back"), value: z.string() }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("goals"), value: z.record(z.string(), z.string()) }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("ahead"), value: z.string() }).strict(),
 ]);
 
 /** Ties the four literals above to `REVIEW_STEPS` without building the union programmatically
@@ -111,4 +122,4 @@ type SaveReviewStep = z.infer<typeof SaveReviewBody>["step"];
 const _reviewStepsTiedToSaveReviewBody: StepsMatch<ReviewStep, SaveReviewStep> = true;
 void _reviewStepsTiedToSaveReviewBody;
 
-export const ReviewPlanBody = z.object({ week: DateString, taskIds: z.array(z.number().int().positive()) }).strict();
+export const ReviewPlanBody = z.object({ week: CalendarDateString, taskIds: z.array(z.number().int().positive()) }).strict();
