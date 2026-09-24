@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { HomePage } from "./home-page";
+import { resetFocusStore } from "../focus/focus-store";
 import type { HomeDTO, PlanTaskDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
@@ -56,8 +57,13 @@ const homeCalls = (fetchMock: ReturnType<typeof stubHome>) =>
   (fetchMock.mock.calls as unknown as FetchCall[]).filter(([input]) => String(input) === "/api/home");
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
   nav.push.mockClear();
   try {

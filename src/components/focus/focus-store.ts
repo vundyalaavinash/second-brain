@@ -70,9 +70,13 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let onFocusChanged: (() => void) | null = null;
 /** The id of the run an auto-finish PATCH is already in flight for — set synchronously, in the
- * same tick that reads it, so a second tick (there is only ever one, but a manual Stop can land
- * in the same instant) cannot fire the PATCH twice. */
+ * same call that reads it, whether that call is the tick noticing zero or a manual Stop, so
+ * whichever loses the race sees the guard already up and never sends a second PATCH. */
 let finishingId: number | null = null;
+/** True whenever there is no subscriber to serve. Checked by `load()` after every `await`, so a
+ * request already in flight when the last subscriber unmounts cannot write to `state` (and, by
+ * calling `setState`, arm a tick interval) after the engine believes it has stopped. */
+let engineStopped = true;
 
 function setState(patch: Partial<FocusStoreState>): void {
   state = { ...state, ...patch };
@@ -82,9 +86,10 @@ function setState(patch: Partial<FocusStoreState>): void {
 
 /** Starts the one-second tick while a run is live, stops it the instant one is not — checked
  * after every state change rather than owned by a React effect, so it needs no component to
- * exist at all. */
+ * exist at all. With no subscriber left this always stops it: a state change from a request that
+ * outlived its engine must never arm a timer nothing is around to clear. */
 function syncTick(): void {
-  const live = state.run !== null;
+  const live = subscriberCount > 0 && state.run !== null;
   if (live && !tickTimer) {
     tickTimer = setInterval(tick, TICK_MS);
   } else if (!live && tickTimer) {
@@ -108,8 +113,9 @@ function tick(): void {
 async function load(): Promise<void> {
   try {
     const res = await fetch("/api/focus", { cache: "no-store" });
-    if (!res.ok) return;
+    if (!res.ok || engineStopped) return;
     const data = (await res.json()) as { run: FocusRunDTO | null; settings: FocusSettingsDTO; completedToday: number };
+    if (engineStopped) return;
     setState({ run: data.run, settings: data.settings, completedToday: data.completedToday, remainingMs: remainingFor(data.run) });
   } catch {
     /* offline: the next poll or event retries */
@@ -151,6 +157,7 @@ async function finishRun(id: number, outcome: FocusOutcome): Promise<void> {
 }
 
 function startEngine(): void {
+  engineStopped = false;
   void load();
   onFocusChanged = () => void load();
   window.addEventListener("sb:focus-changed", onFocusChanged);
@@ -159,6 +166,7 @@ function startEngine(): void {
 }
 
 function stopEngine(): void {
+  engineStopped = true;
   if (onFocusChanged) {
     window.removeEventListener("sb:focus-changed", onFocusChanged);
     onFocusChanged = null;
@@ -194,36 +202,42 @@ export function getServerSnapshot(): FocusStoreState {
   return INITIAL_STATE;
 }
 
-export function start(input: StartFocusInput): void {
+/** Returns once the write settles, so a caller that starts a second run right after stopping
+ * the first — `⌘⇧F` switching tasks — can sequence the two instead of firing them together and
+ * letting whichever response lands last win. Callers that only fire-and-forget (a click handler)
+ * are free to ignore the promise; it never rejects, every failure path resolves through `error`. */
+export async function start(input: StartFocusInput): Promise<void> {
   setState({ busy: true });
-  void (async () => {
-    try {
-      const res = await fetch("/api/focus", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        setState({ error: (body as { error?: string } | null)?.error ?? "Could not start a run" });
-        return;
-      }
-      const run = body as FocusRunDTO;
-      setState({ run, remainingMs: remainingFor(run), error: null });
-    } catch {
-      setState({ error: "Could not start a run" });
-    } finally {
-      setState({ busy: false });
-      window.dispatchEvent(new Event("sb:focus-changed"));
+  try {
+    const res = await fetch("/api/focus", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      setState({ error: (body as { error?: string } | null)?.error ?? "Could not start a run" });
+      return;
     }
-  })();
+    const run = body as FocusRunDTO;
+    setState({ run, remainingMs: remainingFor(run), error: null });
+  } catch {
+    setState({ error: "Could not start a run" });
+  } finally {
+    setState({ busy: false });
+    window.dispatchEvent(new Event("sb:focus-changed"));
+  }
 }
 
-export function finish(outcome: FocusOutcome): void {
+export async function finish(outcome: FocusOutcome): Promise<void> {
   const run = state.run;
   if (!run) return;
+  // The auto-finish tick, or another call to `finish`, may already be closing this same run —
+  // `⌘⇧F` reaches this directly and carries no `disabled={busy}` of its own to shield it the way
+  // the Stop buttons do.
+  if (finishingId === run.id) return;
   finishingId = run.id;
-  void finishRun(run.id, outcome);
+  await finishRun(run.id, outcome);
 }
 
 /** Test-only: drops every timer and listener and puts the store back to its initial state, so

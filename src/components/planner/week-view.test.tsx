@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { WeekView } from "./week-view";
+import { resetFocusStore } from "../focus/focus-store";
 import { PatchTaskBody } from "@/lib/validation";
 import type { PlannerWeekDTO, TaskDTO } from "@/lib/dto";
 
@@ -44,8 +45,13 @@ function column(weekday: string): HTMLElement {
   return screen.getByText(weekday).closest(".pane") as HTMLElement;
 }
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
   nav.push.mockClear();
 });

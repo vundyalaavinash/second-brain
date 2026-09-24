@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { TaskList } from "./task-list";
+import { resetFocusStore } from "../focus/focus-store";
 import type { TaskDTO } from "@/lib/dto";
 
 // See container-editor.test.tsx: this vitest config has no global `afterEach`, so
 // @testing-library/react's auto-cleanup never registers and DOM from one `it` would
 // otherwise still be attached (and matched by role/name queries) in the next.
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
 });
 

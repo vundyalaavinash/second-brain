@@ -189,4 +189,80 @@ describe("useFocus", () => {
     await waitFor(() => expect(result.current.error).toBe("Task not found"));
     expect(result.current.run).toBeNull();
   });
+
+  it("N1: a load already in flight when the last subscriber unmounts cannot arm a timer afterward", async () => {
+    let resolveGet!: (res: Response) => void;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/focus" && !init?.method) return new Promise<Response>((resolve) => (resolveGet = resolve));
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse(STARTED_AT));
+
+    const { unmount } = renderHook(() => useFocus());
+    // The GET fired on mount, still in flight. Unmounting drops the subscriber count to zero and
+    // stops the engine before that request ever resolves.
+    unmount();
+
+    // Resolves after the last subscriber is gone, with a run already past its planned end — the
+    // shape that, without the fix, ticks once and PATCHes with nothing mounted at all.
+    resolveGet(Response.json({ run: run({ startedAt: "2020-01-01T00:00:00.000Z", plannedMinutes: 1 }), settings: SETTINGS, completedToday: 0 }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    const patches = fetchMock.mock.calls.filter(([u, i]) => String(u).startsWith("/api/focus/") && (i as RequestInit | undefined)?.method === "PATCH");
+    expect(patches).toHaveLength(0);
+  });
+
+  it("N2: a manual stop landing while the auto-finish PATCH is in flight sends only one PATCH", async () => {
+    let live: FocusRunDTO | null = run({ plannedMinutes: 1 });
+    const outcomes: string[] = [];
+    let resolvePatch!: (res: Response) => void;
+    let patchCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/focus" && !init?.method) return Response.json({ run: live, settings: SETTINGS, completedToday: 0 });
+      if (url === "/api/focus/1" && init?.method === "PATCH") {
+        patchCalls += 1;
+        outcomes.push((JSON.parse(String(init.body)) as { outcome: string }).outcome);
+        // The auto-finish PATCH is held open, so a manual stop has a window to race it.
+        return new Promise<Response>((resolve) => (resolvePatch = resolve));
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse(STARTED_AT));
+
+    const { result } = renderHook(() => useFocus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // Past the one-minute plan: the tick's auto-finish fires and its PATCH is now in flight.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(patchCalls).toBe(1);
+
+    // A manual Stop lands while that PATCH is still outstanding — `⌘⇧F`'s exact path, which
+    // carries no `disabled={busy}` of its own.
+    act(() => {
+      void result.current.finish("stopped");
+    });
+
+    live = { ...live!, endedAt: new Date().toISOString(), actualMinutes: 1, outcome: "completed" };
+    resolvePatch(Response.json({ run: live, where: [] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(patchCalls).toBe(1);
+    expect(outcomes).toEqual(["completed"]);
+  });
 });

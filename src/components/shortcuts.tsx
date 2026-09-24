@@ -67,14 +67,18 @@ export function Shortcuts() {
         const { run, start, finish } = focusRef.current;
         const task = focusedTask(e.target);
         if (run) {
-          finish("stopped");
           // A different task under the keyboard: stop the incumbent and start the new one in
           // the same press, design §4.6's "starting a second stops the first". The same task —
-          // or nothing at all — is just a stop; a second press is what starts it again.
-          if (task && task.taskId !== run.taskId) start(task);
+          // or nothing at all — is just a stop; a second press is what starts it again. The
+          // start is sequenced after the stop settles rather than fired alongside it: unordered,
+          // whichever response lands last would win, flickering the chip between the two tasks.
+          void (async () => {
+            await finish("stopped");
+            if (task && task.taskId !== run.taskId) await start(task);
+          })();
           return;
         }
-        if (task) start(task);
+        if (task) void start(task);
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || isTyping(e.target)) return;

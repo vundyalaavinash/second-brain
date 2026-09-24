@@ -14,8 +14,10 @@ export interface UseFocusResult {
   /** Milliseconds left in the live run, zero while idle. Ticks once a second; never asks the
    * server to recompute it. */
   remainingMs: number;
-  start: (input: store.StartFocusInput) => void;
-  finish: (outcome: FocusOutcome) => void;
+  /** Resolves once the write settles — never rejects — so a caller that needs to sequence a
+   * stop and a start (`⌘⇧F` switching tasks) can await it; a click handler is free to not. */
+  start: (input: store.StartFocusInput) => Promise<void>;
+  finish: (outcome: FocusOutcome) => Promise<void>;
   busy: boolean;
   error: string | null;
 }

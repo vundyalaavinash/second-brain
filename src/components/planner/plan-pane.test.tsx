@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act, waitFor, within } from "@testing-library/react";
 import { PlanPane } from "./plan-pane";
+import { resetFocusStore } from "../focus/focus-store";
 import { CarryOverBody } from "@/lib/validation";
 import type { PlannerDayDTO, PlanTaskDTO, TaskDTO } from "@/lib/dto";
 
@@ -86,8 +87,13 @@ function mount(date = TODAY) {
   return { fetchMock, onRefresh };
 }
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
   nav.push.mockClear();
   try {
