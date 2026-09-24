@@ -40,7 +40,10 @@ export function GoalLinksEditor({ goalId, links, onChange }: Props) {
       });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
       const detailRes = await fetch(`/api/goals/${goalId}`);
-      if (detailRes.ok) onChange((await detailRes.json()) as GoalDetailDTO);
+      // The write already landed; a failed re-read must say so rather than leave the list
+      // showing the pre-edit set as if nothing happened.
+      if (!detailRes.ok) throw new Error("Saved, but could not refresh the list. Reload to see the change.");
+      onChange((await detailRes.json()) as GoalDetailDTO);
       window.dispatchEvent(new Event("sb:goals-changed"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

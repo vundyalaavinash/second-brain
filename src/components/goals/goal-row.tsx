@@ -25,16 +25,16 @@ export function GoalRow({ goal, today }: { goal: GoalDTO; today: string }) {
   const stalled = goal.measure.stalled;
   return (
     <li className="hairline-row flex flex-col gap-1.5 py-3 px-1">
-      <div className="flex items-center gap-3">
-        <ProgressRing percent={goal.measure.percent} size={28} stroke={3} />
-        <Link href={`/goals/${goal.id}`} className="focus-ring rounded-sm text-[14.5px] font-medium hover:text-violet-bright">
-          {goal.title}
-        </Link>
-      </div>
-      {goal.outcome && <p className="text-[13px] text-fg-muted m-0 pl-[2.5rem]">{goal.outcome}</p>}
-      <div className="flex items-center gap-2 flex-wrap pl-[2.5rem] text-[12px]">
+      <Link href={`/goals/${goal.id}`} className="focus-ring rounded-sm text-[14.5px] font-medium hover:text-violet-bright">
+        {goal.title}
+      </Link>
+      {goal.outcome && <p className="text-[13px] text-fg-muted m-0">{goal.outcome}</p>}
+      {/* Movement leads, in words; progress is the small ring behind it, never the loudest
+        * thing in the row. */}
+      <div className="flex items-center gap-2 flex-wrap text-[12px]">
         <span className={stalled ? "text-fg-faint" : "text-fg-muted"}>{goalMovementLabel(goal.measure, today)}</span>
         <span className="text-fg-faint">·</span>
+        <ProgressRing percent={goal.measure.percent} size={16} stroke={2} />
         <span className="font-mono text-fg-muted">{goal.measure.percent}%</span>
         {goal.containers.map((c) => (
           <Chip key={c.id} href={`/c/${c.slug}`} className="h-5 px-1.5 text-[11px]">

@@ -17,8 +17,10 @@ export function GoalList({ active: initialActive, closed: initialClosed, today }
   const [active, setActive] = useState(initialActive);
   const [closed, setClosed] = useState(initialClosed);
   const [creating, setCreating] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const request = useRef(0);
+  const newGoalButtonRef = useRef<HTMLButtonElement>(null);
 
   // A refresh still waiting when the page goes belongs to nothing.
   useEffect(
@@ -37,9 +39,15 @@ export function GoalList({ active: initialActive, closed: initialClosed, today }
         // One list carries everything, already sorted active-first: the split into the two
         // sections happens here rather than as two requests.
         const res = await fetch("/api/goals").catch(() => null);
-        if (!res?.ok) return;
-        const body = (await res.json()) as { goals: GoalDTO[] };
+        const body = res?.ok ? ((await res.json()) as { goals: GoalDTO[] }) : null;
+        // Only the latest request gets to speak, on either a success or a failure: an earlier
+        // one that failed after a later one already landed must not paint a stale error over it.
         if (id !== request.current) return;
+        if (!body) {
+          setRefreshError("Could not refresh the list. Showing what was last loaded.");
+          return;
+        }
+        setRefreshError(null);
         setActive(body.goals.filter((g) => g.status === "active"));
         setClosed(body.goals.filter((g) => g.status !== "active"));
       })();
@@ -61,11 +69,12 @@ export function GoalList({ active: initialActive, closed: initialClosed, today }
           </>
         }
         actions={
-          <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
+          <Button ref={newGoalButtonRef} variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
             New goal
           </Button>
         }
       />
+      {refreshError && <p className="text-[12px] text-fg-faint">{refreshError}</p>}
       {active.length === 0 ? (
         <EmptyState icon={Target} text="No active goals yet. A goal is an outcome above your projects, with a date." />
       ) : (
@@ -87,7 +96,10 @@ export function GoalList({ active: initialActive, closed: initialClosed, today }
       )}
       {creating && (
         <GoalForm
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            setCreating(false);
+            newGoalButtonRef.current?.focus();
+          }}
           onSaved={(g) => {
             setCreating(false);
             window.dispatchEvent(new Event("sb:goals-changed"));

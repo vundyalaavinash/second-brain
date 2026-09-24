@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Check, RotateCcw, Trash2 } from "lucide-react";
@@ -13,6 +13,7 @@ import { Crumb } from "../shell/crumb";
 import { goalMovementLabel } from "./goal-row";
 import { GoalForm } from "./goal-form";
 import { CloseGoalDialog } from "./close-goal-dialog";
+import { DeleteGoalDialog } from "./delete-goal-dialog";
 import { GoalLinksEditor } from "./goal-links-editor";
 
 const STATUS_LABEL: Record<GoalDTO["status"], string> = { active: "Active", hit: "Hit", missed: "Missed", dropped: "Dropped" };
@@ -22,8 +23,14 @@ export function GoalPage({ initial, today }: { initial: GoalDetailDTO; today: st
   const [goal, setGoal] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each dialog's trigger keeps its own ref, the way dock.tsx's `moreRef` does, so focus can be
+  // handed back to the control that opened it once the dialog closes.
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
 
   /** A patch carries the whole GoalDTO shape, so it can simply overwrite everything but the
    * two fields (`links`, `recentCloses`) the detail view alone knows about. */
@@ -33,32 +40,23 @@ export function GoalPage({ initial, today }: { initial: GoalDetailDTO; today: st
   }
 
   async function reopen() {
+    if (reopening) return;
+    setReopening(true);
     setError(null);
-    const res = await fetch(`/api/goals/${goal.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: "active" }),
-    });
-    if (!res.ok) {
-      setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
-      return;
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (!res.ok) {
+        setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
+        return;
+      }
+      applyPatch((await res.json()) as GoalDTO);
+    } finally {
+      setReopening(false);
     }
-    applyPatch((await res.json()) as GoalDTO);
-  }
-
-  async function remove() {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
-    const res = await fetch(`/api/goals/${goal.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
-      setConfirmDelete(false);
-      return;
-    }
-    window.dispatchEvent(new Event("sb:goals-changed"));
-    router.push("/goals");
   }
 
   const due = deadlineLabel(goal.targetDate, today);
@@ -81,25 +79,19 @@ export function GoalPage({ initial, today }: { initial: GoalDetailDTO; today: st
           </span>
         )}
         <span className="flex-1" />
-        <Button variant="secondary" size="sm" icon={Pencil} onClick={() => setEditing(true)}>
+        <Button ref={editButtonRef} variant="secondary" size="sm" icon={Pencil} onClick={() => setEditing(true)}>
           Edit
         </Button>
         {goal.status === "active" ? (
-          <Button variant="secondary" size="sm" icon={Check} onClick={() => setClosing(true)}>
+          <Button ref={closeButtonRef} variant="secondary" size="sm" icon={Check} onClick={() => setClosing(true)}>
             Close
           </Button>
         ) : (
-          <Button variant="secondary" size="sm" icon={RotateCcw} onClick={() => void reopen()}>
+          <Button variant="secondary" size="sm" icon={RotateCcw} disabled={reopening} onClick={() => void reopen()}>
             Reopen
           </Button>
         )}
-        <IconButton
-          label={confirmDelete ? "Confirm delete" : "Delete goal"}
-          icon={Trash2}
-          danger={confirmDelete}
-          onClick={() => void remove()}
-          onBlur={() => setConfirmDelete(false)}
-        />
+        <IconButton ref={deleteButtonRef} label="Delete goal" icon={Trash2} onClick={() => setDeleting(true)} />
       </header>
 
       {error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{error}</div>}
@@ -142,20 +134,41 @@ export function GoalPage({ initial, today }: { initial: GoalDetailDTO; today: st
       {editing && (
         <GoalForm
           goal={goal}
-          onClose={() => setEditing(false)}
+          onClose={() => {
+            setEditing(false);
+            editButtonRef.current?.focus();
+          }}
           onSaved={(g) => {
             setEditing(false);
             applyPatch(g);
+            editButtonRef.current?.focus();
           }}
         />
       )}
       {closing && (
         <CloseGoalDialog
           goal={goal}
-          onClose={() => setClosing(false)}
+          onClose={() => {
+            setClosing(false);
+            closeButtonRef.current?.focus();
+          }}
           onDone={(g) => {
             setClosing(false);
             applyPatch(g);
+            closeButtonRef.current?.focus();
+          }}
+        />
+      )}
+      {deleting && (
+        <DeleteGoalDialog
+          goal={goal}
+          onClose={() => {
+            setDeleting(false);
+            deleteButtonRef.current?.focus();
+          }}
+          onDeleted={() => {
+            window.dispatchEvent(new Event("sb:goals-changed"));
+            router.push("/goals");
           }}
         />
       )}

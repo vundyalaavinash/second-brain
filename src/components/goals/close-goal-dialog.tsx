@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CircleCheck, CircleX, CircleSlash } from "lucide-react";
 import type { GoalDTO } from "@/lib/dto";
 import type { GoalStatus } from "@/db/enums";
@@ -12,10 +12,28 @@ interface Props {
   onClose: () => void;
 }
 
-/** Asks how a goal landed and closes it that way. Mirrors complete-project-dialog.tsx. */
+/**
+ * Asks how a goal landed and closes it that way. The three choices and the error banner mirror
+ * complete-project-dialog.tsx's shape; the modal semantics (role, Escape, focus-in) do not — see
+ * task-2-review.md finding 3: that dialog is the repo's outlier, not its norm.
+ */
 export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = `${useId()}-close-goal-title`;
+
+  useEffect(() => {
+    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function close(status: Exclude<GoalStatus, "active">) {
     setBusy(true);
@@ -37,8 +55,17 @@ export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
-      <div className="panel w-[480px] max-w-[92vw] rounded-lg p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-[16px] font-medium">Close “{goal.title}”</h2>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="panel w-[480px] max-w-[92vw] rounded-lg p-5 flex flex-col gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id={titleId} className="text-[16px] font-medium">
+          Close “{goal.title}”
+        </h2>
         <p className="text-[13px] text-fg-muted">How did it land?</p>
         <Button variant="secondary" icon={CircleCheck} disabled={busy} onClick={() => void close("hit")} className="w-full justify-start h-9">
           Hit — it happened

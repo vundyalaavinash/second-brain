@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
 import { GoalRow } from "./goal-row";
 import type { GoalDTO } from "@/lib/dto";
 
@@ -11,10 +11,15 @@ const goal = (over: Partial<GoalDTO> = {}): GoalDTO => ({
   containers: [], createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z", ...over,
 });
 
+afterEach(cleanup);
+
 describe("GoalRow", () => {
   it("leads with movement and shows progress behind it", () => {
     render(<GoalRow goal={goal()} today="2026-09-24" />);
-    expect(screen.getByText(/2 closed this week/i)).toBeTruthy();
+    const movement = screen.getByText(/2 closed this week/i);
+    const ring = screen.getByRole("img", { name: "70% done" });
+    // Document order is visual order here: movement is meant to lead the row, progress trails.
+    expect(movement.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText(/70%/)).toBeTruthy();
   });
 

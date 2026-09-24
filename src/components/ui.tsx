@@ -67,7 +67,7 @@ export function IconButton({
   danger = false,
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: LucideIcon; active?: boolean; danger?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: LucideIcon; active?: boolean; danger?: boolean; ref?: Ref<HTMLButtonElement> }) {
   const look = danger ? "text-danger hover:bg-danger/10" : active ? "text-violet-bright bg-violet-dim" : "text-fg-muted hover:text-fg hover:bg-layer-2";
   return (
     <button
