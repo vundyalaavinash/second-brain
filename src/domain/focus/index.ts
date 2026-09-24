@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { focusRuns, tasks, type FocusRun } from "@/db/schema";
+import { focusRuns, tasks, type FocusRun, type TaskBlock } from "@/db/schema";
 import type { FocusOutcome } from "@/db/enums";
 import { getTask } from "@/domain/tasks";
 import { getBlock } from "@/domain/blocks";
@@ -114,12 +114,16 @@ function liveRow(db: Executor): FocusRun | undefined {
  * - Under `ABANDON_UNDER` minutes is a mis-click, not work: it is abandoned whatever it was
  *   called, and books nothing.
  * - Past the run's planned end by more than `STALE_AFTER`, the run closes at the end it was
- *   *meant* to have, as "completed", regardless of what outcome the caller asked for and
- *   regardless of how late the caller's own clock reads — a laptop that slept mid-run and woke
- *   ten hours later must book the same minutes whether the stale run was found by a background
- *   read (`runningFocus`) or by the tab finally posting its finish. After this there is no way,
- *   through any exported function, to book more than `plannedMinutes + STALE_AFTER` against a
- *   task.
+ *   *meant* to have, as "completed", regardless of how late the caller's own clock reads — a
+ *   laptop that slept mid-run and woke ten hours later must book the same minutes whether the
+ *   stale run was found by a background read (`runningFocus`) or by the tab finally posting its
+ *   finish. After this there is no way, through any exported function, to book more than
+ *   `plannedMinutes + STALE_AFTER` against a task.
+ * - An explicit `"abandoned"` always wins over staleness: design §4.1 defines abandoned as ended
+ *   under two minutes in *or discarded by the person*, and a person who comes back and discards a
+ *   run they left running must still get 0 minutes booked, however late that discard call
+ *   arrives. The staleness override above is only for a caller with no opinion, or one asking for
+ *   `"stopped"`/`"completed"` — it is not license to overrule an explicit discard.
  * - "completed" means the clock reached zero, so it books exactly `plannedMinutes` — never a
  *   rounded wall-clock figure, so an on-time finish a few seconds late does not round up past
  *   what was planned. "stopped" keeps the rounded wall-clock time: that is what "ended early with
@@ -130,9 +134,12 @@ function closeRow(db: Executor, run: FocusRun, outcome: FocusOutcome, now: Date)
   if (now.getTime() < start) throw new FocusError("A run cannot end before it started");
   const plannedEnd = start + run.plannedMinutes * 60_000;
   const stale = now.getTime() - plannedEnd > STALE_AFTER * 60_000;
-  const endAt = stale ? new Date(plannedEnd) : now;
+  // A stale run is forced to "completed" at its planned end — unless the caller explicitly
+  // discarded it, which must survive however late that call arrives.
+  const forceCompleted = stale && outcome !== "abandoned";
+  const endAt = forceCompleted ? new Date(plannedEnd) : now;
   const ran = Math.max(0, Math.round((endAt.getTime() - start) / 60_000));
-  const settled: FocusOutcome = stale ? "completed" : ran < ABANDON_UNDER || outcome === "abandoned" ? "abandoned" : outcome;
+  const settled: FocusOutcome = forceCompleted ? "completed" : ran < ABANDON_UNDER || outcome === "abandoned" ? "abandoned" : outcome;
   const actualMinutes = settled === "abandoned" ? 0 : settled === "completed" ? run.plannedMinutes : ran;
   const row = db
     .update(focusRuns)
@@ -144,25 +151,34 @@ function closeRow(db: Executor, run: FocusRun, outcome: FocusOutcome, now: Date)
   return row;
 }
 
-/** Starts a run on a task, in the minutes given or the default length. Starting stops whatever
- * run is currently live, in the same transaction: there is only ever one run at a time, and the
- * incumbent keeps whatever it has actually run rather than losing it to a race. */
+/** Starts a run on a task. Length is chosen in the order design §4.2 lays out: an explicit
+ * `minutes` first, then the named block's own length, then the saved default for a run with no
+ * session behind it at all. Starting stops whatever run is currently live, in the same
+ * transaction: there is only ever one run at a time, and the incumbent keeps whatever it has
+ * actually run rather than losing it to a race. */
 export function startFocus(db: DB, input: { taskId: number; blockId?: number | null; minutes?: number }, now = new Date()): FocusRun {
   if (!getTask(db, input.taskId)) throw new FocusError("Task not found", 404);
+  let block: TaskBlock | undefined;
   if (input.blockId != null) {
     // A block names the session this run's length is meant to come from (design §4.2): one that
     // does not exist, or belongs to a different task, is a silent mis-attribution, not a run.
-    const block = getBlock(db, input.blockId);
+    block = getBlock(db, input.blockId);
     if (!block) throw new FocusError("Session not found", 404);
     if (block.taskId !== input.taskId) throw new FocusError("That session belongs to a different task");
   }
-  const minutes = input.minutes ?? getFocusSettings(db).defaultMinutes;
+  const minutes = input.minutes ?? block?.minutes ?? getFocusSettings(db).defaultMinutes;
   if (!Number.isInteger(minutes) || minutes < MIN_FOCUS_MINUTES || minutes > MAX_FOCUS_MINUTES) {
     throw new FocusError(`A run is ${MIN_FOCUS_MINUTES} to ${MAX_FOCUS_MINUTES} minutes`);
   }
   return db.transaction((tx) => {
     const live = liveRow(tx);
-    if (live) closeRow(tx, live, "stopped", now);
+    if (live) {
+      // A clock that has stepped backwards must not fail an unrelated new-run request: clamp the
+      // incumbent's close to no earlier than its own start, rather than let closeRow's guard
+      // (rightly strict for a caller naming its own run in finishFocus) reject this one instead.
+      const stopAt = new Date(Math.max(now.getTime(), Date.parse(live.startedAt)));
+      closeRow(tx, live, "stopped", stopAt);
+    }
     const row = tx
       .insert(focusRuns)
       .values({ taskId: input.taskId, blockId: input.blockId ?? null, startedAt: now.toISOString(), plannedMinutes: minutes })

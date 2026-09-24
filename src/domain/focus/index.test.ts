@@ -73,6 +73,20 @@ describe("a focus run", () => {
     expect(runningFocus(t.db, at("09:35"))!.taskId).toBe(b.id);
   });
 
+  it("starts a second run even when the clock has stepped backwards, clamping the incumbent's close rather than failing", () => {
+    const a = createTask(t.db, { title: "A" });
+    const b = createTask(t.db, { title: "B" });
+    startFocus(t.db, { taskId: a.id, minutes: 45 }, at("10:00"));
+    // An NTP step backwards: the new start's `now` predates the incumbent's own start.
+    const second = startFocus(t.db, { taskId: b.id, minutes: 25 }, at("09:00"));
+    expect(second.taskId).toBe(b.id);
+    expect(runningFocus(t.db, at("09:05"))!.taskId).toBe(b.id);
+    const rows = t.db.select().from(focusRuns).all();
+    const stopped = rows.find((r) => r.taskId === a.id)!;
+    // Clamped to no earlier than its own start: zero elapsed, so it reads as abandoned.
+    expect(stopped).toMatchObject({ outcome: "abandoned", actualMinutes: 0 });
+  });
+
   it("is still live inside the grace period, and closed at its planned end past it", () => {
     const task = createTask(t.db, { title: "Draft the brief" });
     startFocus(t.db, { taskId: task.id, minutes: 45 }, at("09:00"));
@@ -111,6 +125,22 @@ describe("a focus run", () => {
     expect(run.blockId).toBe(block.id);
   });
 
+  it("takes its length from the block's own session first, an explicit minutes second, the default only with no session at all", () => {
+    const task = createTask(t.db, { title: "A" });
+    const block = addBlock(t.db, { taskId: task.id, startsAt: "2026-09-24T09:00:00", minutes: 45 });
+    // No explicit minutes: the block's own 45, not the 25-minute ad-hoc default.
+    const fromBlock = startFocus(t.db, { taskId: task.id, blockId: block.id }, at("09:00"));
+    expect(fromBlock.plannedMinutes).toBe(45);
+    finishFocus(t.db, fromBlock.id, "stopped", at("09:05"));
+    // An explicit minutes still wins over the block's own length.
+    const explicit = startFocus(t.db, { taskId: task.id, blockId: block.id, minutes: 30 }, at("10:00"));
+    expect(explicit.plannedMinutes).toBe(30);
+    finishFocus(t.db, explicit.id, "stopped", at("10:05"));
+    // No block at all: the saved default.
+    const adHoc = startFocus(t.db, { taskId: task.id }, at("11:00"));
+    expect(adHoc.plannedMinutes).toBe(25);
+  });
+
   it("never books more than plannedMinutes + STALE_AFTER, however late the finish call arrives", () => {
     const task = createTask(t.db, { title: "A" });
     const run = startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
@@ -125,6 +155,15 @@ describe("a focus run", () => {
     // 90 minutes later is well past plannedMinutes(25) + STALE_AFTER(30).
     const done = finishFocus(t.db, run.id, "stopped", at("10:30"));
     expect(done).toMatchObject({ outcome: "completed", actualMinutes: 25 });
+  });
+
+  it("an explicit \"abandoned\" wins over staleness — a discard books nothing however late it arrives", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
+    // Ten hours later, past plannedMinutes(25) + STALE_AFTER(30), the person explicitly discards it.
+    const done = finishFocus(t.db, run.id, "abandoned", at("19:00"));
+    expect(done).toMatchObject({ outcome: "abandoned", actualMinutes: 0 });
+    expect(focusMinutesByTask(t.db, [task.id]).get(task.id) ?? 0).toBe(0);
   });
 
   it("books exactly the planned minutes for a completed run, not the rounded wall clock", () => {
