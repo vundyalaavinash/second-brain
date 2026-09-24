@@ -9,12 +9,11 @@ export const dynamic = "force-dynamic";
 export default function GoalsPage() {
   const db = getDb();
   const today = localDay(new Date().toISOString());
-  const active = goalsWithMeasure(db, { status: "active" }, today).map(serializeGoal);
-  // No single status stands for "closed" (hit, missed, dropped each their own), so the second
-  // call reads everything and keeps what an unfiltered goalsWithMeasure already sorts
-  // most-recently-decided-first.
-  const closed = goalsWithMeasure(db, {}, today)
-    .filter((g) => g.status !== "active")
-    .map(serializeGoal);
+  // One unfiltered call: goalsWithMeasure already sorts active goals soonest-due-first and
+  // closed ones most-recently-decided-first, so partitioning by status keeps both orders intact
+  // without paying for the query twice.
+  const goals = goalsWithMeasure(db, {}, today).map(serializeGoal);
+  const active = goals.filter((g) => g.status === "active");
+  const closed = goals.filter((g) => g.status !== "active");
   return <GoalList active={active} closed={closed} today={today} />;
 }

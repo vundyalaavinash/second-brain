@@ -163,9 +163,28 @@ describe("goal lifecycle", () => {
     expect(measureGoals(t.db, [g.id], TODAY).get(g.id)).toMatchObject({ total: 0 });
   });
 
+  it("goalsForContainer defaults to active goals, same as goalRefsByContainer, with includeClosed as the explicit opt-in", () => {
+    const a = project("A");
+    const g = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
+    setGoalLinks(t.db, g.id, [a.id]);
+    closeGoal(t.db, g.id, "hit");
+    expect(goalsForContainer(t.db, a.id)).toEqual([]);
+    expect(goalsForContainer(t.db, a.id, { includeClosed: true }).map((x) => x.id)).toEqual([g.id]);
+  });
+
   it("refuses a link to a container that does not exist", () => {
     const g = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
     expect(() => setGoalLinks(t.db, g.id, [9999])).toThrow(/container/i);
+  });
+
+  it("refuses a link to a resource — design §3.1 allows only projects and areas", () => {
+    const g = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
+    const resource = createContainer(t.db, { kind: "resource", name: "Reference notes" });
+    expect(() => setGoalLinks(t.db, g.id, [resource.id])).toThrow(/projects and areas/i);
+    // A mixed set fails whole, same as any other invalid link — no partial write.
+    const p = project("A project");
+    expect(() => setGoalLinks(t.db, g.id, [p.id, resource.id])).toThrow(/projects and areas/i);
+    expect(goalLinksFor(t.db, [g.id]).get(g.id)).toEqual([]);
   });
 
   it("lists goals by status, and updateGoal patches only the given fields", () => {

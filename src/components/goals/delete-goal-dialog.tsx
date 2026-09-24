@@ -16,7 +16,7 @@ interface Props {
  * Confirms the one irreversible action on this screen. A goal is never empty by construction
  * the way an archivable container is — it can carry notes, an outcome, a target date and a
  * whole link set — so this names what disappears instead of a second click on an icon whose
- * only change was its label (see task-2-review.md finding 1).
+ * only change was its label, which would read as a toggle rather than the one-way action it is.
  */
 export function DeleteGoalDialog({ goal, onDeleted, onClose }: Props) {
   const [busy, setBusy] = useState(false);

@@ -15,8 +15,10 @@ interface Props {
 
 /**
  * Asks how a goal landed and closes it that way. The three choices and the error banner mirror
- * complete-project-dialog.tsx's shape; the modal semantics (role, Escape, focus-in) do not — see
- * task-2-review.md finding 3: that dialog is the repo's outlier, not its norm.
+ * complete-project-dialog.tsx's shape; the modal semantics (role, Escape, focus-in, the busy
+ * guard on backdrop and Escape) do not — that dialog has none of them, so it is the repo's
+ * outlier on those, not its norm, and this one follows `useDialog` like every other dialog here
+ * instead of copying its gaps too.
  */
 export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
   const [busy, setBusy] = useState(false);
@@ -44,7 +46,7 @@ export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={() => !busy && onClose()}>
       <div
         ref={panelRef}
         role="dialog"

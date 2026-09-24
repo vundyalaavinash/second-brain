@@ -97,6 +97,10 @@ describe("goals api", () => {
     expect((await r.goals.POST(noBody)).status).toBe(400);
     const noBodyPatch = new Request("http://localhost/api/goals/1", { method: "PATCH" });
     expect((await r.goal.PATCH(noBodyPatch, { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
+    const notJsonPut = new Request("http://localhost/api/goals/1/links", { method: "PUT", headers: { "content-type": "application/json" }, body: "not json" });
+    expect((await r.links.PUT(notJsonPut, { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
+    const noBodyPut = new Request("http://localhost/api/goals/1/links", { method: "PUT" });
+    expect((await r.links.PUT(noBodyPut, { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
   });
 
   it("gates POST, PATCH, DELETE and PUT on the same-origin guard", async () => {

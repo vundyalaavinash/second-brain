@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { createTask, listTasks, projectProgress } from "@/domain/tasks";
+import { goalRefsByContainer } from "@/domain/goals";
 import { errorResponse, parseContainerParam, serializeTask, serializeTasks } from "@/lib/api";
 import { TaskBody } from "@/lib/validation";
 import { CaptureError } from "@/domain/items/capture";
@@ -25,7 +26,13 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const parsed = TaskBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-    return NextResponse.json(serializeTask(createTask(getDb(), parsed.data)), { status: 201 });
+    const db = getDb();
+    const task = createTask(db, parsed.data);
+    // A brand-new task has no blocks by construction, but it is not new to its project's goals —
+    // it inherits them the instant it lands in a linked container, so the create response reads
+    // them same as any other task in the list rather than answering `goals: []` for one request.
+    const goals = task.containerId !== null ? (goalRefsByContainer(db, [task.containerId]).get(task.containerId) ?? []) : [];
+    return NextResponse.json(serializeTask(task, [], goals), { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

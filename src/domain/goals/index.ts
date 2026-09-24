@@ -81,6 +81,9 @@ export function getGoal(db: DB, id: number): Goal | undefined {
   return db.select().from(goals).where(eq(goals.id, id)).get();
 }
 
+/** Plain goal rows, with no measure or links attached. Nothing in this app calls it yet — every
+ * current caller wants `goalsWithMeasure` — but it is exported for later slices of this design
+ * that only need the rows themselves, so it is kept rather than inlined into a private query. */
 export function listGoals(db: DB, filter: { status?: GoalStatus } = {}): Goal[] {
   return db
     .select()
@@ -160,8 +163,14 @@ export function setGoalLinks(db: DB, goalId: number, containerIds: number[]): vo
   db.transaction((tx) => {
     if (!tx.select({ id: goals.id }).from(goals).where(eq(goals.id, goalId)).get()) throw new GoalError("Goal not found", 404);
     if (ids.length > 0) {
-      const found = tx.select({ id: containers.id }).from(containers).where(inArray(containers.id, ids)).all();
+      const found = tx.select({ id: containers.id, kind: containers.kind }).from(containers).where(inArray(containers.id, ids)).all();
       if (found.length !== ids.length) throw new GoalError("A linked container does not exist");
+      // Design §3.1: a goal links to projects and areas, never a resource. The UI only ever
+      // offers the two, but the same query that already fetched `kind` can enforce it for API
+      // callers too, rather than leaving it as surface only the client happens not to reach.
+      if (found.some((c) => c.kind !== "project" && c.kind !== "area")) {
+        throw new GoalError("A goal can only link to projects and areas");
+      }
     }
     tx.delete(goalLinks).where(eq(goalLinks.goalId, goalId)).run();
     if (ids.length > 0) tx.insert(goalLinks).values(ids.map((containerId) => ({ goalId, containerId }))).run();
@@ -185,12 +194,20 @@ export function goalLinksFor(db: DB, goalIds: number[]): Map<number, ContainerRe
   return out;
 }
 
-export function goalsForContainer(db: DB, containerId: number): Goal[] {
+/**
+ * Every goal linking to this container, active by default — the same rule `goalRefsByContainer`
+ * exists to enforce for task chips: a closed goal should not still badge the work it was closed
+ * against. Pass `includeClosed: true` for a caller that genuinely wants the whole history (an
+ * audit, "what did this container ever serve"), not as a default anything can reach by accident.
+ */
+export function goalsForContainer(db: DB, containerId: number, opts: { includeClosed?: boolean } = {}): Goal[] {
+  const conds = [eq(goalLinks.containerId, containerId)];
+  if (!opts.includeClosed) conds.push(eq(goals.status, "active"));
   return db
     .select({ goal: goals })
     .from(goalLinks)
     .innerJoin(goals, eq(goals.id, goalLinks.goalId))
-    .where(eq(goalLinks.containerId, containerId))
+    .where(and(...conds))
     .orderBy(asc(goals.targetDate), asc(goals.id))
     .all()
     .map((row) => row.goal);
@@ -280,6 +297,10 @@ function measureFromLinks(db: DB, goalIds: number[], today: string, links: Map<n
   return out;
 }
 
+/** The measure for a caller that already has a goal id list and wants nothing else —
+ * `goalsWithMeasure` is what every current call site uses, since it also needs the rows and the
+ * links, but this stays exported for a later slice that measures a set of goals it already has
+ * without re-listing them. */
 export function measureGoals(db: DB, goalIds: number[], today: string): Map<number, GoalMeasure> {
   if (goalIds.length === 0) return new Map();
   return measureFromLinks(db, goalIds, today, goalLinksFor(db, goalIds));

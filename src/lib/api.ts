@@ -13,10 +13,10 @@ import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
-import { GoalError, goalRefsByContainer, type GoalWithMeasure } from "@/domain/goals";
+import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type GoalWithMeasure } from "@/domain/goals";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
-import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalRefDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -238,6 +238,26 @@ export function serializeGoal(g: GoalWithMeasure): GoalDTO {
     containers: g.containers,
     createdAt: g.createdAt,
     updatedAt: g.updatedAt,
+  };
+}
+
+/** How many of a goal's most recently closed tasks its detail page carries. */
+const RECENT_CLOSES = 10;
+
+/**
+ * The goal detail payload, built once here rather than separately by the server-rendered page
+ * and its API route — the two are the same three calls in the same order, and having only one
+ * of them means there is nothing left to drift out of sync. Undefined when the goal does not
+ * exist, so each caller keeps its own choice of 404.
+ */
+export function goalDetail(db: DB, id: number, today: string): GoalDetailDTO | undefined {
+  const [goal] = goalsWithMeasure(db, { id }, today);
+  if (!goal) return undefined;
+  const progress = containerProgress(db, goal.containers.map((c) => c.id));
+  return {
+    ...serializeGoal(goal),
+    links: goal.containers.map((container) => ({ container, progress: progress.get(container.id)! })),
+    recentCloses: recentCloses(db, id, RECENT_CLOSES),
   };
 }
 

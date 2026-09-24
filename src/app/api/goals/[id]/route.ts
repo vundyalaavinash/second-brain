@@ -1,32 +1,21 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { localDay } from "@/domain/activity";
-import { deleteGoal, goalsWithMeasure, recentCloses, updateGoal } from "@/domain/goals";
-import { containerProgress } from "@/domain/tasks";
-import { crossSite, errorResponse, forbidden, parseId, serializeGoal } from "@/lib/api";
+import { deleteGoal, goalsWithMeasure, updateGoal } from "@/domain/goals";
+import { crossSite, errorResponse, forbidden, goalDetail, parseId, serializeGoal } from "@/lib/api";
 import { PatchGoalBody } from "@/lib/validation";
-import type { GoalDetailDTO } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
-
-/** How many of a goal's most recently closed tasks its detail page carries. */
-const RECENT_CLOSES = 10;
 
 export async function GET(_req: Request, ctx: Ctx): Promise<Response> {
   try {
     const id = parseId((await ctx.params).id);
     const db = getDb();
     const today = localDay(new Date().toISOString());
-    const [goal] = goalsWithMeasure(db, { id }, today);
-    if (!goal) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const progress = containerProgress(db, goal.containers.map((c) => c.id));
-    const detail: GoalDetailDTO = {
-      ...serializeGoal(goal),
-      links: goal.containers.map((container) => ({ container, progress: progress.get(container.id)! })),
-      recentCloses: recentCloses(db, id, RECENT_CLOSES),
-    };
+    const detail = goalDetail(db, id, today);
+    if (!detail) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(detail);
   } catch (err) {
     return errorResponse(err);

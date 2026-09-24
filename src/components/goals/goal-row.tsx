@@ -6,9 +6,17 @@ import { daysBetween, deadlineLabel, TONE_CLASS } from "@/lib/deadline";
 import { Chip } from "../ui";
 import { ProgressRing } from "../tasks/progress-ring";
 
-/** A close is recorded as a UTC instant; the movement window only ever needs the day it fell on. */
+/**
+ * The local calendar day a close fell on, for the stalled duration below — the same local-day
+ * reading the server uses (`localDay`) to compute the `stalled` flag itself, not the UTC day a
+ * plain `slice(0, 10)` would give. East of UTC those disagree by a day for a close made in the
+ * small hours, which is how the label and the flag it sits behind used to drift apart. The math
+ * is repeated here rather than imported because `@/domain/activity` reaches server-only modules
+ * this client component cannot pull into the browser bundle.
+ */
 function isoDay(iso: string): string {
-  return iso.slice(0, 10);
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Movement leads the line: what closed recently, or — in plain words, no colour, no icon —
