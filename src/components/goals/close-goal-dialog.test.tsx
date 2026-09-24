@@ -12,7 +12,12 @@ const goal: GoalDTO = {
 };
 
 function stubPatch(status: Exclude<GoalDTO["status"], "active">) {
-  const fn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ ...goal, status, closedAt: "2026-09-24T10:00:00.000Z" }));
+  // The arguments are taken as a rest tuple rather than named: the test reads them back off
+  // `mock.calls`, and naming parameters it never uses in the body only trips the lint.
+  const fn = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
+    void args;
+    return Response.json({ ...goal, status, closedAt: "2026-09-24T10:00:00.000Z" });
+  });
   vi.stubGlobal("fetch", fn);
   return fn;
 }
