@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { CircleCheck, CircleX, CircleSlash } from "lucide-react";
 import type { GoalDTO } from "@/lib/dto";
 import type { GoalStatus } from "@/db/enums";
 import { Button } from "../ui";
+import { useDialog } from "../use-dialog";
 
 interface Props {
   goal: GoalDTO;
@@ -20,22 +21,11 @@ interface Props {
 export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const titleId = `${useId()}-close-goal-title`;
-
-  useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const panelRef = useDialog({ onClose, canClose: !busy });
 
   async function close(status: Exclude<GoalStatus, "active">) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -44,7 +34,7 @@ export function CloseGoalDialog({ goal, onDone, onClose }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
       onDone((await res.json()) as GoalDTO);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

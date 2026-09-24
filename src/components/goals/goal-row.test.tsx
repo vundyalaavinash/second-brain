@@ -17,10 +17,17 @@ describe("GoalRow", () => {
   it("leads with movement and shows progress behind it", () => {
     render(<GoalRow goal={goal()} today="2026-09-24" />);
     const movement = screen.getByText(/2 closed this week/i);
-    const ring = screen.getByRole("img", { name: "70% done" });
+    const percent = screen.getByText("70%");
     // Document order is visual order here: movement is meant to lead the row, progress trails.
-    expect(movement.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(/70%/)).toBeTruthy();
+    expect(movement.compareDocumentPosition(percent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says the percent once: the ring beside it is decoration", () => {
+    render(<GoalRow goal={goal()} today="2026-09-24" />);
+    // The ring carries its own `aria-label`, so leaving it in the tree next to the same figure
+    // in text would have a reader announce seventy per cent twice.
+    expect(screen.queryByRole("img", { name: "70% done" })).toBeNull();
+    expect(screen.getAllByText("70%")).toHaveLength(1);
   });
 
   it("says a stalled goal is stalled, in words and without alarm", () => {

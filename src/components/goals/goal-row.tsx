@@ -34,7 +34,11 @@ export function GoalRow({ goal, today }: { goal: GoalDTO; today: string }) {
       <div className="flex items-center gap-2 flex-wrap text-[12px]">
         <span className={stalled ? "text-fg-faint" : "text-fg-muted"}>{goalMovementLabel(goal.measure, today)}</span>
         <span className="text-fg-faint">·</span>
-        <ProgressRing percent={goal.measure.percent} size={16} stroke={2} />
+        {/* The figure is right there in words beside it, so the ring is decoration: left in
+          * the tree it would have a reader say the percent twice. */}
+        <span aria-hidden>
+          <ProgressRing percent={goal.measure.percent} size={16} stroke={2} />
+        </span>
         <span className="font-mono text-fg-muted">{goal.measure.percent}%</span>
         {goal.containers.map((c) => (
           <Chip key={c.id} href={`/c/${c.slug}`} className="h-5 px-1.5 text-[11px]">

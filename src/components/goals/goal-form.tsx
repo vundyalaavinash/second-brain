@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import type { GoalDTO } from "@/lib/dto";
 import type { GoalHorizon } from "@/db/enums";
 import { GOAL_HORIZONS } from "@/db/enums";
 import { titleCase } from "@/lib/format";
 import { Button, Chip, Input, Textarea } from "../ui";
+import { useDialog } from "../use-dialog";
 
 interface Props {
   /** Absent for a new goal; present to edit one in place. */
@@ -23,32 +24,34 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
   const [notes, setNotes] = useState(goal?.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // A stray click on the backdrop must not throw away typing, so this tracks whether any
-  // field has changed from where the form opened.
-  const [dirty, setDirty] = useState(false);
+  // A stray click on the backdrop must not throw away typing. This compares against where the
+  // form opened rather than latching on the first keystroke, so a character typed and then
+  // deleted leaves the backdrop working — and in edit mode it measures against the goal's own
+  // values, not against empty.
+  const [opened] = useState(() => ({
+    title: goal?.title ?? "",
+    outcome: goal?.outcome ?? "",
+    horizon: (goal?.horizon ?? "quarter") as GoalHorizon,
+    targetDate: goal?.targetDate ?? "",
+    notes: goal?.notes ?? "",
+  }));
   const titleId = `${useId()}-goal-title`;
   const outcomeId = `${useId()}-goal-outcome`;
   const horizonLabelId = `${useId()}-goal-horizon`;
   const dateId = `${useId()}-goal-date`;
   const notesId = `${useId()}-goal-notes`;
   const dialogTitleId = `${useId()}-goal-form-title`;
-  const panelRef = useRef<HTMLDivElement>(null);
+  // Focus into the panel, Tab kept inside it, Escape closes. Returning focus to the control
+  // that opened the form is the caller's job — the button that opened it holds the ref, as
+  // dock.tsx's `moreRef` does — since `onClose`/`onSaved` already run there.
+  const panelRef = useDialog({ onClose, canClose: !busy });
 
-  // Modal semantics the repo already uses elsewhere (rules-drawer.tsx, capacity-line.tsx):
-  // focus moves into the panel on open. Returning it to the control that opened the form is
-  // the caller's job (the button that opened it holds the ref, as dock.tsx's `moreRef` does),
-  // since `onClose`/`onSaved` already run there.
-  useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>("input, textarea, button")?.focus();
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dirty =
+    title !== opened.title ||
+    outcome !== opened.outcome ||
+    horizon !== opened.horizon ||
+    targetDate !== opened.targetDate ||
+    notes !== opened.notes;
 
   const canSave = title.trim().length > 0 && targetDate.length > 0 && !busy;
 
@@ -63,7 +66,7 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText);
       onSaved((await res.json()) as GoalDTO);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -98,7 +101,6 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
-              setDirty(true);
             }}
             placeholder="What is this goal called?"
           />
@@ -110,7 +112,6 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
             value={outcome}
             onChange={(e) => {
               setOutcome(e.target.value);
-              setDirty(true);
             }}
             placeholder="What does done look like?"
           />
@@ -130,7 +131,6 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
                 aria-pressed={horizon === h}
                 onClick={() => {
                   setHorizon(h);
-                  setDirty(true);
                 }}
               >
                 {titleCase(h)}
@@ -146,7 +146,6 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
             value={targetDate}
             onChange={(e) => {
               setTargetDate(e.target.value);
-              setDirty(true);
             }}
             className="w-40"
           />
@@ -158,7 +157,6 @@ export function GoalForm({ goal, onSaved, onClose }: Props) {
             value={notes}
             onChange={(e) => {
               setNotes(e.target.value);
-              setDirty(true);
             }}
             className="min-h-[72px]"
           />

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { GoalDTO } from "@/lib/dto";
 import { Button } from "../ui";
+import { useDialog } from "../use-dialog";
 
 interface Props {
   goal: GoalDTO;
@@ -20,20 +21,9 @@ interface Props {
 export function DeleteGoalDialog({ goal, onDeleted, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const titleId = `${useId()}-delete-goal-title`;
-
-  useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // Once the delete has left, Escape and the backdrop must stop reading as "cancel".
+  const panelRef = useDialog({ onClose, canClose: !busy });
 
   async function confirm() {
     if (busy) return;
@@ -52,7 +42,7 @@ export function DeleteGoalDialog({ goal, onDeleted, onClose }: Props) {
   const linkCount = goal.containers.length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={() => !busy && onClose()}>
       <div
         ref={panelRef}
         role="dialog"
