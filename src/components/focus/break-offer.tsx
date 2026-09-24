@@ -57,11 +57,13 @@ export function BreakOffer() {
 
   // Mounted once in the shell rather than any one page, so it floats free like the dock and the
   // toasts do — a fixed line, not something laid into whatever page happens to be showing.
-  // Pinned above the dock rather than the top of the page: `top-4` sat over `TopBar`'s
-  // breadcrumb trail at narrow widths, so this follows `toasts.tsx`'s own idiom for a transient
-  // line near the dock instead — same vertical offset (`bottom-24`, clear of the dock's own
-  // `bottom-6 h-16`) and the same stacking (`z-50`), centred the way the dock itself is.
-  const shell = "fixed bottom-24 left-1/2 -translate-x-1/2 z-50 panel rounded-full h-10 px-4 flex items-center gap-2 text-[12.5px] text-fg-muted m-0 whitespace-nowrap";
+  // Pinned above the dock rather than the top of the page: `top-4` sat over `TopBar`'s breadcrumb
+  // trail at narrow widths. It follows `toasts.tsx`'s idiom for a transient line near the dock,
+  // one row higher than the toast stack — both would otherwise sit at `bottom-24`, and on a phone
+  // a centred pill and a right-aligned toast overlap there. The width is capped and the text is
+  // allowed to wrap so the line can never push the page sideways at 400px.
+  const shell =
+    "fixed bottom-36 left-1/2 -translate-x-1/2 z-50 panel rounded-2xl min-h-10 py-1.5 px-4 flex items-center gap-2 text-[12.5px] text-fg-muted m-0 max-w-[calc(100vw-3rem)]";
 
   if (breakEndAt !== null) {
     return (
