@@ -7,11 +7,14 @@ import { listBlocks } from "@/domain/blocks";
 import { listContainers } from "@/domain/containers";
 import { countInbox, listItems, parseMeta } from "@/domain/items";
 import { containerProgress } from "@/domain/tasks";
+import { daysBetween } from "./deadline";
 import { plannerDay } from "./planner";
 import type { HomeDTO, HomeItemDTO, ProjectCardDTO, RecentItemDTO } from "./dto";
 
 /** How many project cards the right column holds. */
 const MAX_PROJECTS = 6;
+/** A deadline this close keeps a project in motion even with nothing open left on it. */
+const IN_MOTION_DAYS = 14;
 /** How many items Recent lists. */
 const RECENT_LIMIT = 5;
 /** How many apps or sites the activity line names. */
@@ -93,19 +96,34 @@ function byDeadlineThenUpdated(a: ProjectCardDTO, b: ProjectCardDTO): number {
   return b.updatedAt.localeCompare(a.updatedAt);
 }
 
-/** The active projects Home shows, at most six, each with its counts and its next open task. */
-function projectCards(db: DB): ProjectCardDTO[] {
-  const shown = listContainers(db, { kind: "project", status: "active" })
-    .map((c) => ({ id: c.id, name: c.name, slug: c.slug, open: 0, done: 0, nextTask: null, deadline: c.deadline, updatedAt: c.updatedAt }) satisfies ProjectCardDTO)
+/**
+ * The active projects in motion, at most six. "In motion" is something open to do on them —
+ * or, with nothing open, a deadline close enough that having nothing open is itself the news.
+ * An active project with neither is not moving, so it stays off a page about today.
+ */
+function projectCards(db: DB, today: string): ProjectCardDTO[] {
+  const active = listContainers(db, { kind: "project", status: "active" });
+  // The open count is what decides whether a project is in motion at all, so it is read for
+  // every active one — still two grouped queries, not a pair per project.
+  const progress = containerProgress(db, active.map((c) => c.id));
+  return active
+    .map((c) => {
+      const p = progress.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        open: p?.open ?? 0,
+        done: p?.done ?? 0,
+        nextTask: p?.nextTask ? { id: p.nextTask.id, title: p.nextTask.title } : null,
+        deadline: c.deadline,
+        updatedAt: c.updatedAt,
+      } satisfies ProjectCardDTO;
+    })
+    // A deadline already past counts as near: the day it slipped is exactly when to see it.
+    .filter((c) => c.open > 0 || (c.deadline !== null && daysBetween(today, c.deadline) <= IN_MOTION_DAYS))
     .sort(byDeadlineThenUpdated)
     .slice(0, MAX_PROJECTS);
-  // Counts and the next task for the six that made the cut, in grouped queries rather than a
-  // pair per card — the same numbers a project's own card shows elsewhere.
-  const progress = containerProgress(db, shown.map((c) => c.id));
-  return shown.map((c) => {
-    const p = progress.get(c.id);
-    return { ...c, open: p?.open ?? 0, done: p?.done ?? 0, nextTask: p?.nextTask ? { id: p.nextTask.id, title: p.nextTask.title } : null };
-  });
 }
 
 /** The last five items touched; a meeting item carries what its chip says about it. */
@@ -160,6 +178,9 @@ export function homePayload(db: DB, now: Date): HomeDTO {
   return {
     date,
     today: date,
+    // The moment the page is a picture of; Recent dates its rows against it rather than against
+    // whatever the browser's clock says as it hydrates.
+    generatedAt: now.toISOString(),
     day,
     counts: {
       planned: day.plan.filter((t) => t.status === "open").length,
@@ -170,7 +191,7 @@ export function homePayload(db: DB, now: Date): HomeDTO {
     },
     now: current,
     next,
-    projects: projectCards(db),
+    projects: projectCards(db, date),
     recent: recentItems(db),
     activity: activityToday(db, date),
   };

@@ -172,6 +172,22 @@ describe("PlanPane", () => {
     expect(localStorage.getItem("sb:ritual-done:" + TODAY)).toBe("1");
   });
 
+  it("never latches the ritual closed on a pane that was told not to show it", async () => {
+    stubPlan();
+    // Home's plan pane: today, and a plan already on it — the exact shape that latches the
+    // ritual closed on the Planner. A ritual nobody was shown cannot have been walked through.
+    const { unmount } = render(<PlanPane day={day({ plan: [planned] })} today={TODAY} onRefresh={vi.fn()} hideRitual />);
+    await screen.findByRole("button", { name: planned.title });
+    await act(async () => {});
+    expect(localStorage.getItem("sb:ritual-done:" + TODAY)).toBeNull();
+    expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
+    unmount();
+
+    // The Planner, on the same day, still has its morning to offer.
+    render(<PlanPane day={day({ plan: [] })} today={TODAY} onRefresh={vi.fn()} />);
+    expect(await screen.findByRole("list", { name: "Plan the day" })).toBeTruthy();
+  });
+
   it("does not bring the ritual back once it was done today", async () => {
     stubPlan();
     localStorage.setItem("sb:ritual-done:" + TODAY, "1");

@@ -16,6 +16,13 @@ describe("CapacityLine", () => {
     expect(screen.getByRole("status").textContent).toBe("3 planned · 2h 10m of 4h 30m free · 4 meetings");
   });
 
+  it("holds its tongue when the page already has a region that speaks", () => {
+    render(<CapacityLine capacity={base} planned={3} meetings={4} onHours={vi.fn()} quiet />);
+    expect(screen.queryByRole("status")).toBeNull();
+    // The words are all still there; only the announcement is gone.
+    expect(screen.getByText(/3 planned/).textContent).toBe("3 planned · 2h 10m of 4h 30m free · 4 meetings");
+  });
+
   it("says how much of the plan has a place on the timeline", () => {
     render(<CapacityLine capacity={{ ...base, blockedMinutes: 80 }} planned={3} meetings={4} onHours={vi.fn()} />);
     expect(screen.getByRole("status").textContent).toBe("3 planned \u00b7 2h 10m of 4h 30m free \u00b7 1h 20m blocked \u00b7 4 meetings");

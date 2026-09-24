@@ -13,10 +13,11 @@ function meetingChip(item: RecentItemDTO): string | null {
 }
 
 /**
- * The last five things touched. `now` is a parameter so a test can stand at a fixed moment;
- * everything else reads the clock as it renders.
+ * The last five things touched, dated against the moment the payload was built. `now` is
+ * required for that reason: a list that read the browser's clock would say "just now" on the
+ * server and "1 min ago" on the first client render of the same row.
  */
-export function RecentList({ recent, now }: { recent: RecentItemDTO[]; now?: number }) {
+export function RecentList({ recent, now }: { recent: RecentItemDTO[]; now: number }) {
   return (
     <section aria-label="Recent" className="flex flex-col gap-2">
       <span className="micro">Recent</span>

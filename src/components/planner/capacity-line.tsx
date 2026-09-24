@@ -11,19 +11,22 @@ interface Props {
   planned: number;
   meetings: number;
   onHours: (workHours: string) => void;
+  /** Spec §5: one page, one region that speaks up. Home's Now owns that role, so the line it
+   * sits above reads as plain text there rather than announcing the day twice. */
+  quiet?: boolean;
 }
 
 /**
  * The Day header's mono line: how much is planned against the time the calendar leaves,
  * and a chip to say what the working hours are.
  */
-export function CapacityLine({ capacity, planned, meetings, onHours }: Props) {
+export function CapacityLine({ capacity, planned, meetings, onHours, quiet = false }: Props) {
   const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
   const over = capacity.plannedMinutes - capacity.freeMinutes;
   const title = over > 0 ? `Plan is ${formatMinutes(over)} over the free time` : undefined;
   return (
     <span className="flex items-center gap-3 flex-wrap justify-end">
-      <span role="status" title={title} className="font-mono text-[12px] text-fg-muted">
+      <span role={quiet ? undefined : "status"} title={title} className="font-mono text-[12px] text-fg-muted">
         {planned} planned · <span className={CAPACITY_TONE_CLASS[tone]}>{formatMinutes(capacity.plannedMinutes)}</span> of {formatMinutes(capacity.freeMinutes)} free
         {capacity.unestimated > 0 && ` (${capacity.unestimated} unestimated)`}
         {/* How much of the plan has a place on the timeline; nothing blocked says nothing. */}

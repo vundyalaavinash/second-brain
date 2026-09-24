@@ -9,10 +9,6 @@ import { Button, Input } from "../ui";
 const FEED_URL = "/api/settings/calendar";
 const JSON_HEADERS = { "content-type": "application/json" };
 
-/** Home says "2 h ago" about an item the way this row says it about a sync; the wording lives
- * with the other time formatters now, and stays exported here for everything that reads it. */
-export { sinceLabel };
-
 /**
  * A published calendar link (Outlook on the web › Settings › Calendar › Shared calendars ›
  * Publish) that the server polls every five minutes. Saving syncs at once, so the row can say

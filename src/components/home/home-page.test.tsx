@@ -18,6 +18,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
   return {
     date: DATE,
     today: DATE,
+    generatedAt: "2026-09-22T12:00:00.000Z",
     day: {
       date: DATE,
       plan: [planTask(1, "Write the brief")],
@@ -108,6 +109,17 @@ describe("HomePage", () => {
       await settle(80);
     }
     expect(homeCalls(fetchMock)).toHaveLength(4);
+  });
+
+  it("drops a refresh the page did not live long enough to make", async () => {
+    const fetchMock = stubHome(payload);
+    const { unmount } = render(<HomePage initial={payload()} />);
+    // The event lands while the page is still up, so the timer is set; unmounting has to clear
+    // it, or it fires into a page that is gone.
+    fireEvent(window, new Event("sb:plan-changed"));
+    unmount();
+    await settle(120);
+    expect(homeCalls(fetchMock)).toHaveLength(0);
   });
 
   it("keeps the newest payload when an earlier request answers last", async () => {

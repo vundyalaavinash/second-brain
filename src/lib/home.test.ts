@@ -121,6 +121,9 @@ describe("homePayload", () => {
     }
     touchContainer(made[2].id, "2026-09-01T09:00:00.000Z");
     touchContainer(made[3].id, "2026-09-20T09:00:00.000Z");
+    // The undated pair are in motion on their open work; the sort is what is under test here.
+    createTask(t.db, { title: "Keep going", containerId: made[2].id });
+    createTask(t.db, { title: "Keep going", containerId: made[3].id });
     // An area and an archived project are not projects in motion.
     createContainer(t.db, { kind: "area", name: "Finance" });
     const shelved = createContainer(t.db, { kind: "project", name: "Shelved" });
@@ -139,6 +142,23 @@ describe("homePayload", () => {
 
     for (let i = 0; i < 4; i++) createContainer(t.db, { kind: "project", name: `Extra ${i}`, deadline: "2026-09-22" });
     expect(homePayload(t.db, NOW).projects).toHaveLength(6);
+  });
+
+  it("keeps a project in motion on its open work, or on a deadline within a fortnight", () => {
+    const working = createContainer(t.db, { kind: "project", name: "Working" });
+    createTask(t.db, { title: "Still to do", containerId: working.id });
+    // Every task ticked off and nothing due: finished work is not motion.
+    const finished = createContainer(t.db, { kind: "project", name: "Finished" });
+    completeTask(t.db, createTask(t.db, { title: "Shipped", containerId: finished.id }).id);
+    createContainer(t.db, { kind: "project", name: "Empty" });
+    createContainer(t.db, { kind: "project", name: "Someday", deadline: "2026-12-01" });
+    // Nothing open, but the date is close enough that having nothing open is the news.
+    createContainer(t.db, { kind: "project", name: "Due soon", deadline: "2026-10-05" });
+    createContainer(t.db, { kind: "project", name: "Overdue", deadline: "2026-09-01" });
+
+    const shown = homePayload(t.db, NOW).projects;
+    expect(shown.map((p) => p.name)).toEqual(["Overdue", "Due soon", "Working"]);
+    expect(shown.find((p) => p.name === "Due soon")).toMatchObject({ open: 0, done: 0, deadline: "2026-10-05", nextTask: null });
   });
 
   it("lists the last five items touched, newest first, with a meeting's own chip state", () => {

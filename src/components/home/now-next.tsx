@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import type { HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
-import { formatMinutes } from "@/lib/capacity";
-import { addDaysLocal, formatClock } from "../activity/format";
+import { formatClock } from "../activity/format";
 import { Button, Chip } from "../ui";
 import { blocksOn } from "../planner/block-math";
-import { count } from "../planner/open-meeting";
+import { placeDay, SAVE_ERROR } from "../planner/place-day";
 import { useRecorder } from "../planner/use-recorder";
 
 const JSON_HEADERS = { "content-type": "application/json" };
-const SAVE_ERROR = "Could not save that change";
 
 /**
  * Both spellings of a start read the same here: a meeting's instant is UTC and a session's is
@@ -25,6 +23,8 @@ function nothingPlaced(day: PlannerDayDTO): boolean {
 
 interface Props {
   day: PlannerDayDTO;
+  /** The day the app is being used on, so the fill's offer can name the day it means. */
+  today: string;
   now: HomeItemDTO | null;
   next: HomeItemDTO[];
 }
@@ -34,7 +34,7 @@ interface Props {
  * yet — the one button that gives it somewhere. The current item is a status region, so a
  * reader hears the meeting that has just begun without being dragged to it.
  */
-export function NowNext({ day, now, next }: Props) {
+export function NowNext({ day, today, now, next }: Props) {
   const [error, setError] = useState<string | null>(null);
   const recorder = useRecorder();
   // The dock's chip owns a running session; here it is only news, in place of the button that
@@ -54,38 +54,9 @@ export function NowNext({ day, now, next }: Props) {
     })();
   }
 
-  /**
-   * Fill the day, the Planner's own run, said from here: every unplaced plan task's sessions
-   * into whatever the calendar leaves. The toast is the Planner's too, offer and all — what
-   * today had no room for can go on tomorrow.
-   */
-  async function place(date: string, offerNext: boolean) {
-    const res = await fetch("/api/plan/place", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ date }) });
-    if (!res.ok) {
-      setError(SAVE_ERROR);
-      return;
-    }
-    // The sessions are written whatever comes back, so the day is read back before the answer
-    // is unpacked: a body that cannot be read costs the toast, never the placement.
-    window.dispatchEvent(new Event("sb:tasks-changed"));
-    const answer = (await res.json().catch(() => null)) as { placed: number; unplacedMinutes: number } | null;
-    if (!answer) {
-      setError(SAVE_ERROR);
-      return;
-    }
-    setError(null);
-    const { placed, unplacedMinutes } = answer;
-    const text =
-      placed === 0
-        ? "Nothing to place"
-        : unplacedMinutes > 0
-          ? `Placed ${count(placed, "session")}, ${formatMinutes(unplacedMinutes)} unplaced`
-          : `Placed ${count(placed, "session")}`;
-    // Only the first run offers the next day; a second offer would walk the work off into a
-    // week nobody asked about.
-    const action = offerNext && unplacedMinutes > 0 ? { label: "Place tomorrow", onClick: () => void place(addDaysLocal(date, 1), false) } : undefined;
-    window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text, action } }));
-  }
+  /** Fill the day, the Planner's own run said from here: one helper holds the request, the
+   * announcement, the three-way toast and the offer of the next day. */
+  const place = () => void placeDay(day.date, { today, offerNext: true, onError: setError });
 
   function current() {
     if (!now) return <span className="text-[13px] text-fg-faint">Nothing on right now</span>;
@@ -157,13 +128,14 @@ export function NowNext({ day, now, next }: Props) {
       {nothingPlaced(day) && (
         <div className="flex items-center gap-3 rounded-md bg-layer-2 border border-hairline px-3 py-2">
           <span className="text-[12.5px] text-fg-muted flex-1 min-w-0">Nothing placed yet</span>
-          <Button size="sm" onClick={() => void place(day.date, true)}>
+          <Button size="sm" onClick={place}>
             Place in free slots
           </Button>
         </div>
       )}
 
-      {error && <p className="text-danger text-[12.5px] m-0">{error}</p>}
+      {/* The recorder speaks for itself the way the meetings list lets it. */}
+      {(error ?? recorder.error) && <p className="text-danger text-[12.5px] m-0">{error ?? recorder.error}</p>}
     </section>
   );
 }

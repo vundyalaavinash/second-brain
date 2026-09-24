@@ -42,8 +42,10 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
       timer.current = null;
       const id = ++request.current;
       void (async () => {
-        const res = await fetch("/api/home");
-        if (!res.ok) return;
+        // A refresh that cannot reach the server leaves the day as it stands; the next event
+        // asks again. An unhandled rejection here would take the page down with it.
+        const res = await fetch("/api/home").catch(() => null);
+        if (!res?.ok) return;
         const body = (await res.json()) as HomeDTO;
         // A slower earlier request answering last would put the day back as it was.
         if (id === request.current) setData(body);
@@ -78,7 +80,7 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
         * phone reads the band, then what is on now, then the plan — and the right column last. */}
       <div className="grid grid-cols-1 min-[1100px]:grid-cols-[5fr_4fr] gap-6 items-start">
         <div className="flex flex-col gap-4 min-w-0">
-          <NowNext day={data.day} now={data.now} next={data.next} />
+          <NowNext day={data.day} today={data.today} now={data.now} next={data.next} />
           <PlanPane day={data.day} today={data.today} onRefresh={refresh} hideRitual />
           <div className="flex justify-end">
             <Link href="/planner" className="focus-ring rounded-sm text-[12px] text-fg-muted hover:text-fg transition-colors duration-150">
@@ -88,7 +90,7 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
         </div>
         <div className="flex flex-col gap-6 min-w-0">
           <ProjectCards projects={data.projects} today={data.today} />
-          <RecentList recent={data.recent} />
+          <RecentList recent={data.recent} now={Date.parse(data.generatedAt)} />
           <ActivityLine activity={data.activity} />
         </div>
       </div>

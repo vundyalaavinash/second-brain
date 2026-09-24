@@ -37,7 +37,7 @@ export function TopBand({ day, counts, onHours }: Props) {
       <DateHeader
         date={day.date}
         unit="day"
-        summary={<CapacityLine capacity={day.capacity} planned={counts.planned} meetings={counts.meetings} onHours={onHours} />}
+        summary={<CapacityLine capacity={day.capacity} planned={counts.planned} meetings={counts.meetings} onHours={onHours} quiet />}
       />
       <ul className="list-none m-0 p-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-fg-muted">
         {figures(counts).map((f) => (

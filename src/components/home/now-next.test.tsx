@@ -52,8 +52,8 @@ function watchToasts() {
   return { seen, stop: () => window.removeEventListener("sb:toast", listen) };
 }
 
-function mount(props: { now?: HomeItemDTO | null; next?: HomeItemDTO[]; day?: PlannerDayDTO } = {}) {
-  render(<NowNext day={props.day ?? day()} now={props.now ?? null} next={props.next ?? []} />);
+function mount(props: { now?: HomeItemDTO | null; next?: HomeItemDTO[]; day?: PlannerDayDTO; today?: string } = {}) {
+  render(<NowNext day={props.day ?? day()} today={props.today ?? DATE} now={props.now ?? null} next={props.next ?? []} />);
 }
 
 afterEach(() => {
@@ -76,6 +76,24 @@ describe("NowNext", () => {
     expect(region.textContent).toContain("Ends 11:00");
     expect(screen.getByRole("link", { name: "Join Design review" }).getAttribute("href")).toBe("https://meet.example/abc");
     await waitFor(() => expect((screen.getByRole("button", { name: "Record Design review" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("shows the recorder's trouble beside its own, as the meetings list does", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] } satisfies RecorderStatusDTO);
+        if (url === "/api/meetings/recorder/start") return Response.json({ error: "The recorder helper is not running" }, { status: 409 });
+        return Response.json({});
+      }),
+    );
+    mount({ now: meetingNow });
+    const record = await screen.findByRole("button", { name: "Record Design review" });
+    await waitFor(() => expect((record as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(record);
+    // NowNext holds no error of its own here: the line is the recorder's.
+    expect(await screen.findByText("The recorder helper is not running")).toBeTruthy();
   });
 
   it("shows the recorder's own state in place of the Record button while a session runs", async () => {

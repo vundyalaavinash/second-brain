@@ -9,9 +9,10 @@ import { capacityTone, formatMinutes } from "@/lib/capacity";
 import { sessionsFor } from "@/lib/scheduler";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
-import { formatShortDate, MENU_ITEM, TaskRow } from "../tasks/task-row";
+import { MENU_ITEM, TaskRow } from "../tasks/task-row";
 import { blocksOn, minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
+import { placeDay, SAVE_ERROR } from "./place-day";
 import { RitualStrip, ritualDoneKey, ritualSteps } from "./ritual-strip";
 import { PLAN_DRAG_MIME, planMinutesType } from "./drag-mime";
 import { PlanPicker } from "./plan-picker";
@@ -34,7 +35,6 @@ function dragChip(task: TaskDTO, minutes: number): HTMLElement | null {
   document.body.appendChild(el);
   return el;
 }
-const SAVE_ERROR = "Could not save that change";
 /** How full the day reads at a glance; the header line says it in words. */
 const BAR_CLASS = { ok: "bg-violet", warn: "bg-warn", danger: "bg-danger" } as const;
 /** Spec §7: rows settle in 200 ms, the ritual folds away on a spring. */
@@ -61,12 +61,6 @@ function nextSlot(minutes: number): number {
 /** Spec §3: a row dropped on the column places exactly one session, this long. */
 function dropLength(task: TaskDTO): number {
   return sessionsFor(task.estimateMinutes, task.sessionMinutes)[0];
-}
-
-/** What the toast's offer is called: the day after the one on screen, named unless it is
- * simply tomorrow. */
-function placeNextLabel(date: string, today: string): string {
-  return date === today ? "Place tomorrow" : `Place on ${formatShortDate(addDaysLocal(date, 1))}`;
 }
 
 /** The clock as minutes since local midnight, for a block that starts "now". */
@@ -97,7 +91,6 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false }: Props) {
   // Latched by the strip's first action: from then on a plan that gains tasks does not end it.
   const [started, setStarted] = useState(false);
   const reduce = useReducedMotion();
-  const nextDayLabel = placeNextLabel(day.date, today);
   const listRef = useRef<HTMLUListElement | null>(null);
   const headingRef = useRef<HTMLSpanElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -194,49 +187,9 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false }: Props) {
   const carryOver = () => void send("/api/plan/carry-over", "POST", { from: addDaysLocal(day.date, -1), to: day.date }, "sb:plan-changed");
   const sortByTime = () => void send("/api/plan/sort", "POST", { date: day.date }, "sb:plan-changed");
 
-  /**
-   * Spec §3: lays a task's sessions — or, with no task, every unplaced plan task's — into the
-   * day's free slots, and says what happened. `offerNext` carries the toast's way out: what the
-   * day had no room for can go on the next one, which is the same run a day later.
-   */
-  async function place(date: string, taskId: number | null, offerNext: boolean) {
-    const body = taskId === null ? { date } : { date, taskId };
-    const res = await fetch("/api/plan/place", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
-    if (!res.ok) {
-      setError(SAVE_ERROR);
-      return;
-    }
-    // The sessions are written whatever comes back, so the day is read back before the answer
-    // is unpacked: a body that cannot be read costs the toast, never the placement.
-    window.dispatchEvent(new Event("sb:tasks-changed"));
-    const answer = (await res.json().catch(() => null)) as { placed: number; unplacedMinutes: number } | null;
-    if (!answer) {
-      setError(SAVE_ERROR);
-      return;
-    }
-    setError(null);
-    const { placed, unplacedMinutes } = answer;
-    const text =
-      placed === 0
-        ? "Nothing to place"
-        : unplacedMinutes > 0
-          ? `Placed ${count(placed, "session")}, ${formatMinutes(unplacedMinutes)} unplaced`
-          : `Placed ${count(placed, "session")}`;
-    // Only the first run offers the next day: a toast that offered it again would walk the task
-    // off into a week nobody asked about. On a day that is not today, "tomorrow" would name the
-    // wrong day, so the offer says which day it means.
-    const action = offerNext && unplacedMinutes > 0 ? { label: nextDayLabel, onClick: () => void placeTomorrow(taskId) } : undefined;
-    window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text, action } }));
-  }
-
-  /** The toast's action: tomorrow has to hold the task before it can place it. A whole-day fill
-   * plans nothing new — it places what tomorrow already carries. The plan write says nothing on
-   * its own: the place that follows it announces the one change the pane needs to read back. */
-  async function placeTomorrow(taskId: number | null) {
-    const date = addDaysLocal(day.date, 1);
-    if (taskId !== null && !(await send("/api/plan", "POST", { date, taskId }, null))) return;
-    await place(date, taskId, false);
-  }
+  /** Spec §3's fill, shared with Home: the request, the announcement, the toast and its offer
+   * all live in `placeDay`; the pane only says where an error should go. */
+  const place = (date: string, taskId: number | null, offerNext: boolean) => placeDay(date, { taskId, today, offerNext, onError: setError });
 
   /** Spec §4: how long each of the task's sessions should be. A task that already holds sessions
    * on the day is laid out again at the new length rather than left half-split. One announcement

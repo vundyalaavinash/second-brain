@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import type { CalendarFeedDTO } from "@/lib/dto";
-import { CalendarFeed, sinceLabel } from "./calendar-feed";
+import { CalendarFeed } from "./calendar-feed";
 
 afterEach(() => {
   cleanup();
@@ -70,12 +70,5 @@ describe("CalendarFeed", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Remove link" }));
     await screen.findByText(/Publish a calendar/);
-  });
-
-  it("labels how long ago a sync was", () => {
-    const now = Date.parse("2026-09-23T06:10:00.000Z");
-    expect(sinceLabel("2026-09-23T06:09:40.000Z", now)).toBe("just now");
-    expect(sinceLabel("2026-09-23T06:00:00.000Z", now)).toBe("10 min ago");
-    expect(sinceLabel("2026-09-23T03:00:00.000Z", now)).toBe("3 h ago");
   });
 });

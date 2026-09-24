@@ -306,6 +306,9 @@ export interface RecentItemDTO {
 export interface HomeDTO {
   date: string;
   today: string;
+  /** The instant the payload was built, so "2 h ago" reads the same on the server and on the
+   * first client render rather than drifting between them. */
+  generatedAt: string;
   day: PlannerDayDTO;
   counts: { planned: number; meetings: number; inbox: number };
   now: HomeItemDTO | null;

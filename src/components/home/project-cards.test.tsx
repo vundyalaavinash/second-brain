@@ -40,6 +40,12 @@ describe("ProjectCards", () => {
     expect(screen.getByText("All done")).toBeTruthy();
   });
 
+  it("does not call a project nobody has written a task for finished", () => {
+    render(<ProjectCards projects={[card({ open: 0, done: 0, nextTask: null })]} today={TODAY} />);
+    expect(screen.getByText("No open tasks")).toBeTruthy();
+    expect(screen.queryByText("All done")).toBeNull();
+  });
+
   it("warns inside a week and turns danger once the deadline is past", () => {
     render(
       <ProjectCards

@@ -41,8 +41,11 @@ function Card({ project, today }: { project: ProjectCardDTO; today: string }) {
       </span>
       {project.nextTask ? (
         <span className="text-[12.5px] text-fg-muted truncate">{project.nextTask.title}</span>
-      ) : (
+      ) : project.open + project.done > 0 ? (
         <span className="text-[12.5px] text-success">All done</span>
+      ) : (
+        // A project nobody has written a task for is not finished, as `tasks/project-card.tsx` says too.
+        <span className="text-[12.5px] text-fg-faint">No open tasks</span>
       )}
     </li>
   );
