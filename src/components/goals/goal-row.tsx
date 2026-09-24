@@ -7,7 +7,6 @@ import { localDay } from "@/lib/time";
 import { Chip } from "../ui";
 import { ProgressRing } from "../tasks/progress-ring";
 
-
 /** Movement leads the line: what closed recently, or — in plain words, no colour, no icon —
  * how long nothing has. Shared with goal-page.tsx so the two screens never disagree on wording. */
 export function goalMovementLabel(measure: GoalDTO["measure"], today: string): string {
