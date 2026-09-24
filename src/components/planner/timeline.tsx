@@ -2,15 +2,18 @@
 
 import { useEffect, useRef, useState, type DragEvent, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { ActivityMeetingDTO, MeetingItemDTO, MeetingListDTO, PlanTaskDTO } from "@/lib/dto";
+import type { ActivityMeetingDTO, BlockDTO, MeetingItemDTO, MeetingListDTO, PlanTaskDTO } from "@/lib/dto";
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
-import { blockLength, DEFAULT_BLOCK_MINUTES, parseWorkHours } from "@/lib/capacity";
+import { DEFAULT_BLOCK_MINUTES, parseWorkHours } from "@/lib/capacity";
 import { layoutBlocks, type TimelineMeeting } from "./timeline-layout";
-import { blockEnd, firstBlock, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
+import { blockEnd, blocksOn, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
 import { PLAN_DRAG_MIME, readPlanMinutes } from "./drag-mime";
-import { TaskBlock } from "./task-block";
+import { TaskBlock, type BlockAction, type BlockResult } from "./task-block";
 import { useRecorder } from "./use-recorder";
+
+// The session actions live with the block they act on; the column is where they are asked for.
+export type { BlockAction, BlockResult };
 
 /** One minute of the day is one pixel of the column: a 14-hour day is 840px, about a screen. */
 const PX_PER_MIN = 1;
@@ -53,10 +56,12 @@ const BADGES: { key: keyof Omit<MeetingItemDTO, "id">; label: string; dot: strin
 interface Props {
   date: string;
   meetings: MeetingListDTO[];
-  /** The day's plan: the ones with a `scheduledAt` on this day get a block on the column. */
+  /** The day's plan: every session a task holds on this day gets a block on the column. */
   tasks: PlanTaskDTO[];
   /** Writes one field of a task and answers whether it went through. */
   onPatchTask: (id: number, body: Record<string, unknown>) => Promise<boolean>;
+  /** Places, moves, resizes or takes away one session; answers with its id, or null. */
+  onBlock: (action: BlockAction) => BlockResult;
   workHours?: string;
 }
 
@@ -66,7 +71,7 @@ interface Ghost {
   height: number;
 }
 
-/** A block being moved by the pointer, from the press until it is let go. */
+/** A session being moved by the pointer, from the press until it is let go. */
 interface Move {
   id: number;
   length: number;
@@ -76,10 +81,21 @@ interface Move {
   moved: boolean;
 }
 
-export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Props) {
+/** One session on the column, with its place among the task's sessions on the day. */
+interface Placed {
+  task: PlanTaskDTO;
+  block: BlockDTO;
+  index: number;
+  count: number;
+}
+
+export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHours }: Props) {
   const router = useRouter();
   const [now, setNow] = useState<number | null>(null);
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  // The session this column just placed. Spec §3: one dropped with no estimate asks how long
+  // it should be, straight away; any other change to any session puts the question away.
+  const [askId, setAskId] = useState<number | null>(null);
   const columnRef = useRef<HTMLDivElement | null>(null);
   const move = useRef<Move | null>(null);
   const recorder = useRecorder();
@@ -96,8 +112,8 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     };
   }, []);
 
-  // A time chip on a plan row asks for its block: the column brings it into view and hands it
-  // the keyboard, so the arrows move it straight away.
+  // A time chip on a plan row asks for its block: the column brings the task's first session
+  // into view and hands it the keyboard, so the arrows move it straight away.
   useEffect(() => {
     function onFocusBlock(e: Event) {
       const taskId = (e as CustomEvent<{ taskId: number }>).detail?.taskId;
@@ -112,20 +128,22 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
   const allDay = meetings.filter((m) => m.allDay);
   const timed = meetings.filter((m) => !m.allDay);
   // A dropped task keeps its sessions in the database but gives up its place on the column.
-  const blockedTasks = tasks.filter((t) => firstBlock(t, date) && t.status !== "dropped");
-  // Negative ids: a task and a meeting never collide, and the layout only cares that ids differ.
-  const taskSpans: TimelineMeeting[] = blockedTasks.map((t) => {
-    const block = firstBlock(t, date)!;
-    return { id: -t.id, startsAt: block.startsAt, endsAt: blockEnd(block) };
-  });
+  const placed: Placed[] = tasks
+    .filter((t) => t.status !== "dropped")
+    .flatMap((t) => {
+      const own = blocksOn(t, date);
+      return own.map((block, i) => ({ task: t, block, index: i + 1, count: own.length }));
+    });
+  // Negative ids: a session and a meeting never collide, and the layout only cares that ids differ.
+  const taskSpans: TimelineMeeting[] = placed.map((p) => ({ id: -p.block.id, startsAt: p.block.startsAt, endsAt: blockEnd(p.block) }));
   const spans = [...timed, ...taskSpans];
   const { dayStart, dayEnd } = hourRange(spans, workHours);
   const minutes = (dayEnd - dayStart) * 60;
   const hours = Array.from({ length: dayEnd - dayStart + 1 }, (_, i) => dayStart + i);
-  // Meetings and blocks are placed together, so a task overlapping a meeting shares its width.
+  // Meetings and sessions are placed together, so a session overlapping a meeting shares its width.
   const blocks = layoutBlocks(spans, { dayStart, dayEnd });
   const byId = new Map(timed.map((m) => [m.id, m]));
-  const taskById = new Map(blockedTasks.map((t) => [t.id, t]));
+  const placedById = new Map(placed.map((p) => [-p.block.id, p]));
 
   let nowTop: number | null = null;
   if (now !== null) {
@@ -141,6 +159,22 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     })();
   }
 
+  /** Every session the column writes goes through here, so any change to any session puts
+   * away the question a fresh drop asked. */
+  async function act(action: BlockAction): BlockResult {
+    const id = await onBlock(action);
+    setAskId(null);
+    return id;
+  }
+
+  /** Spec §3: a row dropped for a task nobody estimated places its session and then asks how
+   * long it should be; the answer becomes the estimate and the session's length. */
+  async function add(taskId: number, offset: number, minutesLong: number) {
+    const unestimated = tasks.find((t) => t.id === taskId)?.estimateMinutes == null;
+    const id = await act({ kind: "add", taskId, startsAt: minutesToIso(date, dayStart * 60 + offset), minutes: minutesLong });
+    if (id !== null && unestimated) setAskId(id);
+  }
+
   /** Keeps a block's top on the column, whatever the pointer did. The last slot the column
    * offers is one snap short of its end: on a column widened to midnight, a drop on the very
    * last pixel would otherwise roll the block over into tomorrow. */
@@ -153,11 +187,7 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     return clampTop(snap((clientY - column.getBoundingClientRect().top) / PX_PER_MIN));
   }
 
-  function schedule(id: number, offset: number) {
-    void onPatchTask(id, { scheduledAt: minutesToIso(date, dayStart * 60 + offset) });
-  }
-
-  /** How long the dragged plan row's block will be, when the row said so. Through a dragover
+  /** How long the dragged plan row's session will be, when the row said so. Through a dragover
    * the data store is protected, so the answer is read off the types rather than the data. */
   function draggedLength(e: DragEvent<HTMLElement>): number {
     return readPlanMinutes(e.dataTransfer.types) ?? DEFAULT_BLOCK_MINUTES;
@@ -179,15 +209,16 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     if (!e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) return;
     e.preventDefault();
     const offset = offsetAt(e.clientY, e.currentTarget);
-    const id = Number(e.dataTransfer.getData(PLAN_DRAG_MIME)) || null;
+    const minutesLong = draggedLength(e);
+    const taskId = Number(e.dataTransfer.getData(PLAN_DRAG_MIME)) || null;
     setGhost(null);
-    if (id !== null) schedule(id, offset);
+    if (taskId !== null) void add(taskId, offset, minutesLong);
   }
 
-  /** A press on a block: nothing happens until the pointer has actually gone somewhere. */
-  function onBlockPointerDown(e: PointerEvent<HTMLDivElement>, task: PlanTaskDTO, top: number) {
+  /** A press on a session: nothing happens until the pointer has actually gone somewhere. */
+  function onBlockPointerDown(e: PointerEvent<HTMLDivElement>, block: BlockDTO, top: number) {
     if (e.button !== 0) return;
-    move.current = { id: task.id, length: blockLength(task), startY: e.clientY, top, moved: false };
+    move.current = { id: block.id, length: block.minutes, startY: e.clientY, top, moved: false };
     try {
       columnRef.current?.setPointerCapture(e.pointerId);
     } catch {
@@ -220,7 +251,9 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
     } catch {
       /* never captured */
     }
-    if (commit && m.moved) schedule(m.id, clampTop(snap(m.top + (e.clientY - m.startY) / PX_PER_MIN)));
+    if (!commit || !m.moved) return;
+    const top = clampTop(snap(m.top + (e.clientY - m.startY) / PX_PER_MIN));
+    void act({ kind: "move", id: m.id, startsAt: minutesToIso(date, dayStart * 60 + top) });
   }
 
   return (
@@ -262,20 +295,25 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
 
         {blocks.map((b) => {
           if (b.id < 0) {
-            const task = taskById.get(-b.id);
-            if (!task) return null;
+            const session = placedById.get(b.id);
+            if (!session) return null;
             return (
               <TaskBlock
                 key={b.id}
-                task={task}
+                task={session.task}
+                block={session.block}
+                index={session.index}
+                count={session.count}
                 date={date}
                 top={b.top}
                 height={b.height}
                 col={b.col}
                 cols={b.cols}
                 pxPerMin={PX_PER_MIN}
-                onPatch={onPatchTask}
-                onDragStart={(e) => onBlockPointerDown(e, task, b.top)}
+                onPatchTask={onPatchTask}
+                onBlock={act}
+                askLength={askId === session.block.id}
+                onDragStart={(e) => onBlockPointerDown(e, session.block, b.top)}
               />
             );
           }
@@ -363,7 +401,7 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
         )}
       </div>
 
-      {meetings.length === 0 && blockedTasks.length === 0 && <p className="text-[13px] text-fg-faint m-0">No meetings on this day</p>}
+      {meetings.length === 0 && placed.length === 0 && <p className="text-[13px] text-fg-faint m-0">No meetings on this day</p>}
     </section>
   );
 }

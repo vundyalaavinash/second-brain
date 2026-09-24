@@ -5,7 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { MoreHorizontal } from "lucide-react";
 import type { PlannerDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { blockLength, capacityTone, formatMinutes } from "@/lib/capacity";
+import { capacityTone, formatMinutes } from "@/lib/capacity";
+import { sessionsFor } from "@/lib/scheduler";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
@@ -18,8 +19,8 @@ import { PlanPicker } from "./plan-picker";
 const JSON_HEADERS = { "content-type": "application/json" };
 const DRAG_CHIP_ID = "plan-drag-chip";
 
-/** The picture a dragged plan row shows: its title and its block length, one line, under the pointer. */
-function dragChip(task: TaskDTO): HTMLElement | null {
+/** The picture a dragged plan row shows: its title and its session length, one line, under the pointer. */
+function dragChip(task: TaskDTO, minutes: number): HTMLElement | null {
   if (typeof document === "undefined") return null;
   document.getElementById(DRAG_CHIP_ID)?.remove();
   const el = document.createElement("div");
@@ -28,7 +29,7 @@ function dragChip(task: TaskDTO): HTMLElement | null {
   el.textContent = task.title;
   const len = document.createElement("span");
   len.className = "font-mono text-[11px] text-fg-muted";
-  len.textContent = formatMinutes(blockLength(task));
+  len.textContent = formatMinutes(minutes);
   el.appendChild(len);
   document.body.appendChild(el);
   return el;
@@ -55,6 +56,11 @@ const RITUAL_MOTION = {
  * day holds is 23:55, so a block taken out at 23:58 does not begin tomorrow. */
 function nextSlot(minutes: number): number {
   return Math.min(24 * 60 - SNAP_MINUTES, Math.ceil((minutes + 1) / SNAP_MINUTES) * SNAP_MINUTES);
+}
+
+/** Spec §3: a row dropped on the column places exactly one session, this long. */
+function dropLength(task: TaskDTO): number {
+  return sessionsFor(task.estimateMinutes, task.sessionMinutes)[0];
 }
 
 /** The clock as minutes since local midnight, for a block that starts "now". */
@@ -253,12 +259,12 @@ export function PlanPane({ day, today, onRefresh }: Props) {
           e.dataTransfer.setData(PLAN_DRAG_MIME, String(task.id));
           // The data is the same number again, so nothing depends on a browser keeping an
           // entry whose value is empty; only the type is ever read.
-          e.dataTransfer.setData(planMinutesType(blockLength(task)), String(blockLength(task)));
+          e.dataTransfer.setData(planMinutesType(dropLength(task)), String(dropLength(task)));
           e.dataTransfer.effectAllowed = "move";
           // The browser would otherwise drag the whole row from wherever it was grabbed, and the
           // block then lands where the pointer is, well below the row's picture. A small chip
           // pinned to the pointer's top-left says what is moving and where it will start.
-          const chip = dragChip(task);
+          const chip = dragChip(task, dropLength(task));
           if (chip) e.dataTransfer.setDragImage(chip, 8, 8);
         }}
         onDragEnd={() => {

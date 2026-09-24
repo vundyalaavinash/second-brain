@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import type { PlannerDayDTO } from "@/lib/dto";
+import type { BlockDTO, PlannerDayDTO } from "@/lib/dto";
 import { PlanPane } from "./plan-pane";
-import { Timeline } from "./timeline";
+import { Timeline, type BlockAction, type BlockResult } from "./timeline";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SAVE_ERROR = "Could not save that change";
@@ -37,13 +37,50 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
     return true;
   }
 
+  /**
+   * What the column's sessions are written with. Each action is one call to the block routes;
+   * the answer is the session's own id — the one the add was given, so the column can ask how
+   * long a session it just placed should be — or null when nothing was written.
+   */
+  async function onBlock(action: BlockAction): BlockResult {
+    const res =
+      action.kind === "add"
+        ? await fetch("/api/blocks", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ taskId: action.taskId, startsAt: action.startsAt, minutes: action.minutes }),
+          })
+        : action.kind === "remove"
+          ? await fetch(`/api/blocks/${action.id}`, { method: "DELETE" })
+          : await fetch(`/api/blocks/${action.id}`, {
+              method: "PATCH",
+              headers: JSON_HEADERS,
+              body: JSON.stringify(action.kind === "move" ? { startsAt: action.startsAt } : { minutes: action.minutes }),
+            });
+    if (!res.ok) {
+      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: SAVE_ERROR } }));
+      return null;
+    }
+    window.dispatchEvent(new Event("sb:tasks-changed"));
+    if (action.kind !== "add") return action.id;
+    const block = (await res.json()) as BlockDTO;
+    return block.id;
+  }
+
   return (
     <div className="grid grid-cols-1 min-[1100px]:grid-cols-[1fr_1fr] min-[1400px]:grid-cols-[5fr_4fr] gap-6 items-start">
       <div className="min-[1100px]:order-2">
         <PlanPane day={day} today={today} onRefresh={onRefresh} />
       </div>
       <div className="min-[1100px]:order-1">
-        <Timeline date={day.date} meetings={day.meetings} tasks={day.plan} onPatchTask={patchTask} workHours={day.capacity.workHours} />
+        <Timeline
+          date={day.date}
+          meetings={day.meetings}
+          tasks={day.plan}
+          onPatchTask={patchTask}
+          onBlock={onBlock}
+          workHours={day.capacity.workHours}
+        />
       </div>
     </div>
   );

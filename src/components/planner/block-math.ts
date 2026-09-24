@@ -28,9 +28,14 @@ export function isoToMinutes(iso: string): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
-/** A task's first session on the day, the one the column and the row's chip speak for. */
+/** A task's sessions on the day, in the order the payload holds them: by start. */
+export function blocksOn<T extends { startsAt: string }>(task: { blocks: T[] }, date: string): T[] {
+  return task.blocks.filter((b) => b.startsAt.startsWith(date));
+}
+
+/** A task's first session on the day, the one the row's chip speaks for. */
 export function firstBlock<T extends { startsAt: string }>(task: { blocks: T[] }, date: string): T | undefined {
-  return task.blocks.find((b) => b.startsAt.startsWith(date));
+  return blocksOn(task, date)[0];
 }
 
 /** Where a session ends, from its start and its length. */
