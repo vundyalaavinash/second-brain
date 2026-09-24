@@ -25,6 +25,7 @@ import { PromptBar } from "../shell/prompt-bar";
 import { DockItem, type DockItemProps } from "./dock-item";
 import { DockSheet } from "./dock-sheet";
 import { RecordingChip } from "./recording-chip";
+import { FocusChip } from "../focus/focus-chip";
 import { useMagnify } from "./use-magnify";
 import type { HelperStateDTO, ItemDTO } from "@/lib/dto";
 
@@ -314,10 +315,12 @@ export function Dock() {
         className={`relative flex flex-col items-center transition-opacity duration-200 ${dimmed ? "opacity-40" : "opacity-100"}`}
       >
         <div className={`glow -bottom-72 left-1/2 -translate-x-1/2 ${pendingId === null ? "" : "glow-breathing"}`} aria-hidden />
-        {/* Beside the pill rather than in it: a running recording is a state, not a destination.
-          * It steps aside for the prompt bar, which takes the whole width. */}
+        {/* Beside the pill rather than in it: a running recording or focus run is a state, not
+          * a destination. Both live in the same slot, stacked, so a second chip can never land
+          * on top of the first; it steps aside for the prompt bar, which takes the whole width. */}
         {!open && (
-          <div className="absolute right-full bottom-2.5 mr-3">
+          <div className="absolute right-full bottom-2.5 mr-3 flex flex-col items-end gap-2">
+            <FocusChip />
             <RecordingChip />
           </div>
         )}

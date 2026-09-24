@@ -10,6 +10,8 @@ import { sessionsFor } from "@/lib/scheduler";
 import { addDaysLocal } from "../activity/format";
 import { Button, IconButton, List } from "../ui";
 import { MENU_ITEM, TaskRow } from "../tasks/task-row";
+import { FocusButton } from "../focus/focus-button";
+import { BreakOffer } from "../focus/break-offer";
 import { blocksOn, minutesToIso, SNAP_MINUTES } from "./block-math";
 import { count } from "./open-meeting";
 import { placeDay, SAVE_ERROR } from "./place-day";
@@ -316,6 +318,9 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
   // missing from would otherwise keep it off the bar altogether.
   const blockedFill = Math.min(100, capacity.freeMinutes ? (capacity.blockedMinutes / capacity.freeMinutes) * 100 : capacity.blockedMinutes ? 100 : 0);
   const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
+  // The header has room a packed row does not: the plan's first open task gets the quick-start
+  // button, with the length menu, rather than making the person open a row's own menu first.
+  const nextUp = day.plan.find((t) => t.status !== "done");
 
   return (
     <section aria-label={label} className="pane p-4 flex flex-col gap-3">
@@ -325,45 +330,48 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
         <span ref={headingRef} tabIndex={-1} className="focus-ring micro rounded-sm">
           Plan
         </span>
-        <span className="relative shrink-0">
-          <IconButton
-            label="Plan actions"
-            icon={MoreHorizontal}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={(e) => {
-              menuButtonRef.current = e.currentTarget;
-              setMenuOpen((v) => !v);
-            }}
-          />
-          {menuOpen && (
-            <div ref={menuPanelRef} role="menu" aria-label="Plan actions" className="panel absolute right-0 top-full mt-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-40 z-50">
-              <button
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM}
-                onClick={() => {
-                  setMenuOpen(false);
-                  menuButtonRef.current?.focus();
-                  void place(day.date, null, true);
-                }}
-              >
-                Fill the day
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM}
-                onClick={() => {
-                  setMenuOpen(false);
-                  menuButtonRef.current?.focus();
-                  sortByTime();
-                }}
-              >
-                Sort by time
-              </button>
-            </div>
-          )}
+        <span className="flex items-center gap-2 shrink-0">
+          {nextUp && <FocusButton task={{ id: nextUp.id, title: nextUp.title }} menu />}
+          <span className="relative shrink-0">
+            <IconButton
+              label="Plan actions"
+              icon={MoreHorizontal}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={(e) => {
+                menuButtonRef.current = e.currentTarget;
+                setMenuOpen((v) => !v);
+              }}
+            />
+            {menuOpen && (
+              <div ref={menuPanelRef} role="menu" aria-label="Plan actions" className="panel absolute right-0 top-full mt-1 rounded-md p-1 flex flex-col gap-0.5 w-max min-w-40 z-50">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    menuButtonRef.current?.focus();
+                    void place(day.date, null, true);
+                  }}
+                >
+                  Fill the day
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    menuButtonRef.current?.focus();
+                    sortByTime();
+                  }}
+                >
+                  Sort by time
+                </button>
+              </div>
+            )}
+          </span>
         </span>
       </div>
 
@@ -374,6 +382,8 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
           <div className="absolute inset-y-0 left-0 rounded-full bg-violet-bright transition-[width] duration-300" style={{ width: `${blockedFill}%` }} />
         )}
       </div>
+
+      <BreakOffer />
 
       {day.unfinishedYesterday.length > 0 && !showRitual && (
         <div className="flex items-center gap-3 rounded-md bg-layer-2 border border-hairline px-3 py-2">

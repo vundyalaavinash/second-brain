@@ -6,6 +6,7 @@ import type { BlockDTO, PlanTaskDTO } from "@/lib/dto";
 import { formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
 import { blockEnd, isoToMinutes, minutesToIso, snap } from "./block-math";
+import { FocusButton } from "../focus/focus-button";
 
 /**
  * What the column is asked to do with one session. The add names the task, because the session
@@ -240,8 +241,17 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
           {/* Spec §2: which of the day's sessions this one is, when the task holds more than one. */}
           {count > 1 && <span className="font-mono text-[11px] text-fg-faint shrink-0">{`${index} of ${count}`}</span>}
         </span>
-        <span className="font-mono text-[11px] text-fg-faint">
-          {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
+        <span className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[11px] text-fg-faint">
+            {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
+          </span>
+          {/* The session's own length, not recomputed here: no explicit minutes, so the run
+            * takes whatever this block is already sized to. */}
+          {!done && (
+            <span className="pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+              <FocusButton task={{ id: task.id, title: task.title }} blockId={block.id} compact />
+            </span>
+          )}
         </span>
       </div>
       {/* The keyboard resizes with Alt and the arrows on the group itself, so the handle is a

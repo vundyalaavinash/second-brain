@@ -66,7 +66,9 @@ describe("TaskList", () => {
     const refreshed = { open: 2, done: 0, total: 2, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
     const urls: string[] = [];
     stub(async (url) => {
-      urls.push(url);
+      // Every row's own FocusButton asks `/api/focus` for itself on mount, background noise
+      // unrelated to what this list refetches when a task changes elsewhere.
+      if (url !== "/api/focus") urls.push(url);
       return new Response(JSON.stringify({ tasks: [base, added], progress: refreshed }), { status: 200 });
     });
     const onProgress = vi.fn();
@@ -83,7 +85,7 @@ describe("TaskList", () => {
   it("stops listening for task changes once it unmounts", async () => {
     const urls: string[] = [];
     stub(async (url) => {
-      urls.push(url);
+      if (url !== "/api/focus") urls.push(url);
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
     const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);

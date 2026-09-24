@@ -13,6 +13,7 @@ import { blocksOn } from "../planner/block-math";
 import { addDaysLocal, formatClock, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 import { EstimateChip } from "./estimate-chip";
+import { FocusButton } from "../focus/focus-button";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -351,6 +352,7 @@ export function TaskRow({
         </Button>
       ) : (
         <>
+          <FocusButton task={{ id: task.id, title: task.title }} />
           <IconButton
             label="Task actions"
             icon={MoreHorizontal}

@@ -32,13 +32,19 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
+/** Every task row's own FocusButton (and the header's, for whichever task is next up) asks
+ * `/api/focus` for itself on mount — background noise the trackers below leave out, since
+ * nothing here is about focus runs. */
+const isFocusPoll = (url: string) => url === "/api/focus";
+
 /** Records every request the pane makes, answering each one with a bare 200. */
 function stubPlan() {
   const posts: { url: string; method?: string; body: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      posts.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      const url = String(input);
+      if (!isFocusPoll(url)) posts.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
       return Response.json({});
     }),
   );
@@ -52,8 +58,9 @@ function stubPlace(...answers: { placed: number; unplacedMinutes: number }[]) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      posts.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
-      if (String(input) === "/api/plan/place") return Response.json(answers[Math.min(i++, answers.length - 1)]);
+      const url = String(input);
+      if (!isFocusPoll(url)) posts.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (url === "/api/plan/place") return Response.json(answers[Math.min(i++, answers.length - 1)]);
       return Response.json({});
     }),
   );
@@ -73,6 +80,9 @@ function mount(date = TODAY) {
   vi.stubGlobal("fetch", fetchMock);
   const onRefresh = vi.fn();
   render(<PlanPane day={day({ date })} today={TODAY} onRefresh={onRefresh} />);
+  // Every row's own FocusButton (and the header's) asks `/api/focus` for itself on mount;
+  // cleared so a test's own first call is still `calls[0]`.
+  fetchMock.mockClear();
   return { fetchMock, onRefresh };
 }
 
