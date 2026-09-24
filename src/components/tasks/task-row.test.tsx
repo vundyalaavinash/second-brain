@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const task: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
 interface ExtraProps {
@@ -255,6 +255,24 @@ describe("TaskRow estimate", () => {
     cleanup();
     renderRow({}, { ...task, estimateMinutes: 30 });
     expect(screen.queryByRole("button", { name: /Estimate/ })).toBeNull();
+  });
+});
+
+describe("TaskRow spent", () => {
+  it("says nothing about what a task cost until a run has landed against it", () => {
+    renderRow({}, { ...task, estimateMinutes: 45, spentMinutes: 0 });
+    expect(screen.queryByText(/[Ss]pent/)).toBeNull();
+  });
+
+  it("reads what the task cost once a run has, and offers to correct a stale estimate", () => {
+    renderRow({}, { ...task, estimateMinutes: 45, spentMinutes: 80 });
+    expect(screen.getByText("Estimated 45m, spent 1h 20m")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use 1h 20m as the estimate" })).toBeTruthy();
+  });
+
+  it("shows the same line in the compact row", () => {
+    renderRow({ compact: true }, { ...task, estimateMinutes: 45, spentMinutes: 80 });
+    expect(screen.getByText("Estimated 45m, spent 1h 20m")).toBeTruthy();
   });
 });
 

@@ -5,6 +5,7 @@ import type { HomeDTO, PlannerDayDTO } from "@/lib/dto";
 import { count } from "../planner/open-meeting";
 import { CapacityLine } from "../planner/capacity-line";
 import { DateHeader } from "../planner/date-header";
+import { formatDuration } from "../activity/format";
 
 /** A figure worth a number, or the words for a day that has none of it. */
 function figure(n: number, some: string, none: string): string {
@@ -23,6 +24,7 @@ function figures(counts: HomeDTO["counts"]): { href: string; label: string }[] {
 interface Props {
   day: PlannerDayDTO;
   counts: HomeDTO["counts"];
+  focus: HomeDTO["focus"];
   onHours: (workHours: string) => void;
 }
 
@@ -31,7 +33,7 @@ interface Props {
  * chip, and the three figures under them. Home is always today, so the header carries no
  * arrows — the figures are the way out of it instead.
  */
-export function TopBand({ day, counts, onHours }: Props) {
+export function TopBand({ day, counts, focus, onHours }: Props) {
   return (
     <header className="flex flex-col gap-3">
       <DateHeader
@@ -47,6 +49,8 @@ export function TopBand({ day, counts, onHours }: Props) {
             </Link>
           </li>
         ))}
+        {/* What the day has cost so far — nowhere of its own to lead to yet, so it is read, not linked. */}
+        <li>{focus.minutes === 0 ? "Nothing focused yet" : `${formatDuration(focus.minutes * 60_000)} focused`}</li>
       </ul>
     </header>
   );

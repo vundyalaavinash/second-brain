@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { Dock } from "./dock";
 import { ToastProvider } from "../shell/toasts";
+import { resetFocusStore } from "../focus/focus-store";
 
 const push = vi.fn();
 const route = vi.hoisted(() => ({ path: "/inbox" }));
@@ -19,6 +20,10 @@ function stubFetch(itemStatus = "pending") {
     if (url.startsWith("/api/activity/status")) return Response.json({ helper: { lastSeen: new Date().toISOString() }, paused: false });
     if (/^\/api\/items\/\d+$/.test(url)) return Response.json({ id: 5, status: itemStatus });
     if (url === "/api/items") return Response.json({ id: 12, type: "note", title: "Buy milk" }, { status: 201 });
+    // `FocusChip` polls this on mount; answered rather than left to the 404 fallback, whose
+    // floating promise resolving at an arbitrary point was the suspected cause of an
+    // intermittent flake here.
+    if (url === "/api/focus") return Response.json({ run: null, settings: { defaultMinutes: 25, shortBreak: 5, longBreak: 15, longBreakEvery: 4 }, completedToday: 0 });
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fn);
@@ -75,10 +80,12 @@ beforeEach(() => {
   route.path = "/inbox";
   stubFetch();
   stubMatchMedia(false);
+  resetFocusStore();
 });
 
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   push.mockClear();

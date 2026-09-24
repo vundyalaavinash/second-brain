@@ -5,6 +5,7 @@ import { containers, items } from "@/db/schema";
 import { ingestHeartbeat, recordHelperSeen, replaceCalendarEvents } from "@/domain/activity";
 import { addBlock } from "@/domain/blocks";
 import { archiveContainer, createContainer } from "@/domain/containers";
+import { finishFocus, startFocus } from "@/domain/focus";
 import { createItem } from "@/domain/items";
 import { addToPlan } from "@/domain/plan";
 import { completeTask, createTask } from "@/domain/tasks";
@@ -107,6 +108,35 @@ describe("homePayload", () => {
     const home = homePayload(t.db, NOW);
     expect(home.now).toBeNull();
     expect(home.next).toEqual([]);
+  });
+
+  it("credits today's booked minutes to focus, and leaves it at nothing once a run's day is stale", () => {
+    const task = createTask(t.db, { title: "Earlier work" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 45 }, new Date(2026, 8, 22, 8, 0, 0));
+    finishFocus(t.db, run.id, "completed", new Date(2026, 8, 22, 8, 45, 0));
+
+    const home = homePayload(t.db, NOW);
+    expect(home.focus).toEqual({ minutes: 45, running: null });
+  });
+
+  it("lets a live run take the Now slot in place of a running session, never in place of a meeting", () => {
+    const task = createTask(t.db, { title: "Write the spec" });
+    addToPlan(t.db, DATE, task.id);
+    const block = addBlock(t.db, { taskId: task.id, startsAt: localAt(10), minutes: 60 });
+    const run = startFocus(t.db, { taskId: task.id, blockId: block.id, minutes: 45 }, new Date(2026, 8, 22, 10, 0, 0));
+
+    const withoutMeeting = homePayload(t.db, NOW);
+    // The server no longer nulls the session out from under a live run — the client alone
+    // decides which of the two wins the Now slot (F3), so Home still has the session to fall
+    // back on if the run turns out to be gone by the time this payload is read.
+    expect(withoutMeeting.now).toMatchObject({ kind: "session", title: "Write the spec", taskId: task.id });
+    expect(withoutMeeting.focus.running).toMatchObject({ id: run.id, taskId: task.id, taskTitle: "Write the spec", plannedMinutes: 45 });
+
+    replaceCalendarEvents(t.db, [{ externalId: "m1", title: "Standup", startsAt: at(10), endsAt: at(11), attendees: 3, hasCallLink: false }]);
+    const withMeeting = homePayload(t.db, NOW);
+    expect(withMeeting.now).toMatchObject({ kind: "meeting", title: "Standup" });
+    // Still reported as running, only not in the Now slot the meeting holds.
+    expect(withMeeting.focus.running).toMatchObject({ id: run.id, taskId: task.id });
   });
 
   it("sorts projects by nearest deadline, then by what was touched last, and stops at six", () => {

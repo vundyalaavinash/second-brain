@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act, waitFor, within } from "@testing-library/react";
 import { PlanPane } from "./plan-pane";
+import { resetFocusStore } from "../focus/focus-store";
 import { CarryOverBody } from "@/lib/validation";
 import type { PlannerDayDTO, PlanTaskDTO, TaskDTO } from "@/lib/dto";
 
@@ -12,7 +13,7 @@ const TODAY = "2026-09-22";
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 const planned: PlanTaskDTO = { ...base, id: 2, title: "Write the brief", planId: 9, sortOrder: 0 };
 const a: TaskDTO = { ...base, id: 3, title: "First thing" };
@@ -32,13 +33,18 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
+/** The store makes exactly one `/api/focus` call for the whole page on mount, not one per row —
+ * background noise the trackers below leave out, since nothing here is about focus runs. */
+const isFocusPoll = (url: string) => url === "/api/focus";
+
 /** Records every request the pane makes, answering each one with a bare 200. */
 function stubPlan() {
   const posts: { url: string; method?: string; body: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      posts.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      const url = String(input);
+      if (!isFocusPoll(url)) posts.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
       return Response.json({});
     }),
   );
@@ -52,8 +58,9 @@ function stubPlace(...answers: { placed: number; unplacedMinutes: number }[]) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      posts.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
-      if (String(input) === "/api/plan/place") return Response.json(answers[Math.min(i++, answers.length - 1)]);
+      const url = String(input);
+      if (!isFocusPoll(url)) posts.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (url === "/api/plan/place") return Response.json(answers[Math.min(i++, answers.length - 1)]);
       return Response.json({});
     }),
   );
@@ -73,11 +80,19 @@ function mount(date = TODAY) {
   vi.stubGlobal("fetch", fetchMock);
   const onRefresh = vi.fn();
   render(<PlanPane day={day({ date })} today={TODAY} onRefresh={onRefresh} />);
+  // The store makes one `/api/focus` call for the whole page on mount, not one per row; cleared
+  // so a test's own first call is still `calls[0]`.
+  fetchMock.mockClear();
   return { fetchMock, onRefresh };
 }
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
   nav.push.mockClear();
   try {

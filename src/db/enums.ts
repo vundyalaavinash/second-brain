@@ -45,3 +45,6 @@ export type GoalHorizon = (typeof GOAL_HORIZONS)[number];
 
 export const GOAL_STATUSES = ["active", "hit", "missed", "dropped"] as const;
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
+
+export const FOCUS_OUTCOMES = ["completed", "stopped", "abandoned"] as const;
+export type FocusOutcome = (typeof FOCUS_OUTCOMES)[number];

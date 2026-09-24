@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome } from "@/db/enums";
 
 export interface ContainerRefDTO {
   id: number;
@@ -83,6 +83,9 @@ export interface TaskDTO {
   blocks: BlockDTO[];
   /** The active goals the task's container serves; empty with no container or none active. */
   goals: GoalRefDTO[];
+  /** Minutes actually run against the task, summed from every run that booked anything — 0
+   * with no run landed yet, never a run's own zero (an abandoned run books nothing at all). */
+  spentMinutes: number;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -320,6 +323,11 @@ export interface HomeDTO {
   recent: RecentItemDTO[];
   /** Null until the helper has reported at all, which is what hides the section. */
   activity: { activeMs: number; top: { label: string; ms: number }[] } | null;
+  /** What today has cost so far: booked minutes and run count, and the run still going, if
+   * one is — the same live run a focus-aware surface reads through `useFocus()`, carried here
+   * too so the page's first paint already knows it rather than waiting on that store's own
+   * fetch. */
+  focus: { minutes: number; running: FocusRunDTO | null };
 }
 
 export interface GoalMeasureDTO {
@@ -358,4 +366,31 @@ export interface GoalDetailDTO extends GoalDTO {
   /** Each linked container with its own progress, so the goal page shows where the work is. */
   links: { container: ContainerRefDTO; progress: ProgressDTO }[];
   recentCloses: { id: number; title: string; completedAt: string; containerName: string }[];
+}
+
+/** One stretch of focused work on a task, live or finished. `endedAt`, `actualMinutes` and
+ * `outcome` are null while the run is still going. */
+export interface FocusRunDTO {
+  id: number;
+  taskId: number;
+  taskTitle: string;
+  blockId: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  plannedMinutes: number;
+  actualMinutes: number | null;
+  outcome: FocusOutcome | null;
+}
+
+export interface FocusSettingsDTO {
+  defaultMinutes: number;
+  shortBreak: number;
+  longBreak: number;
+  longBreakEvery: number;
+}
+
+export interface FocusSummaryDTO {
+  minutes: number;
+  runs: number;
+  byTask: { taskId: number; title: string; minutes: number; runs: number }[];
 }

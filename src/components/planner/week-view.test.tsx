@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { WeekView } from "./week-view";
+import { resetFocusStore } from "../focus/focus-store";
 import { PatchTaskBody } from "@/lib/validation";
 import type { PlannerWeekDTO, TaskDTO } from "@/lib/dto";
 
@@ -13,7 +14,7 @@ const TODAY = "2026-09-22";
 
 const task: TaskDTO = {
   id: 4, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: START, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function week(): PlannerWeekDTO {
@@ -33,6 +34,9 @@ function mount(): { fetchMock: ReturnType<typeof vi.fn>; onRefresh: ReturnType<t
   vi.stubGlobal("fetch", fetchMock);
   const onRefresh = vi.fn();
   render(<WeekView week={week()} today={TODAY} onRefresh={onRefresh} />);
+  // The store makes one `/api/focus` call for the whole page on mount, not one per row; cleared
+  // so the assertions below only see the calls a test's own action makes.
+  fetchMock.mockClear();
   return { fetchMock, onRefresh };
 }
 
@@ -41,8 +45,13 @@ function column(weekday: string): HTMLElement {
   return screen.getByText(weekday).closest(".pane") as HTMLElement;
 }
 
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
   nav.push.mockClear();
 });

@@ -18,7 +18,7 @@ const TODAY = "2026-09-23";
 let id = 1;
 const task = (title: string, dueDate: string | null = null): TaskDTO => ({
   id: id++, title, notes: "", status: "open", priority: "normal", dueDate, containerId: null, sourceItemId: null, completedAt: null,
-  sortOrder: 0, estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z",
+  sortOrder: 0, estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z",
 });
 const late = task("Late", "2026-09-20");
 const due = task("Due", TODAY);

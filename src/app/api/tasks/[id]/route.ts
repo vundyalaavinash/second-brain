@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { completeTask, deleteTask, dropTask, getTask, reopenTask, updateTask, TaskError } from "@/domain/tasks";
 import { blocksByTask } from "@/domain/blocks";
+import { goalRefsByContainer } from "@/domain/goals";
+import { focusMinutesByTask } from "@/domain/focus";
 import { errorResponse, parseId, serializeTask, taskBlockWindow } from "@/lib/api";
 import { PatchTaskBody } from "@/lib/validation";
 
@@ -22,7 +24,11 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     else if (status === "open") task = reopenTask(db, id);
     else if (status === "dropped") task = dropTask(db, id);
     // The same window a list carries: one task's answer is not a place for its whole history.
-    return NextResponse.json(serializeTask(task, blocksByTask(db, [id], taskBlockWindow()).get(id) ?? []));
+    // Goals and spent minutes are real here too — nothing reads this body today, which is
+    // exactly why it must not quietly lie once something does (F10).
+    const goals = task.containerId !== null ? (goalRefsByContainer(db, [task.containerId]).get(task.containerId) ?? []) : [];
+    const spentMinutes = focusMinutesByTask(db, [id]).get(id) ?? 0;
+    return NextResponse.json(serializeTask(task, blocksByTask(db, [id], taskBlockWindow()).get(id) ?? [], goals, spentMinutes));
   } catch (err) {
     return errorResponse(err);
   }

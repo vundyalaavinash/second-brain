@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
-import { formatClock } from "../activity/format";
+import type { HomeDTO, HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
+import { formatClock, formatDuration } from "../activity/format";
 import { Button, Chip } from "../ui";
 import { blocksOn } from "../planner/block-math";
 import { placeDay, SAVE_ERROR } from "../planner/place-day";
 import { useRecorder } from "../planner/use-recorder";
+import { useFocus } from "../focus/use-focus";
+import { remainingFor } from "../focus/focus-store";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -29,6 +31,7 @@ interface Props {
   today: string;
   now: HomeItemDTO | null;
   next: HomeItemDTO[];
+  focus: HomeDTO["focus"];
 }
 
 /**
@@ -36,9 +39,16 @@ interface Props {
  * yet — the one button that gives it somewhere. The current item is a status region, so a
  * reader hears the meeting that has just begun without being dragged to it.
  */
-export function NowNext({ day, today, now, next }: Props) {
+export function NowNext({ day, today, now, next, focus }: Props) {
   const [error, setError] = useState<string | null>(null);
   const recorder = useRecorder();
+  // The one store every focus surface reads — no fetch of its own. Its own run wins once it has
+  // loaded (F1): `liveRun ?? focus.running` could not tell "not loaded yet" from "loaded, and
+  // there is no run", and fell through to a payload run that had already ended, under a Stop
+  // button that sent nothing. Until the store has loaded, the payload's own `focus.running`
+  // keeps the first paint honest.
+  const { run: liveRun, loaded: focusLoaded, finish, busy: focusBusy } = useFocus();
+  const activeRun = focusLoaded ? liveRun : focus.running;
   // The dock's chip owns a running session; here it is only news, in place of the button that
   // could no longer start anything.
   const recording = recorder.status.state === "recording" || recorder.status.state === "stopping";
@@ -61,6 +71,29 @@ export function NowNext({ day, today, now, next }: Props) {
   const place = () => void placeDay(day.date, { today, offerNext: true, onError: setError });
 
   function current() {
+    // A meeting is where the person has to be, whatever else is running; short of that, a live
+    // run wins the slot over a session — the person is demonstrably working on that one.
+    if (now?.kind !== "meeting" && activeRun) {
+      return (
+        <>
+          <span className="flex-1 min-w-0 truncate text-[14px]">{activeRun.taskTitle}</span>
+          <span className="font-mono text-[11px] text-fg-faint shrink-0">{formatDuration(remainingFor(activeRun))} left</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void finish("stopped")}
+            // Before the store has loaded, this run came from the server payload and the store
+            // has nothing to stop: `finish` would return having sent nothing, which reads as a
+            // button that silently does not work. It waits the one in-flight request out.
+            disabled={focusBusy || !focusLoaded}
+            aria-label={`Stop focusing on ${activeRun.taskTitle}`}
+            className="shrink-0"
+          >
+            Stop
+          </Button>
+        </>
+      );
+    }
     if (!now) return <span className="text-[13px] text-fg-faint">Nothing on right now</span>;
     if (now.kind === "session") {
       return (

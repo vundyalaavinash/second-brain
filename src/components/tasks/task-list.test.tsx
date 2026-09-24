@@ -1,20 +1,26 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { TaskList } from "./task-list";
+import { resetFocusStore } from "../focus/focus-store";
 import type { TaskDTO } from "@/lib/dto";
 
 // See container-editor.test.tsx: this vitest config has no global `afterEach`, so
 // @testing-library/react's auto-cleanup never registers and DOM from one `it` would
 // otherwise still be attached (and matched by role/name queries) in the next.
+beforeEach(() => {
+  resetFocusStore();
+});
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
 });
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 const progress = { open: 1, done: 0, total: 1, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
 
@@ -66,7 +72,10 @@ describe("TaskList", () => {
     const refreshed = { open: 2, done: 0, total: 2, percent: 0, nextTask: { id: 1, title: "Draft email", dueDate: null } };
     const urls: string[] = [];
     stub(async (url) => {
-      urls.push(url);
+      // The store makes exactly one `/api/focus` call for the whole page, not one per row, but
+      // it is still background noise unrelated to what this list refetches when a task changes
+      // elsewhere.
+      if (url !== "/api/focus") urls.push(url);
       return new Response(JSON.stringify({ tasks: [base, added], progress: refreshed }), { status: 200 });
     });
     const onProgress = vi.fn();
@@ -83,7 +92,7 @@ describe("TaskList", () => {
   it("stops listening for task changes once it unmounts", async () => {
     const urls: string[] = [];
     stub(async (url) => {
-      urls.push(url);
+      if (url !== "/api/focus") urls.push(url);
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
     const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);

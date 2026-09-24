@@ -10,8 +10,10 @@ import { ProjectCards } from "./project-cards";
 import { RecentList } from "./recent-list";
 import { ActivityLine } from "./activity-line";
 
-/** Everything that can change what Home says, from anywhere in the app. */
-const CHANGE_EVENTS = ["sb:plan-changed", "sb:tasks-changed", "sb:inbox-changed", "sb:recording-changed"] as const;
+/** Everything that can change what Home says, from anywhere in the app. `sb:focus-changed` is
+ * what a run starting or finishing dispatches — the top band's focused minutes are read off
+ * this same payload, not off the live store, so a run landing has to ask for a fresh one. */
+const CHANGE_EVENTS = ["sb:plan-changed", "sb:tasks-changed", "sb:inbox-changed", "sb:recording-changed", "sb:focus-changed"] as const;
 
 /** One interaction often moves a task and the plan in the same breath, and the payload carries
  * the Planner's whole day; the events are let to settle into one request, as the Planner does. */
@@ -74,13 +76,13 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-6">
-      <TopBand day={data.day} counts={data.counts} onHours={saveHours} />
+      <TopBand day={data.day} counts={data.counts} focus={data.focus} onHours={saveHours} />
 
       {/* Two columns from 1100 px, the left wider. Below that they stack in source order, so a
         * phone reads the band, then what is on now, then the plan — and the right column last. */}
       <div className="grid grid-cols-1 min-[1100px]:grid-cols-[5fr_4fr] gap-6 items-start">
         <div className="flex flex-col gap-4 min-w-0">
-          <NowNext day={data.day} today={data.today} now={data.now} next={data.next} />
+          <NowNext day={data.day} today={data.today} now={data.now} next={data.next} focus={data.focus} />
           <PlanPane day={data.day} today={data.today} onRefresh={refresh} hideRitual label="Today's plan" />
           <div className="flex justify-end">
             <Link href="/planner" className="focus-ring rounded-sm text-[12px] text-fg-muted hover:text-fg transition-colors duration-150">

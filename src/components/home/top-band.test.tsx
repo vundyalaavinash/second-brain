@@ -19,8 +19,8 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
-function band(counts: HomeDTO["counts"]) {
-  render(<TopBand day={day()} counts={counts} onHours={() => {}} />);
+function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }) {
+  render(<TopBand day={day()} counts={counts} focus={focus} onHours={() => {}} />);
 }
 
 /** Every figure as it reads, paired with where it leads. */
@@ -67,5 +67,17 @@ describe("TopBand", () => {
   it("counts one of a thing in the singular", () => {
     band({ planned: 1, meetings: 1, inbox: 1 });
     expect(figures().map((f) => f.text)).toEqual(["1 planned", "1 meeting", "1 in the inbox"]);
+  });
+
+  it("says nothing focused yet rather than counting to zero", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 });
+    expect(screen.getByText("Nothing focused yet")).toBeTruthy();
+  });
+
+  it("names the day's booked minutes beside the counts, as plain text rather than a link", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, { minutes: 80, running: null });
+    const line = screen.getByText("1h 20m focused");
+    expect(line.tagName).toBe("LI");
+    expect(screen.getAllByRole("link")).toHaveLength(3);
   });
 });
