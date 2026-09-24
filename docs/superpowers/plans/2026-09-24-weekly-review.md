@@ -212,7 +212,7 @@ export const ReviewPlanBody = z.object({ week: DateString, taskIds: z.array(z.nu
 
 - [ ] **Step 8: Run the suite and commit**
 
-Run: `npx vitest run && npx tsc --noEmit && npx next lint`
+Run: `npm test && npx tsc --noEmit && npm run lint`
 
 ```bash
 git add -A
@@ -278,7 +278,7 @@ Expected: PASS.
 
 - [ ] **Step 7: Run the suite and commit**
 
-Run: `npx vitest run && npx tsc --noEmit && npx next lint`
+Run: `npm test && npx tsc --noEmit && npm run lint`
 
 ```bash
 git add -A
@@ -328,7 +328,7 @@ A Weekly review section: the four steps, that it writes one item per week readab
 
 - [ ] **Step 6: Run the suite and commit**
 
-Run: `npx vitest run && npx tsc --noEmit && npx next lint`
+Run: `npm test && npx tsc --noEmit && npm run lint`
 
 ```bash
 git add -A
