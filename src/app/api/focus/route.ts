@@ -5,6 +5,7 @@ import { getTask } from "@/domain/tasks";
 import { localDay } from "@/domain/activity";
 import { crossSite, errorResponse, forbidden, serializeFocusRun } from "@/lib/api";
 import { StartFocusBody } from "@/lib/validation";
+import type { FocusSettingsDTO } from "@/lib/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,10 @@ export async function GET(): Promise<Response> {
     const now = new Date();
     const run = runningFocus(db, now);
     const task = run ? getTask(db, run.taskId) : undefined;
+    const settings: FocusSettingsDTO = getFocusSettings(db);
     return NextResponse.json({
       run: run ? serializeFocusRun(run, task?.title ?? "") : null,
-      settings: getFocusSettings(db),
+      settings,
       completedToday: completedToday(db, localDay(now.toISOString())),
     });
   } catch (err) {

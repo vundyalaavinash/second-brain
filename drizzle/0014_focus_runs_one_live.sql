@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `focus_runs_one_live_idx` ON `focus_runs` ((ended_at is null)) WHERE "focus_runs"."ended_at" is null;

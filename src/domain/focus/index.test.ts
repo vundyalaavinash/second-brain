@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { focusRuns } from "@/db/schema";
 import { createTask } from "@/domain/tasks";
+import { addBlock } from "@/domain/blocks";
+import { ingestHeartbeat } from "@/domain/activity";
 import {
   startFocus,
   finishFocus,
@@ -9,12 +11,26 @@ import {
   focusMinutesByTask,
   focusSummary,
   completedToday,
+  focusWhere,
   getFocusSettings,
+  FocusError,
   ABANDON_UNDER,
   STALE_AFTER,
 } from "./index";
 
-const at = (hhmm: string) => new Date(`2026-09-24T${hhmm}:00.000Z`);
+// Built from local Date components, never from a UTC string: the domain buckets by *local* day
+// (`localDay`), so an instant built from a UTC literal names a different local day depending on
+// the machine's own timezone, and the same test would fail west of about UTC-10. Constructed this
+// way, `at("09:00")` is 09:00 local wall-clock time on 2026-09-24 in any timezone Node runs in,
+// so its local day is always the literal "2026-09-24" below, everywhere.
+const at = (hhmm: string): Date => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(2026, 8, 24, h, m, 0, 0);
+};
+const atNextDay = (hhmm: string): Date => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(2026, 8, 25, h, m, 0, 0);
+};
 
 let t: TestDb;
 beforeEach(() => {
@@ -84,14 +100,68 @@ describe("a focus run", () => {
     expect(run.plannedMinutes).toBe(25);
   });
 
-  it("survives its task being deleted underneath it", () => {
-    const task = createTask(t.db, { title: "Draft the brief" });
-    const run = startFocus(t.db, { taskId: task.id, minutes: 45 }, at("09:00"));
-    finishFocus(t.db, run.id, "completed", at("09:45"));
-    t.db.run(`delete from tasks where id = ${task.id}`);
-    expect(() => focusSummary(t.db, { from: "2026-09-24", to: "2026-09-25" })).not.toThrow();
+  it("refuses a blockId that does not exist, or belongs to a different task", () => {
+    const a = createTask(t.db, { title: "A" });
+    const b = createTask(t.db, { title: "B" });
+    expect(() => startFocus(t.db, { taskId: a.id, blockId: 9999, minutes: 25 }, at("09:00"))).toThrow(FocusError);
+    const block = addBlock(t.db, { taskId: b.id, startsAt: "2026-09-24T09:00:00", minutes: 25 });
+    expect(() => startFocus(t.db, { taskId: a.id, blockId: block.id, minutes: 25 }, at("09:00"))).toThrow(/task/i);
+    // The matching pairing is fine.
+    const run = startFocus(t.db, { taskId: b.id, blockId: block.id, minutes: 25 }, at("09:00"));
+    expect(run.blockId).toBe(block.id);
   });
 
+  it("never books more than plannedMinutes + STALE_AFTER, however late the finish call arrives", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
+    // A laptop sleeps mid-run and wakes ten hours later, the tab still holding the run id.
+    const done = finishFocus(t.db, run.id, "completed", at("19:00"));
+    expect(done).toMatchObject({ outcome: "completed", actualMinutes: 25 });
+  });
+
+  it("forces a stale finish to \"completed\" at the planned length, whatever outcome was asked for", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
+    // 90 minutes later is well past plannedMinutes(25) + STALE_AFTER(30).
+    const done = finishFocus(t.db, run.id, "stopped", at("10:30"));
+    expect(done).toMatchObject({ outcome: "completed", actualMinutes: 25 });
+  });
+
+  it("books exactly the planned minutes for a completed run, not the rounded wall clock", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 45 }, at("09:00"));
+    const done = finishFocus(t.db, run.id, "completed", new Date(at("09:00").getTime() + 45 * 60_000 + 40_000)); // +45:40
+    expect(done.actualMinutes).toBe(45);
+  });
+
+  it("refuses to end a run before it started", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
+    expect(() => finishFocus(t.db, run.id, "stopped", at("08:00"))).toThrow(/start/i);
+  });
+
+  it("the database itself refuses a second live run", () => {
+    const task = createTask(t.db, { title: "A" });
+    startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00"));
+    expect(() =>
+      t.db.run(`insert into focus_runs (task_id, started_at, planned_minutes) values (${task.id}, '2026-09-24T09:05:00.000Z', 25)`),
+    ).toThrow();
+  });
+
+  it("a deleted task's runs vanish from the summary, not just fail to throw", () => {
+    const kept = createTask(t.db, { title: "Kept" });
+    const gone = createTask(t.db, { title: "Gone" });
+    finishFocus(t.db, startFocus(t.db, { taskId: kept.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25"));
+    finishFocus(t.db, startFocus(t.db, { taskId: gone.id, minutes: 25 }, at("10:00")).id, "completed", at("10:25"));
+    t.db.run(`delete from tasks where id = ${gone.id}`);
+    const s = focusSummary(t.db, { from: "2026-09-24", to: "2026-09-25" });
+    expect(s).toMatchObject({ minutes: 25, runs: 1 });
+    expect(s.byTask).toEqual([{ taskId: kept.id, title: "Kept", minutes: 25, runs: 1 }]);
+    expect(focusMinutesByTask(t.db, [gone.id]).get(gone.id)).toBeUndefined();
+  });
+});
+
+describe("focus summary", () => {
   it("sums a range by task, counting only the runs that booked minutes", () => {
     const a = createTask(t.db, { title: "A" });
     finishFocus(t.db, startFocus(t.db, { taskId: a.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25"));
@@ -100,5 +170,107 @@ describe("a focus run", () => {
     expect(s).toMatchObject({ minutes: 25, runs: 1 });
     expect(s.byTask).toEqual([{ taskId: a.id, title: "A", minutes: 25, runs: 1 }]);
     expect(completedToday(t.db, "2026-09-24")).toBe(1);
+  });
+
+  it("sums across a multi-day range, with `to` exclusive of the boundary day", () => {
+    const task = createTask(t.db, { title: "A" });
+    finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25")); // 24th
+    finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 20 }, atNextDay("09:00")).id, "completed", atNextDay("09:20")); // 25th
+    const onBoundary = new Date(2026, 8, 26, 9, 0); // 26th — must fall outside to="2026-09-26"
+    finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 15 }, onBoundary).id, "completed", new Date(2026, 8, 26, 9, 15));
+
+    const s = focusSummary(t.db, { from: "2026-09-24", to: "2026-09-26" });
+    expect(s).toMatchObject({ minutes: 45, runs: 2 });
+  });
+
+  it("a run started late at night belongs to the local day it started, even once reconciled the next morning", () => {
+    const task = createTask(t.db, { title: "Night owl" });
+    startFocus(t.db, { taskId: task.id, minutes: 20 }, at("23:50")); // planned end 00:10 the 25th
+    // Reconciled well past the grace period, the next morning.
+    expect(runningFocus(t.db, atNextDay("07:00"))).toBeNull();
+    const startDay = focusSummary(t.db, { from: "2026-09-24", to: "2026-09-25" });
+    expect(startDay).toMatchObject({ minutes: 20, runs: 1 });
+    const readDay = focusSummary(t.db, { from: "2026-09-25", to: "2026-09-26" });
+    expect(readDay).toMatchObject({ minutes: 0, runs: 0 });
+  });
+});
+
+// Seeds one continuous session in the given app/domain from `from` to `to`, ten minutes at a
+// time — within `ingestHeartbeat`'s 15-minute fold gap, so it lands as one row, not several.
+function seedSession(db: TestDb["db"], appId: string, appName: string, from: Date, to: Date, url: string | null = null): void {
+  const STEP_MS = 10 * 60_000;
+  let cursor = from.getTime();
+  ingestHeartbeat(db, { at: new Date(cursor).toISOString(), appId, appName, title: appName, url });
+  while (cursor < to.getTime()) {
+    cursor = Math.min(cursor + STEP_MS, to.getTime());
+    ingestHeartbeat(db, { at: new Date(cursor).toISOString(), appId, appName, title: appName, url });
+  }
+}
+
+describe("focusWhere", () => {
+  it("answers [] when the helper has never reported anything at all", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    expect(focusWhere(t.db, run)).toEqual([]);
+  });
+
+  it("answers [] when the day has activity but none of it overlaps the run — distinct from never reporting", () => {
+    const task = createTask(t.db, { title: "A" });
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    // Real activity that day, nowhere near the run's own window.
+    seedSession(t.db, "com.apple.Notes", "Notes", at("14:00"), at("14:30"));
+    expect(focusWhere(t.db, run)).toEqual([]);
+  });
+
+  it("clips overlap to the run's own window, not the session's", () => {
+    const task = createTask(t.db, { title: "A" });
+    // The session runs from before the run to after it.
+    seedSession(t.db, "com.microsoft.VSCode", "Code", at("08:50"), at("09:40"));
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+    expect(focusWhere(t.db, run)).toEqual([{ label: "Code", ms: 30 * 60_000 }]);
+  });
+
+  it("names a browser by its busiest domain when a domain took over half its time", () => {
+    const task = createTask(t.db, { title: "A" });
+    // 15 minutes on a domain, 5 minutes without one: over half the app's time was on the domain.
+    seedSession(t.db, "com.google.Chrome", "Chrome", at("09:00"), at("09:15"), "https://github.com/x");
+    seedSession(t.db, "com.google.Chrome", "Chrome", at("09:15"), at("09:20"), null);
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    expect(focusWhere(t.db, run)).toEqual([{ label: "github.com", ms: 20 * 60_000 }]);
+  });
+
+  it("keeps the app's own name when no domain took over half its time", () => {
+    const task = createTask(t.db, { title: "A" });
+    // 8 minutes on a domain, 12 without one: the domain never crosses half the app's total time.
+    seedSession(t.db, "com.google.Chrome", "Chrome", at("09:00"), at("09:08"), "https://github.com/x");
+    seedSession(t.db, "com.google.Chrome", "Chrome", at("09:08"), at("09:20"), null);
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    expect(focusWhere(t.db, run)).toEqual([{ label: "Chrome", ms: 20 * 60_000 }]);
+  });
+
+  it("names at most three apps, ranked by time spent", () => {
+    const task = createTask(t.db, { title: "A" });
+    seedSession(t.db, "app.a", "App A", at("09:00"), at("09:10")); // 10 min
+    seedSession(t.db, "app.b", "App B", at("09:10"), at("09:18")); // 8 min
+    seedSession(t.db, "app.c", "App C", at("09:18"), at("09:23")); // 5 min
+    seedSession(t.db, "app.d", "App D", at("09:23"), at("09:25")); // 2 min, dropped
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25"));
+    expect(focusWhere(t.db, run)).toEqual([
+      { label: "App A", ms: 10 * 60_000 },
+      { label: "App B", ms: 8 * 60_000 },
+      { label: "App C", ms: 5 * 60_000 },
+    ]);
+  });
+
+  it("spans every local day the run touches, not just the one it started on", () => {
+    const task = createTask(t.db, { title: "Night owl" });
+    // The session itself crosses local midnight; the app switch happens at 00:05 the 25th.
+    seedSession(t.db, "app.a", "App A", at("23:50"), atNextDay("00:05"));
+    seedSession(t.db, "app.b", "App B", atNextDay("00:05"), atNextDay("00:15"));
+    const run = finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 25 }, at("23:50")).id, "completed", atNextDay("00:15"));
+    expect(focusWhere(t.db, run)).toEqual([
+      { label: "App A", ms: 15 * 60_000 },
+      { label: "App B", ms: 10 * 60_000 },
+    ]);
   });
 });

@@ -1,10 +1,11 @@
-import { and, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { focusRuns, tasks, type FocusRun } from "@/db/schema";
 import type { FocusOutcome } from "@/db/enums";
 import { getTask } from "@/domain/tasks";
+import { getBlock } from "@/domain/blocks";
 import { getSetting, setSetting } from "@/domain/settings";
-import { dayBounds, localDay } from "@/domain/activity";
+import { addDays, dayBounds, localDay } from "@/domain/activity";
 import { getDay, topApps } from "@/domain/activity/report";
 
 export class FocusError extends Error {
@@ -26,8 +27,13 @@ export const STALE_AFTER = 30;
 /** How many apps or sites `focusWhere` names. */
 const FOCUS_WHERE_LIMIT = 3;
 
-const MIN_MINUTES = 5;
-const MAX_MINUTES = 480;
+/** The length a single run — or a saved default length — may take. The one place this range is
+ * written; `src/lib/validation.ts` imports it rather than repeating the numbers. (Not merged with
+ * `src/domain/blocks/index.ts`'s `MAX_ESTIMATE`: that is a task's total *estimate* ceiling, a
+ * different quantity that only happens to share this number today — importing across those two
+ * domains to save one constant would be the wrong coupling if either ceiling ever moved.) */
+export const MIN_FOCUS_MINUTES = 5;
+export const MAX_FOCUS_MINUTES = 480;
 
 export interface FocusSettings {
   defaultMinutes: number;
@@ -43,6 +49,11 @@ const LONG_BREAK_EVERY_KEY = "focus.longBreakEvery";
 
 const FOCUS_SETTINGS_DEFAULTS: FocusSettings = { defaultMinutes: 25, shortBreak: 5, longBreak: 15, longBreakEvery: 4 };
 
+const MIN_BREAK_MINUTES = 1;
+const MAX_BREAK_MINUTES = 60;
+const MIN_LONG_BREAK_EVERY = 2;
+const MAX_LONG_BREAK_EVERY = 12;
+
 export function getFocusSettings(db: DB): FocusSettings {
   return {
     defaultMinutes: Number(getSetting(db, DEFAULT_MINUTES_KEY, String(FOCUS_SETTINGS_DEFAULTS.defaultMinutes))),
@@ -52,12 +63,35 @@ export function getFocusSettings(db: DB): FocusSettings {
   };
 }
 
-/** Writes the keys the patch carries and returns all four, which is what the route answers with. */
+/** Writes the keys the patch carries and returns all four, which is what the route answers with.
+ * Validates its own patch rather than trusting the route: a value written out of range here would
+ * make `getFocusSettings` hand back something `startFocus`'s own check then permanently refuses,
+ * for every future caller of no-minutes-given, not just whichever route call did it. */
 export function setFocusSettings(db: DB, patch: Partial<FocusSettings>): FocusSettings {
-  if (patch.defaultMinutes !== undefined) setSetting(db, DEFAULT_MINUTES_KEY, String(patch.defaultMinutes));
-  if (patch.shortBreak !== undefined) setSetting(db, SHORT_BREAK_KEY, String(patch.shortBreak));
-  if (patch.longBreak !== undefined) setSetting(db, LONG_BREAK_KEY, String(patch.longBreak));
-  if (patch.longBreakEvery !== undefined) setSetting(db, LONG_BREAK_EVERY_KEY, String(patch.longBreakEvery));
+  if (patch.defaultMinutes !== undefined) {
+    if (!Number.isInteger(patch.defaultMinutes) || patch.defaultMinutes < MIN_FOCUS_MINUTES || patch.defaultMinutes > MAX_FOCUS_MINUTES) {
+      throw new FocusError(`A default length is ${MIN_FOCUS_MINUTES} to ${MAX_FOCUS_MINUTES} minutes`);
+    }
+    setSetting(db, DEFAULT_MINUTES_KEY, String(patch.defaultMinutes));
+  }
+  if (patch.shortBreak !== undefined) {
+    if (!Number.isInteger(patch.shortBreak) || patch.shortBreak < MIN_BREAK_MINUTES || patch.shortBreak > MAX_BREAK_MINUTES) {
+      throw new FocusError(`A short break is ${MIN_BREAK_MINUTES} to ${MAX_BREAK_MINUTES} minutes`);
+    }
+    setSetting(db, SHORT_BREAK_KEY, String(patch.shortBreak));
+  }
+  if (patch.longBreak !== undefined) {
+    if (!Number.isInteger(patch.longBreak) || patch.longBreak < MIN_BREAK_MINUTES || patch.longBreak > MAX_BREAK_MINUTES) {
+      throw new FocusError(`A long break is ${MIN_BREAK_MINUTES} to ${MAX_BREAK_MINUTES} minutes`);
+    }
+    setSetting(db, LONG_BREAK_KEY, String(patch.longBreak));
+  }
+  if (patch.longBreakEvery !== undefined) {
+    if (!Number.isInteger(patch.longBreakEvery) || patch.longBreakEvery < MIN_LONG_BREAK_EVERY || patch.longBreakEvery > MAX_LONG_BREAK_EVERY) {
+      throw new FocusError(`Long breaks come every ${MIN_LONG_BREAK_EVERY} to ${MAX_LONG_BREAK_EVERY} runs`);
+    }
+    setSetting(db, LONG_BREAK_EVERY_KEY, String(patch.longBreakEvery));
+  }
   return getFocusSettings(db);
 }
 
@@ -66,21 +100,43 @@ export function setFocusSettings(db: DB, patch: Partial<FocusSettings>): FocusSe
  * helpers below take this instead and work identically either way. */
 type Executor = Pick<DB, "select" | "update" | "insert" | "delete">;
 
+/** The live run, if there is one. Ordered so that if the "at most one" invariant the partial
+ * unique index enforces were ever somehow violated, reads are still deterministic rather than
+ * picking whichever row SQLite happens to return first. */
 function liveRow(db: Executor): FocusRun | undefined {
-  return db.select().from(focusRuns).where(isNull(focusRuns.endedAt)).get();
+  return db.select().from(focusRuns).where(isNull(focusRuns.endedAt)).orderBy(asc(focusRuns.id)).get();
 }
 
 /**
- * Closes a run, applying the one rule that must never be sprinkled across callers: under
- * `ABANDON_UNDER` minutes is a mis-click, not work, and is abandoned whatever it was called,
- * booking nothing — so a day's figure is never inflated by a run nobody actually sat through.
+ * The one place a run is ever closed — every rule about what a run's minutes mean lives here, so
+ * no caller can bypass it and no two callers can disagree about it:
+ *
+ * - Under `ABANDON_UNDER` minutes is a mis-click, not work: it is abandoned whatever it was
+ *   called, and books nothing.
+ * - Past the run's planned end by more than `STALE_AFTER`, the run closes at the end it was
+ *   *meant* to have, as "completed", regardless of what outcome the caller asked for and
+ *   regardless of how late the caller's own clock reads — a laptop that slept mid-run and woke
+ *   ten hours later must book the same minutes whether the stale run was found by a background
+ *   read (`runningFocus`) or by the tab finally posting its finish. After this there is no way,
+ *   through any exported function, to book more than `plannedMinutes + STALE_AFTER` against a
+ *   task.
+ * - "completed" means the clock reached zero, so it books exactly `plannedMinutes` — never a
+ *   rounded wall-clock figure, so an on-time finish a few seconds late does not round up past
+ *   what was planned. "stopped" keeps the rounded wall-clock time: that is what "ended early with
+ *   the minutes kept" means.
  */
 function closeRow(db: Executor, run: FocusRun, outcome: FocusOutcome, now: Date): FocusRun {
-  const ran = Math.max(0, Math.round((now.getTime() - Date.parse(run.startedAt)) / 60_000));
-  const settled: FocusOutcome = ran < ABANDON_UNDER || outcome === "abandoned" ? "abandoned" : outcome;
+  const start = Date.parse(run.startedAt);
+  if (now.getTime() < start) throw new FocusError("A run cannot end before it started");
+  const plannedEnd = start + run.plannedMinutes * 60_000;
+  const stale = now.getTime() - plannedEnd > STALE_AFTER * 60_000;
+  const endAt = stale ? new Date(plannedEnd) : now;
+  const ran = Math.max(0, Math.round((endAt.getTime() - start) / 60_000));
+  const settled: FocusOutcome = stale ? "completed" : ran < ABANDON_UNDER || outcome === "abandoned" ? "abandoned" : outcome;
+  const actualMinutes = settled === "abandoned" ? 0 : settled === "completed" ? run.plannedMinutes : ran;
   const row = db
     .update(focusRuns)
-    .set({ endedAt: now.toISOString(), actualMinutes: settled === "abandoned" ? 0 : ran, outcome: settled })
+    .set({ endedAt: endAt.toISOString(), actualMinutes, outcome: settled })
     .where(eq(focusRuns.id, run.id))
     .returning()
     .get();
@@ -93,9 +149,16 @@ function closeRow(db: Executor, run: FocusRun, outcome: FocusOutcome, now: Date)
  * incumbent keeps whatever it has actually run rather than losing it to a race. */
 export function startFocus(db: DB, input: { taskId: number; blockId?: number | null; minutes?: number }, now = new Date()): FocusRun {
   if (!getTask(db, input.taskId)) throw new FocusError("Task not found", 404);
+  if (input.blockId != null) {
+    // A block names the session this run's length is meant to come from (design §4.2): one that
+    // does not exist, or belongs to a different task, is a silent mis-attribution, not a run.
+    const block = getBlock(db, input.blockId);
+    if (!block) throw new FocusError("Session not found", 404);
+    if (block.taskId !== input.taskId) throw new FocusError("That session belongs to a different task");
+  }
   const minutes = input.minutes ?? getFocusSettings(db).defaultMinutes;
-  if (!Number.isInteger(minutes) || minutes < MIN_MINUTES || minutes > MAX_MINUTES) {
-    throw new FocusError(`A run is ${MIN_MINUTES} to ${MAX_MINUTES} minutes`);
+  if (!Number.isInteger(minutes) || minutes < MIN_FOCUS_MINUTES || minutes > MAX_FOCUS_MINUTES) {
+    throw new FocusError(`A run is ${MIN_FOCUS_MINUTES} to ${MAX_FOCUS_MINUTES} minutes`);
   }
   return db.transaction((tx) => {
     const live = liveRow(tx);
@@ -110,8 +173,8 @@ export function startFocus(db: DB, input: { taskId: number; blockId?: number | n
   });
 }
 
-/** Finishes a live run with the outcome the caller names — `closeRow` may still override it to
- * "abandoned" when too little time passed for it to count as anything else. */
+/** Finishes a live run with the outcome the caller names — `closeRow` may still override it,
+ * to "abandoned" when too little time passed, or to "completed" when the run is long stale. */
 export function finishFocus(db: DB, id: number, outcome: FocusOutcome, now = new Date()): FocusRun {
   const row = db.select().from(focusRuns).where(eq(focusRuns.id, id)).get();
   if (!row) throw new FocusError("Focus run not found", 404);
@@ -121,22 +184,22 @@ export function finishFocus(db: DB, id: number, outcome: FocusOutcome, now = new
 
 /**
  * The live run, if there is one. A browser closed mid-run leaves the row open forever, so this
- * reconciles first: past the grace period the run is closed at the end it was meant to have, not
- * at `now` — crediting hours nobody worked would make every figure that reads this a lie.
+ * reconciles it through the same `closeRow` every other close goes through — the only thing owned
+ * here is the decision of *whether* to close at all: past the grace period, yes; inside it, the
+ * run is simply still live and is returned as-is.
  */
 export function runningFocus(db: DB, now = new Date()): FocusRun | null {
   const live = liveRow(db);
   if (!live) return null;
   const plannedEnd = Date.parse(live.startedAt) + live.plannedMinutes * 60_000;
-  if (now.getTime() - plannedEnd > STALE_AFTER * 60_000) {
-    closeRow(db, live, "completed", new Date(plannedEnd));
-    return null;
-  }
-  return live;
+  if (now.getTime() - plannedEnd <= STALE_AFTER * 60_000) return live;
+  closeRow(db, live, "completed", now);
+  return null;
 }
 
 /** Minutes actually run, per task, for runs that booked anything at all — an abandoned run is
- * never in this map, not even at zero. */
+ * never in this map, not even at zero. (Unused in production today; Task 3's task-detail
+ * reporting is its consumer.) */
 export function focusMinutesByTask(db: DB, taskIds: number[]): Map<number, number> {
   const out = new Map<number, number>();
   if (taskIds.length === 0) return out;
@@ -200,19 +263,31 @@ export function completedToday(db: DB, date: string): number {
   return rows.filter((r) => localDay(r.startedAt) === date).length;
 }
 
+/** Every local day `[startedAt, endedAt]` touches, inclusive — almost always one day, but a run
+ * crossing local midnight touches two. */
+function daysTouched(startedAt: string, endedAt: string): string[] {
+  const days: string[] = [];
+  for (let d = localDay(startedAt), last = localDay(endedAt); ; d = addDays(d, 1)) {
+    days.push(d);
+    if (d >= last) break;
+  }
+  return days;
+}
+
 /**
- * Where the machine actually was while the run was live: the day's non-AFK sessions, clipped to
- * the run's own window and ranked by `topApps` — the same "name a browser by its busiest domain"
- * rule `activityToday` (src/lib/home.ts) uses, shared from `@/domain/activity` so there is only
- * one copy of it. Empty when the helper never reported anything for the run's window, and for a
- * run with no end yet.
+ * Where the machine actually was while the run was live: every non-AFK session on every local day
+ * the run touches, clipped to the run's own window and ranked by `topApps` — the same "name a
+ * browser by its busiest domain" rule `activityToday` (src/lib/home.ts) uses, shared from
+ * `@/domain/activity` so there is only one copy of it. `[]` when the helper never reported
+ * anything for the run's window (whether because it never reported at all, or because nothing it
+ * did report overlaps this particular run), and for a run with no end yet.
  */
 export function focusWhere(db: DB, run: FocusRun): { label: string; ms: number }[] {
   if (!run.endedAt) return [];
   const runStart = Date.parse(run.startedAt);
   const runEnd = Date.parse(run.endedAt);
-  const day = getDay(db, localDay(run.startedAt));
-  const overlapping = day.sessions
+  const overlapping = daysTouched(run.startedAt, run.endedAt)
+    .flatMap((day) => getDay(db, day).sessions)
     .filter((s) => !s.afk)
     .map((s) => {
       const start = Math.max(runStart, Date.parse(s.startedAt));

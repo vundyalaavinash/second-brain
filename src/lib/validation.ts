@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
+import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
@@ -72,7 +73,7 @@ export const StartFocusBody = z
   .object({
     taskId: z.number().int().positive(),
     blockId: z.number().int().positive().nullable().optional(),
-    minutes: z.number().int().min(5).max(480).optional(),
+    minutes: z.number().int().min(MIN_FOCUS_MINUTES).max(MAX_FOCUS_MINUTES).optional(),
   })
   .strict();
 
@@ -80,7 +81,7 @@ export const FinishFocusBody = z.object({ outcome: z.enum(FOCUS_OUTCOMES) }).str
 
 export const FocusSettingsBody = z
   .object({
-    defaultMinutes: z.number().int().min(5).max(480),
+    defaultMinutes: z.number().int().min(MIN_FOCUS_MINUTES).max(MAX_FOCUS_MINUTES),
     shortBreak: z.number().int().min(1).max(60),
     longBreak: z.number().int().min(1).max(60),
     longBreakEvery: z.number().int().min(2).max(12),

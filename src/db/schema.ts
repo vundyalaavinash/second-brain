@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, integer, text, primaryKey, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import {
   ITEM_TYPES,
@@ -383,6 +384,15 @@ export const focusRuns = sqliteTable(
     actualMinutes: integer("actual_minutes"),
     outcome: text("outcome", { enum: FOCUS_OUTCOMES }),
   },
-  (t) => [index("focus_runs_task_idx").on(t.taskId), index("focus_runs_started_idx").on(t.startedAt)],
+  (t) => [
+    index("focus_runs_task_idx").on(t.taskId),
+    index("focus_runs_started_idx").on(t.startedAt),
+    // "One run at a time" as a structural guarantee, not a consequence of Node being
+    // single-threaded: every row this index covers (ended_at is null) indexes the same constant
+    // expression, so a second one violates uniqueness rather than silently coexisting.
+    uniqueIndex("focus_runs_one_live_idx")
+      .on(sql`(ended_at is null)`)
+      .where(sql`${t.endedAt} is null`),
+  ],
 );
 export type FocusRun = typeof focusRuns.$inferSelect;
