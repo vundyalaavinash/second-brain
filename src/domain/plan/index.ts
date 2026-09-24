@@ -1,6 +1,7 @@
-import { and, asc, eq, like, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { dailyPlanEntries, tasks, type Task } from "@/db/schema";
+import { blocksByTask, clearBlocks } from "@/domain/blocks";
 import { getTask, TaskError } from "@/domain/tasks";
 import { nowIso } from "@/lib/time";
 
@@ -44,13 +45,13 @@ export function addToPlan(db: DB, date: string, taskId: number): void {
   db.insert(dailyPlanEntries).values({ date, taskId, sortOrder: nextSortOrder(db, date), createdAt: nowIso() }).run();
 }
 
-/** Takes the task off that day's plan and off the timeline with it: a task holds one block, and
- * that block belonged to the plan it is leaving. Only a block on `date` goes: the same task can
- * sit on several days, and leaving Monday must not take the hour it holds on Tuesday. A task
- * that was never on the plan is a no-op, so an undo can be replayed safely. */
+/** Takes the task off that day's plan and off the timeline with it: its sessions belonged to the
+ * plan it is leaving. Only sessions on `date` go: the same task can sit on several days, and
+ * leaving Monday must not take the hours it holds on Tuesday. A task that was never on the plan
+ * is a no-op, so an undo can be replayed safely. */
 export function removeFromPlan(db: DB, date: string, taskId: number): void {
   const removed = db.delete(dailyPlanEntries).where(and(eq(dailyPlanEntries.date, date), eq(dailyPlanEntries.taskId, taskId))).run().changes;
-  if (removed > 0) db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(and(eq(tasks.id, taskId), like(tasks.scheduledAt, `${date}%`))).run();
+  if (removed > 0) clearBlocks(db, taskId, date);
 }
 
 /** Listed ids take positions 0..n-1 in order; the day's other entries follow in their current order. */
@@ -73,9 +74,9 @@ export function unfinished(db: DB, date: string): Task[] {
 }
 
 /** Adds every unfinished task of `from` to `to`, returning how many landed there. A task already
- * on `to` is left where it is and is not counted. A carried task loses the block it held on
- * `from`: it was placed on the day it is leaving, and the new day has its own hours. A block on
- * any other day is none of this day's business and stays where it is. */
+ * on `to` is left where it is and is not counted. A carried task loses the sessions it held on
+ * `from`: they were placed on the day it is leaving, and the new day has its own hours. Sessions
+ * on any other day are none of this day's business and stay where they are. */
 export function carryOver(db: DB, from: string, to: string): number {
   let moved = 0;
   // The reads and the inserts share the connection the transaction opened, so `db` here is
@@ -84,17 +85,20 @@ export function carryOver(db: DB, from: string, to: string): number {
     for (const task of unfinished(db, from)) {
       if (entryId(db, to, task.id) !== undefined) continue;
       addToPlan(db, to, task.id);
-      db.update(tasks).set({ scheduledAt: null, updatedAt: nowIso() }).where(and(eq(tasks.id, task.id), like(tasks.scheduledAt, `${from}%`))).run();
+      clearBlocks(db, task.id, from);
       moved += 1;
     }
   });
   return moved;
 }
 
-/** Blocked tasks first in clock order; the rest keep their order after them. */
+/** Tasks with a session on the day first, in the order their first session starts; the rest keep
+ * their order after them. */
 export function sortPlanByTime(db: DB, date: string): PlanTask[] {
   const current = listPlan(db, date);
-  const blocked = current.filter((t) => t.scheduledAt?.startsWith(date)).sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
-  const rest = current.filter((t) => !t.scheduledAt?.startsWith(date));
+  const byTask = blocksByTask(db, current.map((t) => t.id));
+  const firstStart = (id: number): string | undefined => byTask.get(id)?.find((b) => b.startsAt.startsWith(date))?.startsAt;
+  const blocked = current.filter((t) => firstStart(t.id) !== undefined).sort((a, b) => firstStart(a.id)!.localeCompare(firstStart(b.id)!));
+  const rest = current.filter((t) => firstStart(t.id) === undefined);
   return reorderPlan(db, date, [...blocked, ...rest].map((t) => t.id));
 }

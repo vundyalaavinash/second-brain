@@ -5,7 +5,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { PlanTaskDTO } from "@/lib/dto";
 import { formatMinutes } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
-import { blockEnd, isoToMinutes, minutesToIso, snap } from "./block-math";
+import { blockEnd, firstBlock, isoToMinutes, minutesToIso, snap } from "./block-math";
 
 interface Props {
   task: PlanTaskDTO;
@@ -45,11 +45,12 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
   const pending = useRef<number | null>(null);
   // Only the ref: whatever the prop moved to is the truth now, whether it caught up with what
   // was written here or a pointer drag landed first, so the next move counts from it.
+  const session = firstBlock(task, date)!;
   useEffect(() => {
     pending.current = null;
-  }, [task.scheduledAt]);
-  const start = task.scheduledAt!;
-  const end = blockEnd({ scheduledAt: start, estimateMinutes: task.estimateMinutes });
+  }, [session.startsAt]);
+  const start = session.startsAt;
+  const end = blockEnd(session);
   const done = task.status === "done";
   const name = `${task.title}, ${formatClock(start)} to ${formatClock(end)}`;
 
@@ -165,7 +166,7 @@ export function TaskBlock({ task, date, top, height, col, cols, pxPerMin, onPatc
           <span className={`truncate text-[13px] ${done ? "line-through text-fg-muted" : ""}`}>{task.title}</span>
         </span>
         <span className="font-mono text-[11px] text-fg-faint">
-          {formatClock(start)}–{formatClock(end)} · {formatMinutes(task.estimateMinutes ?? DEFAULT_LENGTH)}
+          {formatClock(start)}–{formatClock(end)} · {formatMinutes(session.minutes)}
         </span>
       </div>
       {/* The keyboard resizes with Alt and the arrows on the group itself, so the handle is a

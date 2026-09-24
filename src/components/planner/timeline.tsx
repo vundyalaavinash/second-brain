@@ -7,7 +7,7 @@ import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
 import { blockLength, DEFAULT_BLOCK_MINUTES, parseWorkHours } from "@/lib/capacity";
 import { layoutBlocks, type TimelineMeeting } from "./timeline-layout";
-import { blockEnd, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
+import { blockEnd, firstBlock, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
 import { PLAN_DRAG_MIME, readPlanMinutes } from "./drag-mime";
 import { TaskBlock } from "./task-block";
 import { useRecorder } from "./use-recorder";
@@ -111,14 +111,13 @@ export function Timeline({ date, meetings, tasks, onPatchTask, workHours }: Prop
 
   const allDay = meetings.filter((m) => m.allDay);
   const timed = meetings.filter((m) => !m.allDay);
-  // A dropped task keeps its hour in the database but gives up its place on the column.
-  const blockedTasks = tasks.filter((t) => t.scheduledAt?.startsWith(date) && t.status !== "dropped");
+  // A dropped task keeps its sessions in the database but gives up its place on the column.
+  const blockedTasks = tasks.filter((t) => firstBlock(t, date) && t.status !== "dropped");
   // Negative ids: a task and a meeting never collide, and the layout only cares that ids differ.
-  const taskSpans: TimelineMeeting[] = blockedTasks.map((t) => ({
-    id: -t.id,
-    startsAt: t.scheduledAt!,
-    endsAt: blockEnd({ scheduledAt: t.scheduledAt!, estimateMinutes: t.estimateMinutes }),
-  }));
+  const taskSpans: TimelineMeeting[] = blockedTasks.map((t) => {
+    const block = firstBlock(t, date)!;
+    return { id: -t.id, startsAt: block.startsAt, endsAt: blockEnd(block) };
+  });
   const spans = [...timed, ...taskSpans];
   const { dayStart, dayEnd } = hourRange(spans, workHours);
   const minutes = (dayEnd - dayStart) * 60;

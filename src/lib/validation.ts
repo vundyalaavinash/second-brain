@@ -26,12 +26,17 @@ export const TaskBody = z.object({
   containerId: z.number().int().positive().nullable().optional(),
   sourceItemId: z.number().int().positive().nullable().optional(),
   estimateMinutes: z.number().int().min(5).max(480).nullable().optional(),
-  scheduledAt: LocalTimestamp.nullable().optional(),
+  sessionMinutes: z.number().int().min(15).max(480).nullable().optional(),
 });
 export const PatchTaskBody = TaskBody.partial().omit({ sourceItemId: true }).extend({ status: z.enum(TASK_STATUSES).optional() }).strict();
 export const ReorderTasksBody = z.object({ containerId: z.number().int().positive().nullable(), ids: z.array(z.number().int().positive()) });
 
 export const PlanBody = z.object({ date: DateString, taskId: z.number().int().positive() }).strict();
+/** A session on the timeline: a start in local time and how long it runs. */
+export const BlockBody = z.object({ taskId: z.number().int().positive(), startsAt: LocalTimestamp, minutes: z.number().int().min(5).max(480) }).strict();
+export const PatchBlockBody = BlockBody.partial().omit({ taskId: true }).strict();
+/** Place one task's sessions, or every unplaced plan task's when no task is named. */
+export const PlaceBody = z.object({ date: DateString, taskId: z.number().int().positive().optional() }).strict();
 export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.number().int().positive()) }).strict();
 export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();
 

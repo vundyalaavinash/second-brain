@@ -41,7 +41,8 @@ const blocked: PlanTaskDTO = {
   containerId: null,
   sourceItemId: null,
   estimateMinutes: 45,
-  scheduledAt: `${DATE}T10:30:00`,
+  sessionMinutes: null,
+  blocks: [{ id: 1, taskId: 12, startsAt: `${DATE}T10:30:00`, minutes: 45 }],
   completedAt: null,
   sortOrder: 0,
   createdAt: "",
@@ -170,7 +171,7 @@ describe("Timeline", () => {
   it("keeps a drop on the column's last pixel on the day it was made", async () => {
     const posts = stubPatch();
     // A block crossing midnight runs the column to 24:00, so its last minute is the day's last.
-    const late = { ...blocked, scheduledAt: `${DATE}T23:50:00`, estimateMinutes: null };
+    const late = { ...blocked, estimateMinutes: null, blocks: [{ id: 1, taskId: blocked.id, startsAt: `${DATE}T23:50:00`, minutes: 25 }] };
     render(<Timeline date={DATE} meetings={[]} tasks={[late]} onPatchTask={patchTask} workHours="09:00-18:00" />);
     const column = screen.getByTestId("timeline-column");
     Object.defineProperty(column, "getBoundingClientRect", { value: () => ({ top: 0, left: 0, width: 400, height: 900 }) });
@@ -218,13 +219,13 @@ describe("Timeline", () => {
     fireEvent.keyDown(block, { key: "ArrowDown" });
     await waitFor(() => expect(posts).toHaveLength(1));
     // The day comes back holding 10:45: the note of what was written has nothing left to say.
-    rerender(<Timeline date={DATE} meetings={[]} tasks={[{ ...blocked, scheduledAt: `${DATE}T10:45:00` }]} onPatchTask={patchTask} workHours="09:00-18:00" />);
+    rerender(<Timeline date={DATE} meetings={[]} tasks={[{ ...blocked, blocks: [{ ...blocked.blocks[0], startsAt: `${DATE}T10:45:00` }] }]} onPatchTask={patchTask} workHours="09:00-18:00" />);
     fireEvent.keyDown(screen.getByRole("group", { name: "Write the note, 10:45 to 11:30" }), { key: "ArrowDown" });
     await waitFor(() => expect(posts.at(-1)).toEqual({ id: blocked.id, body: { scheduledAt: `${DATE}T11:00:00` } }));
   });
 
   it("runs the column to midnight for a block that crosses it", () => {
-    const late = { ...blocked, scheduledAt: `${DATE}T23:50:00`, estimateMinutes: null };
+    const late = { ...blocked, estimateMinutes: null, blocks: [{ id: 1, taskId: blocked.id, startsAt: `${DATE}T23:50:00`, minutes: 25 }] };
     const { container } = render(<Timeline date={DATE} meetings={[]} tasks={[late]} onPatchTask={patchTask} workHours="09:00-18:00" />);
     const labels = Array.from(container.querySelectorAll("span.font-mono")).map((el) => el.textContent).filter((t) => /^\d\d:00$/.test(t ?? ""));
     expect(labels.at(-1)).toBe("00:00");

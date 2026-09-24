@@ -283,20 +283,21 @@ export function TaskRow({
   // Where the task sits on the timeline. On the row's own day that is one press away, so the
   // chip is a button; a block on another day has no column here to jump to, and the same mono
   // figure only says which day holds it.
+  const blockStart = task.blocks[0]?.startsAt ?? null;
   const blockNode =
-    task.scheduledAt &&
-    (blockDate && task.scheduledAt.startsWith(blockDate) ? (
+    blockStart &&
+    (blockDate && blockStart.startsWith(blockDate) ? (
       <button
         type="button"
-        aria-label={`Blocked at ${formatClock(task.scheduledAt)}`}
+        aria-label={`Blocked at ${formatClock(blockStart)}`}
         onClick={() => window.dispatchEvent(new CustomEvent("sb:timeline-focus", { detail: { taskId: task.id } }))}
         className="focus-ring font-mono text-[11px] text-violet-bright rounded-sm px-1 shrink-0"
       >
-        {formatClock(task.scheduledAt)}
+        {formatClock(blockStart)}
       </button>
     ) : (
-      <span title={`Blocked on ${formatShortDate(task.scheduledAt.slice(0, 10))} at ${formatClock(task.scheduledAt)}`} className="font-mono text-[11px] text-violet-bright px-1 shrink-0">
-        {formatClock(task.scheduledAt)}
+      <span title={`Blocked on ${formatShortDate(blockStart.slice(0, 10))} at ${formatClock(blockStart)}`} className="font-mono text-[11px] text-violet-bright px-1 shrink-0">
+        {formatClock(blockStart)}
       </span>
     ));
 
@@ -409,7 +410,7 @@ export function TaskRow({
                     Block now
                   </button>
                 )}
-                {onUnblock && task.scheduledAt && (
+                {onUnblock && blockStart && (
                   <button
                     type="button"
                     role="menuitem"

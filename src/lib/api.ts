@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { items, type CalendarEvent, type Item, type Container, type Person, type Task } from "@/db/schema";
+import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock } from "@/db/schema";
 import { domainOf } from "@/lib/text";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
@@ -11,8 +11,9 @@ import { ActivityError } from "@/domain/activity/rules";
 import { MeetingError } from "@/domain/meetings/errors";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
+import { blocksByTask, BlockError } from "@/domain/blocks";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
-import type { ActivityMeetingDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -118,7 +119,13 @@ export function serializeContainers(db: DB, list: Container[]): ContainerDTO[] {
   }));
 }
 
-export function serializeTask(t: Task): TaskDTO {
+export function serializeBlock(b: TaskBlock): BlockDTO {
+  return { id: b.id, taskId: b.taskId, startsAt: b.startsAt, minutes: b.minutes };
+}
+
+/** A task and its sessions. Sessions are passed in rather than read here, so a list pays for one
+ * query instead of one per row. */
+export function serializeTask(t: Task, blocks: TaskBlock[] = []): TaskDTO {
   return {
     id: t.id,
     title: t.title,
@@ -129,7 +136,8 @@ export function serializeTask(t: Task): TaskDTO {
     containerId: t.containerId,
     sourceItemId: t.sourceItemId,
     estimateMinutes: t.estimateMinutes,
-    scheduledAt: t.scheduledAt,
+    sessionMinutes: t.sessionMinutes,
+    blocks: blocks.map(serializeBlock),
     completedAt: t.completedAt,
     sortOrder: t.sortOrder,
     createdAt: t.createdAt,
@@ -138,8 +146,20 @@ export function serializeTask(t: Task): TaskDTO {
 }
 
 /** The plan entry's order wins over the task's own: on a plan, position means the day's order. */
-export function serializePlanTask(t: Task & { planId: number; sortOrder: number }): PlanTaskDTO {
-  return { ...serializeTask(t), sortOrder: t.sortOrder, planId: t.planId };
+export function serializePlanTask(t: Task & { planId: number; sortOrder: number }, blocks: TaskBlock[] = []): PlanTaskDTO {
+  return { ...serializeTask(t, blocks), sortOrder: t.sortOrder, planId: t.planId };
+}
+
+/** A list of tasks with their sessions, in one query for the lot. */
+export function serializeTasks(db: DB, list: Task[]): TaskDTO[] {
+  const byTask = blocksByTask(db, list.map((t) => t.id));
+  return list.map((t) => serializeTask(t, byTask.get(t.id) ?? []));
+}
+
+/** A day's plan with its sessions, in one query for the lot. */
+export function serializePlanTasks(db: DB, list: (Task & { planId: number; sortOrder: number })[]): PlanTaskDTO[] {
+  const byTask = blocksByTask(db, list.map((t) => t.id));
+  return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? []));
 }
 
 /**
@@ -213,7 +233,8 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof ActivityError ||
     err instanceof MeetingError ||
     err instanceof AttachmentError ||
-    err instanceof TaskError
+    err instanceof TaskError ||
+    err instanceof BlockError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

@@ -266,8 +266,8 @@ export const tasks = sqliteTable(
     recurrence: text("recurrence"),
     /** Minutes the task is expected to take; null when nobody has guessed. */
     estimateMinutes: integer("estimate_minutes"),
-    /** When the task's block starts on the timeline, a local timestamp; null when unblocked. */
-    scheduledAt: text("scheduled_at"),
+    /** How long each placed session should be; null means the default sizing (spec §2). */
+    sessionMinutes: integer("session_minutes"),
     completedAt: text("completed_at"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),
@@ -276,6 +276,22 @@ export const tasks = sqliteTable(
   (t) => [index("tasks_container_status_order_idx").on(t.containerId, t.status, t.sortOrder), index("tasks_status_due_idx").on(t.status, t.dueDate)],
 );
 export type Task = typeof tasks.$inferSelect;
+
+/** One session of a task on the timeline. A task holds any number, ordered by start. */
+export const taskBlocks = sqliteTable(
+  "task_blocks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    /** Local timestamp of the session's start. */
+    startsAt: text("starts_at").notNull(),
+    minutes: integer("minutes").notNull(),
+  },
+  (t) => [index("task_blocks_task_idx").on(t.taskId), index("task_blocks_start_idx").on(t.startsAt)],
+);
+export type TaskBlock = typeof taskBlocks.$inferSelect;
 
 export const dailyPlanEntries = sqliteTable(
   "daily_plan_entries",

@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const task: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  estimateMinutes: null, scheduledAt: null, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
 interface ExtraProps {
@@ -307,7 +307,7 @@ describe("TaskRow blocks", () => {
     const listen = (e: Event) => focus.push((e as CustomEvent).detail);
     window.addEventListener("sb:timeline-focus", listen);
     try {
-      renderRow({ onBlockNow, onUnblock, blockDate: "2026-09-16" }, { ...task, scheduledAt: "2026-09-16T10:30:00" });
+      renderRow({ onBlockNow, onUnblock, blockDate: "2026-09-16" }, { ...task, blocks: [{ id: 1, taskId: task.id, startsAt: "2026-09-16T10:30:00", minutes: 25 }] });
       fireEvent.click(screen.getByRole("button", { name: "Blocked at 10:30" }));
       expect(focus).toEqual([{ taskId: task.id }]);
       fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
@@ -326,7 +326,7 @@ describe("TaskRow blocks", () => {
     // No day to measure against, and a day that is not the block's: neither has a column here
     // to jump to, so the figure is said rather than offered.
     for (const extra of [{ onBlockNow: vi.fn() }, { onBlockNow: vi.fn(), blockDate: "2026-09-17" }]) {
-      renderRow(extra, { ...task, scheduledAt: "2026-09-16T10:30:00" });
+      renderRow(extra, { ...task, blocks: [{ id: 1, taskId: task.id, startsAt: "2026-09-16T10:30:00", minutes: 25 }] });
       expect(screen.queryByRole("button", { name: /^Blocked at/ })).toBeNull();
       expect(screen.getByTitle("Blocked on Wed 16 at 10:30").textContent).toBe("10:30");
       cleanup();

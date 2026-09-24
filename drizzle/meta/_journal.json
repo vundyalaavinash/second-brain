@@ -78,6 +78,13 @@
       "when": 1790171290766,
       "tag": "0010_task_scheduled_at",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790216761045,
+      "tag": "0011_task_blocks",
+      "breakpoints": true
     }
   ]
 }

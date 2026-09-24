@@ -7,6 +7,7 @@ let r: {
   plan: typeof import("./plan/route");
   carryOver: typeof import("./plan/carry-over/route");
   sort: typeof import("./plan/sort/route");
+  blocks: typeof import("./blocks/route");
   tasks: typeof import("./tasks/route");
   task: typeof import("./tasks/[id]/route");
 };
@@ -25,6 +26,7 @@ beforeAll(async () => {
     plan: await import("./plan/route"),
     carryOver: await import("./plan/carry-over/route"),
     sort: await import("./plan/sort/route"),
+    blocks: await import("./blocks/route"),
     tasks: await import("./tasks/route"),
     task: await import("./tasks/[id]/route"),
   };
@@ -66,12 +68,12 @@ describe("plan api", () => {
     expect(after.tasks).toEqual([]);
   });
 
-  it("sorts the plan by block time", async () => {
+  it("sorts the plan by session time", async () => {
     const a = await addTask("First planned");
-    const b = await addTask("Block set later but earlier in time");
+    const b = await addTask("Session set later but earlier in time");
     await r.plan.POST(json("POST", "/api/plan", { date: "2026-09-25", taskId: a }));
     await r.plan.POST(json("POST", "/api/plan", { date: "2026-09-25", taskId: b }));
-    await r.task.PATCH(json("PATCH", "/x", { scheduledAt: "2026-09-25T09:00:00" }), params(b));
+    await r.blocks.POST(json("POST", "/api/blocks", { taskId: b, startsAt: "2026-09-25T09:00:00", minutes: 45 }));
     const sorted = (await (await r.sort.POST(json("POST", "/api/plan/sort", { date: "2026-09-25" }))).json()) as { date: string; tasks: { id: number }[] };
     expect(sorted.date).toBe("2026-09-25");
     expect(sorted.tasks.map((t) => t.id)).toEqual([b, a]);

@@ -10,7 +10,7 @@ const TODAY = "2026-09-23";
 
 const loose: TaskDTO = {
   id: 1, title: "Loose one", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, scheduledAt: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function day(): PlannerDayDTO {
@@ -21,7 +21,7 @@ function day(): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [loose], due: { overdue: [], today: [] }, projects: [], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0 },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 },
   };
 }
 

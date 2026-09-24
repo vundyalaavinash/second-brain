@@ -66,9 +66,22 @@ export const DEFAULT_BLOCK_MINUTES = 25;
 export function blockLength(task: { estimateMinutes: number | null }): number {
   return task.estimateMinutes ?? DEFAULT_BLOCK_MINUTES;
 }
-/** Open tasks whose block starts on `date`, summed by their block length. */
-export function blockedMinutes(tasks: { status: string; estimateMinutes: number | null; scheduledAt: string | null }[], date: string): number {
-  return tasks.filter((t) => t.status === "open" && t.scheduledAt?.startsWith(date)).reduce((n, t) => n + blockLength(t), 0);
+/** The pieces of a session capacity needs; both BlockDTO and TaskBlock satisfy it. */
+export type CapacityBlock = { startsAt: string; minutes: number };
+
+/** Minutes of the day held by open tasks' sessions. */
+export function blockedMinutes(tasks: { status: string; blocks: CapacityBlock[] }[], date: string): number {
+  return tasks
+    .filter((t) => t.status === "open")
+    .reduce((n, t) => n + t.blocks.filter((b) => b.startsAt.startsWith(date)).reduce((m, b) => m + b.minutes, 0), 0);
+}
+
+/** What the day's open tasks still want and have nowhere to sit: estimate minus what is placed
+ * on the day, per task. A task nobody has estimated asks for nothing. */
+export function unplacedMinutes(tasks: { status: string; estimateMinutes: number | null; blocks: CapacityBlock[] }[], date: string): number {
+  return tasks
+    .filter((t) => t.status === "open" && t.estimateMinutes !== null)
+    .reduce((n, t) => n + Math.max(0, t.estimateMinutes! - t.blocks.filter((b) => b.startsAt.startsWith(date)).reduce((m, b) => m + b.minutes, 0)), 0);
 }
 
 export type CapacityTone = "ok" | "warn" | "danger";

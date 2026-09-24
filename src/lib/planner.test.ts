@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { captureMeeting, listMeetings, replaceCalendarEvents } from "@/domain/activity";
 import { createContainer } from "@/domain/containers";
+import { addBlock } from "@/domain/blocks";
 import { addToPlan } from "@/domain/plan";
 import { createTask } from "@/domain/tasks";
 import { hasUserNotes, plannerDay, plannerWeek } from "./planner";
@@ -86,7 +87,8 @@ describe("plannerDay", () => {
     const inbox = createTask(t.db, { title: "Loose", estimateMinutes: 25 });
     const late = createTask(t.db, { title: "Late", dueDate: "2026-09-20", containerId: project.id });
     const todayTask = createTask(t.db, { title: "Today", dueDate: "2026-09-23", containerId: area.id, estimateMinutes: 45 });
-    const planned = createTask(t.db, { title: "Planned", containerId: project.id, estimateMinutes: 60, scheduledAt: "2026-09-23T10:00:00" });
+    const planned = createTask(t.db, { title: "Planned", containerId: project.id, estimateMinutes: 60 });
+    addBlock(t.db, { taskId: planned.id, startsAt: "2026-09-23T10:00:00", minutes: 60 });
     addToPlan(t.db, "2026-09-23", planned.id);
     addToPlan(t.db, "2026-09-23", todayTask.id);
     replaceCalendarEvents(t.db, [
@@ -100,7 +102,8 @@ describe("plannerDay", () => {
     // A group carries the name its heading needs and nothing more: no counts, no progress.
     expect(day.sources.projects[0].container).toEqual({ id: project.id, name: "Launch", slug: project.slug, kind: "project" });
     expect(day.sources.areas.map((g) => [g.container.name, g.tasks.map((x) => x.id)])).toEqual([["Health", [todayTask.id]]]);
-    expect(day.capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 60 });
+    // The 45-minute task on the plan has no session yet, so it is the whole unplaced figure.
+    expect(day.capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 60, unplacedMinutes: 45 });
     void empty;
     const week = plannerWeek(t.db, "2026-09-21");
     expect(week.days[2].capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, blockedMinutes: 60 });

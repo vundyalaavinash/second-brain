@@ -6,8 +6,8 @@ import { listContainers } from "@/domain/containers";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { parseMeta } from "@/domain/items";
-import { serializeMeeting, serializePlanTask, serializeTask } from "./api";
-import { blockedMinutes, freeMinutes, plannedMinutes } from "./capacity";
+import { serializeMeeting, serializePlanTasks, serializeTasks } from "./api";
+import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
 import { getWorkHours } from "./work-hours";
 import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
@@ -26,7 +26,7 @@ function unplannedIn(tasks: TaskDTO[], plannedIds: Set<number>): number {
 /** Open tasks grouped by home: inbox (no container), then every active project and area. A task
  * in an archived container is in no group; it still shows under `due` when it is dated. */
 export function plannerSources(db: DB, date: string, plannedIds: Set<number>): PlannerSourcesDTO {
-  const open = listTasks(db, { status: "open" }).map(serializeTask);
+  const open = serializeTasks(db, listTasks(db, { status: "open" }));
   const unplanned = open.filter((t) => !plannedIds.has(t.id));
   // A group heading needs a name and nothing else, so the rows are turned into refs here rather
   // than through `serializeContainers`, which would count every container's items to say it.
@@ -50,7 +50,7 @@ export function plannerSources(db: DB, date: string, plannedIds: Set<number>): P
  * due reaches the day through `sources.due`; the day itself lists none of it.
  */
 export function plannerDay(db: DB, date: string): PlannerDayDTO {
-  const plan = listPlan(db, date).map(serializePlanTask);
+  const plan = serializePlanTasks(db, listPlan(db, date));
   const plannedIds = new Set(plan.map((t) => t.id));
   const workHours = getWorkHours(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
@@ -58,12 +58,19 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
   return {
     date,
     plan,
-    unfinishedYesterday: unfinished(db, addDays(date, -1)).map(serializeTask),
+    unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1))),
     // The same flagged meetings the list view shows, so the timeline can badge them too.
     meetings,
     calendar: plannerCalendar(db),
     sources: plannerSources(db, date, plannedIds),
-    capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: planned, unestimated, workHours, blockedMinutes: blockedMinutes(plan, date) },
+    capacity: {
+      freeMinutes: freeMinutes(meetings, workHours, date),
+      plannedMinutes: planned,
+      unestimated,
+      workHours,
+      blockedMinutes: blockedMinutes(plan, date),
+      unplacedMinutes: unplacedMinutes(plan, date),
+    },
   };
 }
 
@@ -78,13 +85,13 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
     else byDay.set(day, [serializeMeeting(ev)]);
   }
   // The week's last day is the latest one a column can hold; anything later is not shown.
-  const open = listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }).map(serializeTask);
+  const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }));
   const workHours = getWorkHours(db);
   return {
     start,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
-      const dayPlan = listPlan(db, date);
+      const dayPlan = serializePlanTasks(db, listPlan(db, date));
       return {
         date,
         meetings,

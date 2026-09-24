@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedMinutes, blockLength, capacityTone, formatMinutes, freeMinutes, parseWorkHours, plannedMinutes } from "./capacity";
+import { blockedMinutes, blockLength, unplacedMinutes, capacityTone, formatMinutes, freeMinutes, parseWorkHours, plannedMinutes } from "./capacity";
 
 const DAY = "2026-09-23";
 const m = (start: string, end: string, over: Partial<{ allDay: boolean; status: string }> = {}) => ({
@@ -49,16 +49,30 @@ describe("capacity", () => {
     expect(formatMinutes(130)).toBe("2h 10m");
   });
 
-  it("counts blocked minutes on the day only, estimate or the 25-minute default", () => {
+  it("counts the day's session minutes for open tasks only", () => {
     const tasks = [
-      { status: "open", estimateMinutes: 60, scheduledAt: "2026-09-23T10:00:00" },
-      { status: "open", estimateMinutes: null, scheduledAt: "2026-09-23T14:00:00" },
-      { status: "done", estimateMinutes: 30, scheduledAt: "2026-09-23T15:00:00" },
-      { status: "open", estimateMinutes: 45, scheduledAt: "2026-09-24T09:00:00" },
-      { status: "open", estimateMinutes: 45, scheduledAt: null },
+      { status: "open", estimateMinutes: 60, blocks: [{ startsAt: "2026-09-23T10:00:00", minutes: 45 }, { startsAt: "2026-09-23T14:00:00", minutes: 15 }] },
+      { status: "open", estimateMinutes: null, blocks: [{ startsAt: "2026-09-23T14:00:00", minutes: 25 }] },
+      { status: "done", estimateMinutes: 30, blocks: [{ startsAt: "2026-09-23T15:00:00", minutes: 30 }] },
+      { status: "open", estimateMinutes: 45, blocks: [{ startsAt: "2026-09-24T09:00:00", minutes: 45 }] },
+      { status: "open", estimateMinutes: 45, blocks: [] },
     ];
     expect(blockLength({ estimateMinutes: null })).toBe(25);
     expect(blockedMinutes(tasks, "2026-09-23")).toBe(85);
+  });
+
+  it("counts what an estimate still wants and the day has no room for", () => {
+    const tasks = [
+      // Two hours wanted, 45 minutes placed: an hour and a quarter is unplaced.
+      { status: "open", estimateMinutes: 120, blocks: [{ startsAt: "2026-09-23T10:00:00", minutes: 45 }] },
+      // Placed past the estimate on the day, and a session on another day: neither asks for more.
+      { status: "open", estimateMinutes: 30, blocks: [{ startsAt: "2026-09-23T12:00:00", minutes: 45 }] },
+      { status: "open", estimateMinutes: 60, blocks: [{ startsAt: "2026-09-24T09:00:00", minutes: 60 }] },
+      // A task nobody has estimated asks for nothing; a finished one is finished with.
+      { status: "open", estimateMinutes: null, blocks: [] },
+      { status: "done", estimateMinutes: 90, blocks: [] },
+    ];
+    expect(unplacedMinutes(tasks, "2026-09-23")).toBe(135);
   });
 
   it("tones the plan against the free time", () => {

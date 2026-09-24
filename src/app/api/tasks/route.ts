@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { createTask, listTasks, projectProgress } from "@/domain/tasks";
-import { errorResponse, parseContainerParam, serializeTask } from "@/lib/api";
+import { errorResponse, parseContainerParam, serializeTask, serializeTasks } from "@/lib/api";
 import { TaskBody } from "@/lib/validation";
 import { CaptureError } from "@/domain/items/capture";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request): Promise<Response> {
     const status = sp.get("status") ?? "open";
     if (!["open", "done", "dropped", "all"].includes(status)) throw new CaptureError("status must be open, done, dropped, or all", 400);
     const db = getDb();
-    const tasks = listTasks(db, { containerId, status: status as "open" | "done" | "dropped" | "all" }).map(serializeTask);
+    const tasks = serializeTasks(db, listTasks(db, { containerId, status: status as "open" | "done" | "dropped" | "all" }));
     return NextResponse.json(typeof containerId === "number" ? { tasks, progress: projectProgress(db, containerId) } : { tasks });
   } catch (err) {
     return errorResponse(err);

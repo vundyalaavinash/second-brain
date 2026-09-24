@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { sortPlanByTime } from "@/domain/plan";
-import { errorResponse, serializePlanTask } from "@/lib/api";
+import { errorResponse, serializePlanTasks } from "@/lib/api";
 import { DateString } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,8 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-    return NextResponse.json({ date: parsed.data.date, tasks: sortPlanByTime(getDb(), parsed.data.date).map(serializePlanTask) });
+    const db = getDb();
+    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, sortPlanByTime(db, parsed.data.date)) });
   } catch (err) {
     return errorResponse(err);
   }

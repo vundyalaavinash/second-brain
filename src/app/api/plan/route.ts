@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { addToPlan, listPlan, removeFromPlan, reorderPlan, unfinished } from "@/domain/plan";
 import { addDays } from "@/domain/activity";
-import { errorResponse, serializePlanTask, serializeTask } from "@/lib/api";
+import { errorResponse, serializePlanTasks, serializeTasks } from "@/lib/api";
 import { DateString, PlanBody, ReorderPlanBody } from "@/lib/validation";
 import type { PlanDTO } from "@/lib/dto";
 
@@ -21,8 +21,8 @@ export async function GET(req: Request): Promise<Response> {
     const db = getDb();
     const body: PlanDTO = {
       date,
-      tasks: listPlan(db, date).map(serializePlanTask),
-      unfinishedYesterday: unfinished(db, addDays(date, -1)).map(serializeTask),
+      tasks: serializePlanTasks(db, listPlan(db, date)),
+      unfinishedYesterday: serializeTasks(db, unfinished(db, addDays(date, -1))),
     };
     return NextResponse.json(body);
   } catch (err) {
@@ -36,7 +36,7 @@ export async function POST(req: Request): Promise<Response> {
     if (!parsed.success) return badRequest(parsed.error.message);
     const db = getDb();
     addToPlan(db, parsed.data.date, parsed.data.taskId);
-    return NextResponse.json({ date: parsed.data.date, tasks: listPlan(db, parsed.data.date).map(serializePlanTask) }, { status: 201 });
+    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date)) }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }
@@ -48,7 +48,7 @@ export async function DELETE(req: Request): Promise<Response> {
     if (!parsed.success) return badRequest(parsed.error.message);
     const db = getDb();
     removeFromPlan(db, parsed.data.date, parsed.data.taskId);
-    return NextResponse.json({ date: parsed.data.date, tasks: listPlan(db, parsed.data.date).map(serializePlanTask) });
+    return NextResponse.json({ date: parsed.data.date, tasks: serializePlanTasks(db, listPlan(db, parsed.data.date)) });
   } catch (err) {
     return errorResponse(err);
   }
@@ -58,7 +58,8 @@ export async function PATCH(req: Request): Promise<Response> {
   try {
     const parsed = ReorderPlanBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return badRequest(parsed.error.message);
-    const tasks = reorderPlan(getDb(), parsed.data.date, parsed.data.taskIds).map(serializePlanTask);
+    const db = getDb();
+    const tasks = serializePlanTasks(db, reorderPlan(db, parsed.data.date, parsed.data.taskIds));
     return NextResponse.json({ date: parsed.data.date, tasks });
   } catch (err) {
     return errorResponse(err);

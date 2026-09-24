@@ -59,6 +59,14 @@ export interface ProgressDTO {
   nextTask: { id: number; title: string; dueDate: string | null } | null;
 }
 
+/** One session of a task on the timeline. */
+export interface BlockDTO {
+  id: number;
+  taskId: number;
+  startsAt: string;
+  minutes: number;
+}
+
 export interface TaskDTO {
   id: number;
   title: string;
@@ -69,7 +77,10 @@ export interface TaskDTO {
   containerId: number | null;
   sourceItemId: number | null;
   estimateMinutes: number | null;
-  scheduledAt: string | null;
+  /** How long each placed session should be; null leaves the sizing to the scheduler. */
+  sessionMinutes: number | null;
+  /** The task's sessions, ordered by start, across every day it holds one. */
+  blocks: BlockDTO[];
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -129,6 +140,7 @@ export interface CapacityDTO {
   unestimated: number;
   workHours: string;
   blockedMinutes: number;
+  unplacedMinutes: number;
 }
 
 export interface PersonDTO {

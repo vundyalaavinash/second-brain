@@ -7,7 +7,7 @@ import { getItem, parseMeta } from "@/domain/items";
 import { listTasks } from "@/domain/tasks";
 import { hasChatKey } from "@/providers/chat";
 import { absoluteFilePath } from "@/lib/files";
-import { serializeItem, serializeMeeting, serializeTask } from "@/lib/api";
+import { serializeItem, serializeMeeting, serializeTasks } from "@/lib/api";
 import { ItemEditor } from "@/components/item-editor";
 import { MeetingPage } from "@/components/meeting/meeting-page";
 
@@ -49,7 +49,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         key={item.id}
         item={serializeItem(db, item)}
         event={event ? serializeMeeting(event) : null}
-        tasks={listTasks(db, { sourceItemId: item.id, status: "all" }).map(serializeTask)}
+        tasks={serializeTasks(db, listTasks(db, { sourceItemId: item.id, status: "all" }))}
         hasKey={hasChatKey(db)}
         recordingBytes={recordingBytes(item)}
       />

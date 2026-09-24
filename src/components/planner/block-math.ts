@@ -1,5 +1,3 @@
-import { blockLength } from "@/lib/capacity";
-
 export const SNAP_MINUTES = 5;
 
 export function snap(minutes: number, step = SNAP_MINUTES): number {
@@ -30,7 +28,12 @@ export function isoToMinutes(iso: string): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
-export function blockEnd(task: { scheduledAt: string; estimateMinutes: number | null }): string {
-  const start = new Date(task.scheduledAt);
-  return stamp(new Date(start.getTime() + blockLength(task) * 60_000));
+/** A task's first session on the day, the one the column and the row's chip speak for. */
+export function firstBlock<T extends { startsAt: string }>(task: { blocks: T[] }, date: string): T | undefined {
+  return task.blocks.find((b) => b.startsAt.startsWith(date));
+}
+
+/** Where a session ends, from its start and its length. */
+export function blockEnd(block: { startsAt: string; minutes: number }): string {
+  return stamp(new Date(new Date(block.startsAt).getTime() + block.minutes * 60_000));
 }

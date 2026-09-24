@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { getItem, parseMeta, updateItem } from "@/domain/items";
 import { MeetingError } from "@/domain/meetings/errors";
 import { createTask, listTasks } from "@/domain/tasks";
+import { listBlocks } from "@/domain/blocks";
 import { errorResponse, parseId, serializeTask } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
       const made = listTasks(db, { sourceItemId: item.id, status: "all" });
       const newest = made.reduce<(typeof made)[number] | undefined>((a, b) => (a && a.id > b.id ? a : b), undefined);
       const existing = made.find((t) => t.title === action.title || t.title === title) ?? newest;
-      if (existing) return NextResponse.json({ task: serializeTask(existing) }, { status: 200 });
+      if (existing) return NextResponse.json({ task: serializeTask(existing, listBlocks(db, { taskId: existing.id })) }, { status: 200 });
     }
 
     const task = createTask(db, { title, notes: action.notes, containerId: item.containerId, sourceItemId: item.id });
