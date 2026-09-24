@@ -10,7 +10,7 @@ const TODAY = "2026-09-23";
 
 const loose: TaskDTO = {
   id: 1, title: "Loose one", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 /** A planned task holding one session on the day, so the column has a block to write about. */

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
-import { formatClock } from "../activity/format";
+import type { FocusRunDTO, HomeDTO, HomeItemDTO, PlannerDayDTO } from "@/lib/dto";
+import { formatClock, formatDuration } from "../activity/format";
 import { Button, Chip } from "../ui";
 import { blocksOn } from "../planner/block-math";
 import { placeDay, SAVE_ERROR } from "../planner/place-day";
 import { useRecorder } from "../planner/use-recorder";
+import { useFocus } from "../focus/use-focus";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -29,6 +30,14 @@ interface Props {
   today: string;
   now: HomeItemDTO | null;
   next: HomeItemDTO[];
+  focus: HomeDTO["focus"];
+}
+
+/** The run's remaining time, from its own planned end — the same arithmetic `focus-store.ts`
+ * runs, recomputed here rather than imported so this reads correctly even before that store's
+ * own fetch has caught up with what the page was handed on its first paint. */
+function remainingFor(run: FocusRunDTO): number {
+  return Math.max(0, Date.parse(run.startedAt) + run.plannedMinutes * 60_000 - Date.now());
 }
 
 /**
@@ -36,9 +45,13 @@ interface Props {
  * yet — the one button that gives it somewhere. The current item is a status region, so a
  * reader hears the meeting that has just begun without being dragged to it.
  */
-export function NowNext({ day, today, now, next }: Props) {
+export function NowNext({ day, today, now, next, focus }: Props) {
   const [error, setError] = useState<string | null>(null);
   const recorder = useRecorder();
+  // The one store every focus surface reads — no fetch of its own. Its own run wins once it
+  // has loaded; until then the payload's own `focus.running` keeps the first paint honest.
+  const { run: liveRun, finish, busy: focusBusy } = useFocus();
+  const activeRun = liveRun ?? focus.running;
   // The dock's chip owns a running session; here it is only news, in place of the button that
   // could no longer start anything.
   const recording = recorder.status.state === "recording" || recorder.status.state === "stopping";
@@ -61,6 +74,26 @@ export function NowNext({ day, today, now, next }: Props) {
   const place = () => void placeDay(day.date, { today, offerNext: true, onError: setError });
 
   function current() {
+    // A meeting is where the person has to be, whatever else is running; short of that, a live
+    // run wins the slot over a session — the person is demonstrably working on that one.
+    if (now?.kind !== "meeting" && activeRun) {
+      return (
+        <>
+          <span className="flex-1 min-w-0 truncate text-[14px]">{activeRun.taskTitle}</span>
+          <span className="font-mono text-[11px] text-fg-faint shrink-0">{formatDuration(remainingFor(activeRun))} left</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void finish("stopped")}
+            disabled={focusBusy}
+            aria-label={`Stop focusing on ${activeRun.taskTitle}`}
+            className="shrink-0"
+          >
+            Stop
+          </Button>
+        </>
+      );
+    }
     if (!now) return <span className="text-[13px] text-fg-faint">Nothing on right now</span>;
     if (now.kind === "session") {
       return (

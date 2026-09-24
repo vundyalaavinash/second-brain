@@ -14,7 +14,7 @@ import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
 import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type GoalWithMeasure } from "@/domain/goals";
-import { FocusError } from "@/domain/focus";
+import { FocusError, focusMinutesByTask } from "@/domain/focus";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
 import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO, FocusRunDTO } from "./dto";
@@ -127,9 +127,10 @@ export function serializeBlock(b: TaskBlock): BlockDTO {
   return { id: b.id, taskId: b.taskId, startsAt: b.startsAt, minutes: b.minutes };
 }
 
-/** A task, its sessions and the active goals its container serves. Both are passed in rather
- * than read here, so a list pays for one query each instead of one per row. */
-export function serializeTask(t: Task, blocks: TaskBlock[] = [], goals: GoalRefDTO[] = []): TaskDTO {
+/** A task, its sessions, the active goals its container serves, and what it has cost so far.
+ * All three are passed in rather than read here, so a list pays for one query each instead of
+ * one per row. */
+export function serializeTask(t: Task, blocks: TaskBlock[] = [], goals: GoalRefDTO[] = [], spentMinutes = 0): TaskDTO {
   return {
     id: t.id,
     title: t.title,
@@ -143,6 +144,7 @@ export function serializeTask(t: Task, blocks: TaskBlock[] = [], goals: GoalRefD
     sessionMinutes: t.sessionMinutes,
     blocks: blocks.map(serializeBlock),
     goals,
+    spentMinutes,
     completedAt: t.completedAt,
     sortOrder: t.sortOrder,
     createdAt: t.createdAt,
@@ -151,8 +153,13 @@ export function serializeTask(t: Task, blocks: TaskBlock[] = [], goals: GoalRefD
 }
 
 /** The plan entry's order wins over the task's own: on a plan, position means the day's order. */
-export function serializePlanTask(t: Task & { planId: number; sortOrder: number }, blocks: TaskBlock[] = [], goals: GoalRefDTO[] = []): PlanTaskDTO {
-  return { ...serializeTask(t, blocks, goals), sortOrder: t.sortOrder, planId: t.planId };
+export function serializePlanTask(
+  t: Task & { planId: number; sortOrder: number },
+  blocks: TaskBlock[] = [],
+  goals: GoalRefDTO[] = [],
+  spentMinutes = 0,
+): PlanTaskDTO {
+  return { ...serializeTask(t, blocks, goals, spentMinutes), sortOrder: t.sortOrder, planId: t.planId };
 }
 
 /** How many days either side of today a task list carries sessions for: last week, because a
@@ -176,16 +183,17 @@ function goalsByTask(db: DB, list: { id: number; containerId: number | null }[])
   return out;
 }
 
-/** A list of tasks with their sessions and goals, in one query each for the lot. The window
- * bounds what each row carries: without one a task placed every day for a year would serialize
- * all of it. */
+/** A list of tasks with their sessions, goals and spent minutes, in one query each for the
+ * lot — never one per row. The window bounds what each row carries: without one a task placed
+ * every day for a year would serialize all of it. */
 export function serializeTasks(db: DB, list: Task[], window: { from: string; to: string } = taskBlockWindow()): TaskDTO[] {
   const byTask = blocksByTask(db, list.map((t) => t.id), window);
   const goals = goalsByTask(db, list);
-  return list.map((t) => serializeTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? []));
+  const spent = focusMinutesByTask(db, list.map((t) => t.id));
+  return list.map((t) => serializeTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? [], spent.get(t.id) ?? 0));
 }
 
-/** A day's plan with its sessions and goals, in one query each for the lot. */
+/** A day's plan with its sessions, goals and spent minutes, in one query each for the lot. */
 export function serializePlanTasks(
   db: DB,
   list: (Task & { planId: number; sortOrder: number })[],
@@ -193,7 +201,8 @@ export function serializePlanTasks(
 ): PlanTaskDTO[] {
   const byTask = blocksByTask(db, list.map((t) => t.id), window);
   const goals = goalsByTask(db, list);
-  return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? []));
+  const spent = focusMinutesByTask(db, list.map((t) => t.id));
+  return list.map((t) => serializePlanTask(t, byTask.get(t.id) ?? [], goals.get(t.id) ?? [], spent.get(t.id) ?? 0));
 }
 
 /**

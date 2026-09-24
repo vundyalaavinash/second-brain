@@ -1,11 +1,13 @@
 import { inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { tasks } from "@/db/schema";
-import { getDay, getHelperState, localDay, topApps } from "@/domain/activity";
+import { addDays, getDay, getHelperState, localDay, topApps } from "@/domain/activity";
 import { listBlocks } from "@/domain/blocks";
 import { listContainers } from "@/domain/containers";
 import { countInbox, listItems, parseMeta } from "@/domain/items";
-import { containerProgress } from "@/domain/tasks";
+import { containerProgress, getTask } from "@/domain/tasks";
+import { focusSummary, runningFocus } from "@/domain/focus";
+import { serializeFocusRun } from "./api";
 import { daysBetween } from "./deadline";
 import { plannerDay } from "./planner";
 import type { HomeDTO, HomeItemDTO, ProjectCardDTO, RecentItemDTO } from "./dto";
@@ -161,6 +163,11 @@ export function homePayload(db: DB, now: Date): HomeDTO {
   const date = localDay(now.toISOString());
   const day = plannerDay(db, date);
   const { now: current, next } = nowAndNext(timedItems(db, day, date), now.getTime());
+  // A live run is demonstrably what the person is doing, so it wins the "Now" slot over a
+  // session — but never over a meeting, which is where they have to be regardless.
+  const running = runningFocus(db, now);
+  const nowSlot = running && current?.kind === "session" ? null : current;
+  const focusToday = focusSummary(db, { from: date, to: addDays(date, 1) }, now);
   return {
     date,
     today: date,
@@ -175,10 +182,15 @@ export function homePayload(db: DB, now: Date): HomeDTO {
       // The dock's badge count, called rather than counted again.
       inbox: countInbox(db),
     },
-    now: current,
+    now: nowSlot,
     next,
     projects: projectCards(db, date),
     recent: recentItems(db),
     activity: activityToday(db, date),
+    focus: {
+      minutes: focusToday.minutes,
+      runs: focusToday.runs,
+      running: running ? serializeFocusRun(running, getTask(db, running.taskId)?.title ?? "") : null,
+    },
   };
 }

@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { NowNext } from "./now-next";
-import type { HomeItemDTO, PlannerDayDTO, PlanTaskDTO, RecorderStatusDTO } from "@/lib/dto";
+import { resetFocusStore } from "../focus/focus-store";
+import type { FocusRunDTO, FocusSettingsDTO, HomeDTO, HomeItemDTO, PlannerDayDTO, PlanTaskDTO, RecorderStatusDTO } from "@/lib/dto";
 
 const DATE = "2026-09-22";
+const NO_FOCUS: HomeDTO["focus"] = { minutes: 0, runs: 0, running: null };
+const FOCUS_SETTINGS: FocusSettingsDTO = { defaultMinutes: 25, shortBreak: 5, longBreak: 15, longBreakEvery: 4 };
 
 const planTask = (over: Partial<PlanTaskDTO> = {}): PlanTaskDTO => ({
   id: 7, title: "Write the brief", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
   ...over,
 });
 
@@ -28,8 +31,24 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
 const meetingNow: HomeItemDTO = { kind: "meeting", title: "Design review", startsAt: "2026-09-22T10:00:00", endsAt: "2026-09-22T11:00:00", meetingId: 3, joinUrl: "https://meet.example/abc" };
 const sessionNow: HomeItemDTO = { kind: "session", title: "Write the brief", startsAt: "2026-09-22T10:00:00", endsAt: "2026-09-22T10:45:00", taskId: 7, blockId: 12 };
 
-/** Answers the recorder with the state given and records every other request. */
-function stub(recorder: Partial<RecorderStatusDTO> = {}, place?: { placed: number; unplacedMinutes: number }) {
+function focusRun(over: Partial<FocusRunDTO> = {}): FocusRunDTO {
+  return {
+    id: 5,
+    taskId: 7,
+    taskTitle: "Write the brief",
+    blockId: null,
+    startedAt: "2026-09-22T10:00:00.000Z",
+    endedAt: null,
+    plannedMinutes: 25,
+    actualMinutes: null,
+    outcome: null,
+    ...over,
+  };
+}
+
+/** Answers the recorder and the focus store's own poll with the state given, and records every
+ * other request. */
+function stub(recorder: Partial<RecorderStatusDTO> = {}, place?: { placed: number; unplacedMinutes: number }, live: FocusRunDTO | null = null) {
   const calls: { url: string; method?: string; body: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -38,6 +57,10 @@ function stub(recorder: Partial<RecorderStatusDTO> = {}, place?: { placed: numbe
       calls.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
       if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [], ...recorder } satisfies RecorderStatusDTO);
       if (url === "/api/plan/place") return Response.json(place ?? { placed: 2, unplacedMinutes: 0 });
+      if (url === "/api/focus" && !init?.method) return Response.json({ run: live, settings: FOCUS_SETTINGS, completedToday: 0 });
+      if (url.startsWith("/api/focus/") && init?.method === "PATCH") {
+        return Response.json({ run: { ...(live ?? focusRun()), endedAt: new Date().toISOString(), actualMinutes: 1, outcome: "stopped" }, where: [] });
+      }
       return Response.json({});
     }),
   );
@@ -52,12 +75,17 @@ function watchToasts() {
   return { seen, stop: () => window.removeEventListener("sb:toast", listen) };
 }
 
-function mount(props: { now?: HomeItemDTO | null; next?: HomeItemDTO[]; day?: PlannerDayDTO; today?: string } = {}) {
-  render(<NowNext day={props.day ?? day()} today={props.today ?? DATE} now={props.now ?? null} next={props.next ?? []} />);
+function mount(props: { now?: HomeItemDTO | null; next?: HomeItemDTO[]; day?: PlannerDayDTO; today?: string; focus?: HomeDTO["focus"] } = {}) {
+  render(<NowNext day={props.day ?? day()} today={props.today ?? DATE} now={props.now ?? null} next={props.next ?? []} focus={props.focus ?? NO_FOCUS} />);
 }
+
+beforeEach(() => {
+  resetFocusStore();
+});
 
 afterEach(() => {
   cleanup();
+  resetFocusStore();
   vi.unstubAllGlobals();
 });
 
@@ -113,6 +141,32 @@ describe("NowNext", () => {
     const call = calls.find((c) => c.url === "/api/tasks/7")!;
     expect(call.method).toBe("PATCH");
     expect(call.body).toEqual({ status: "done" });
+  });
+
+  it("shows a live run in place of a running session, with the remaining time and a Stop", async () => {
+    stub({}, undefined, focusRun({ startedAt: "2026-09-22T10:00:00.000Z", plannedMinutes: 25 }));
+    mount({ now: sessionNow, focus: { minutes: 0, runs: 0, running: focusRun({ startedAt: "2026-09-22T10:00:00.000Z", plannedMinutes: 25 }) } });
+    const region = await screen.findByRole("status");
+    expect(region.textContent).toContain("Write the brief");
+    expect(screen.queryByRole("checkbox", { name: "Write the brief" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop focusing on Write the brief" })).toBeTruthy();
+  });
+
+  it("never lets a live run take the slot from a meeting in progress", async () => {
+    stub({}, undefined, focusRun());
+    mount({ now: meetingNow, focus: { minutes: 0, runs: 0, running: focusRun() } });
+    const region = screen.getByRole("status");
+    expect(region.textContent).toContain("Design review");
+    expect(screen.queryByRole("button", { name: /Stop focusing/ })).toBeNull();
+  });
+
+  it("stops the live run from the Now slot", async () => {
+    const calls = stub({}, undefined, focusRun());
+    mount({ now: null, focus: { minutes: 0, runs: 0, running: focusRun() } });
+    fireEvent.click(await screen.findByRole("button", { name: "Stop focusing on Write the brief" }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.url === "/api/focus/5" && c.method === "PATCH")).toBe(true);
+    });
   });
 
   it("lists the next two timed things with the time each starts", () => {

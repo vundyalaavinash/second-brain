@@ -14,6 +14,7 @@ import { addDaysLocal, formatClock, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 import { EstimateChip } from "./estimate-chip";
 import { FocusButton } from "../focus/focus-button";
+import { SpentLine } from "../focus/spent-line";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -642,6 +643,11 @@ export function TaskRow({
     onKeyDown: onRowKeyDown,
   };
 
+  // What the task actually cost, once a run has landed against it — nothing while one has not.
+  const spentLine = task.spentMinutes > 0 && (
+    <SpentLine taskId={task.id} estimateMinutes={task.estimateMinutes} spentMinutes={task.spentMinutes} />
+  );
+
   // A column of the week is a seventh of the page: the compact row stacks the due date under
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.
   if (compact) {
@@ -658,6 +664,7 @@ export function TaskRow({
               {blockNode}
             </span>
           )}
+          {spentLine}
         </span>
         {actions}
       </Row>
@@ -665,27 +672,33 @@ export function TaskRow({
   }
 
   return (
-    <Row {...rowProps} className={`hairline-row group flex items-center gap-3 px-3 h-11 hover:bg-layer-2 transition-colors ${className}`}>
-      <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
-        <GripVertical className="w-3.5 h-3.5" />
-      </span>
-      {checkbox}
-      {titleNode}
-      {goalChip}
-      {task.priority === "high" && (
-        <Chip as="span" className="text-warn border-warn/40 shrink-0">
-          High
-        </Chip>
-      )}
-      {task.priority === "low" && (
-        <Chip as="span" className="text-fg-faint shrink-0">
-          Low
-        </Chip>
-      )}
-      {dueNode}
-      {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
-      {blockNode}
-      {actions}
+    <Row
+      {...rowProps}
+      className={`hairline-row group flex flex-col gap-1 px-3 ${spentLine ? "py-2" : "h-11 justify-center"} hover:bg-layer-2 transition-colors ${className}`}
+    >
+      <div className="flex items-center gap-3">
+        <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
+          <GripVertical className="w-3.5 h-3.5" />
+        </span>
+        {checkbox}
+        {titleNode}
+        {goalChip}
+        {task.priority === "high" && (
+          <Chip as="span" className="text-warn border-warn/40 shrink-0">
+            High
+          </Chip>
+        )}
+        {task.priority === "low" && (
+          <Chip as="span" className="text-fg-faint shrink-0">
+            Low
+          </Chip>
+        )}
+        {dueNode}
+        {onEstimate && <EstimateChip value={task.estimateMinutes} onChange={onEstimate} />}
+        {blockNode}
+        {actions}
+      </div>
+      {spentLine && <div className="pl-9">{spentLine}</div>}
     </Row>
   );
 }

@@ -14,7 +14,7 @@ let nextId = 1;
 function task(over: Partial<TaskDTO> & { title: string }): TaskDTO {
   return {
     id: nextId++, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-    estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z", ...over,
+    estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z", ...over,
   };
 }
 const launch = { id: 10, name: "Launch", slug: "launch", kind: "project" as const };

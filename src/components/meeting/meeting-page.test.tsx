@@ -103,6 +103,7 @@ const TASK: TaskDTO = {
   estimateMinutes: null,
   sessionMinutes: null, blocks: [],
   goals: [],
+  spentMinutes: 0,
   completedAt: null,
   sortOrder: 0,
   createdAt: "2026-09-22T11:05:00.000Z",

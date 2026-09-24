@@ -49,6 +49,7 @@ The transformers embedding test downloads the model into `~/.cache/second-brain-
 | `⌘↵` | Capture |
 | `⌘S` | Save item, container, or person |
 | `⌘.` | Take the action the newest toast offers (Escape dismisses it) |
+| `⌘⇧F` | Start a focus run on whatever task the keyboard sits on, switch it to a different one, or stop it |
 | In the Inbox: `p` `a` `r` `e` `x` `j` `k` `l` | File to project / area / resource, archive, delete, next, previous, list view |
 
 ## How things are organised
@@ -122,6 +123,14 @@ The activity helper reads macOS Calendar, so any account added in System Setting
 **Place in free slots** on a row menu, or `f` on the focused row, clears the task's sessions on the day and lays fresh ones into the gaps the calendar leaves, earliest first and never straddling a meeting or another session. On today it starts no earlier than now; on any other day it starts at the top of the working hours. Two sessions of the same task laid in one gap keep ten minutes apart — the break is not held for the task, so anything else placed after it may take that time. **Fill the day** in the plan's own menu does the same for every plan task that has no session yet, in plan order. What the day had no room for is **unplaced**: the toast after a place says "Placed 3 sessions, 1h 20m unplaced" and offers **Place tomorrow** (named for the day itself, **Place on Fri 25**, when the day on screen is not today), which from a single row plans the task for the next day and places it there; after **Fill the day** it plans nothing new — it places what the next day already carries. A toast with an offer stays for twenty seconds, `⌘.` takes it from anywhere, and Escape puts it away; the header's capacity line carries the unplaced figure after the blocked one.
 
 **Block now** on a plan row menu, or `n` on the focused row, starts one session at the next five minutes, and **Take off the timeline** clears the day's sessions. A row with a session shows when the first one starts, with a "+2" counting the others the day holds, and pressing it scrolls the timeline to that session and hands it the keyboard. The plan's menu sorts the day's rows by their first session with **Sort by time**, and rows with no session keep their order at the end. The header's capacity line says how much of the plan is blocked, the bar under the plan shows it as a brighter segment, and a day with blocked time carries a violet dot in the Week view.
+
+## Focus
+
+A **run** is a plain countdown against one task, started from the Focus button on any task row, from a session on the timeline, or with `⌘⇧F` on whatever task the keyboard sits on — which also switches a live run to a different task, or stops the one already going, since only one run is ever live at a time. Its length comes from an explicit choice, else the session it was started from, else the saved default (25 minutes, alongside a short and a long break length). While it runs, the dock carries a chip with the task's name and a countdown; `⌘⇧F` or the chip's Stop ends it early with the minutes it actually ran kept, and letting the clock reach zero books exactly the length it was set for.
+
+A run's minutes **book against the task** the moment it ends, successfully or not: they show on the task's own row as what it actually cost, next to what it was guessed at — "Estimated 45m, spent 1h 20m" — and where the two disagree by more than a few minutes, or there was no guess at all, a button offers to make the real figure the estimate, so the next task of the same shape is guessed better. A run ended inside its first two minutes is a mis-click, not work, and books nothing. Home's top band adds the day's booked minutes beside its other counts, and a run still going takes the **Now** slot over a session in progress — the person is demonstrably working on that one — though never over a meeting, which is where they have to be regardless.
+
+What **stalls gets reconciled**: a run left open past its planned end by more than half an hour is treated as a browser closed mid-run rather than work still going, and is closed out at the end it was meant to have, booking exactly its planned length. **Breaks are offered, never recorded** — finishing a run on its own clock offers a short or long break (long every fourth completion of the day) as one line, never a modal; taking it starts a plain countdown on the page, and leaving or dismissing it loses nothing, because nothing about a break is ever saved.
 
 ## Goals
 

@@ -12,7 +12,7 @@ const DATE = "2026-09-22";
 
 const planTask = (id: number, title: string): PlanTaskDTO => ({
   id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
 });
 
 function payload(over: Partial<HomeDTO> = {}): HomeDTO {
@@ -35,6 +35,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
     projects: [{ id: 4, name: "Launch", slug: "launch", open: 2, done: 2, nextTask: null, deadline: null, updatedAt: "2026-09-21T09:00:00.000Z" }],
     recent: [{ id: 9, type: "note", title: "Kickoff notes", updatedAt: "2026-09-22T10:00:00.000Z", status: "ready" }],
     activity: { activeMs: 3_600_000, top: [{ label: "Code", ms: 3_600_000 }] },
+    focus: { minutes: 0, runs: 0, running: null },
     ...over,
   };
 }
@@ -110,11 +111,11 @@ describe("HomePage", () => {
   it("listens to everything that can change the day", async () => {
     const fetchMock = stubHome(payload);
     render(<HomePage initial={payload()} />);
-    for (const name of ["sb:plan-changed", "sb:tasks-changed", "sb:inbox-changed", "sb:recording-changed"]) {
+    for (const name of ["sb:plan-changed", "sb:tasks-changed", "sb:inbox-changed", "sb:recording-changed", "sb:focus-changed"]) {
       fireEvent(window, new Event(name));
       await settle(80);
     }
-    expect(homeCalls(fetchMock)).toHaveLength(4);
+    expect(homeCalls(fetchMock)).toHaveLength(5);
   });
 
   it("drops a refresh the page did not live long enough to make", async () => {
