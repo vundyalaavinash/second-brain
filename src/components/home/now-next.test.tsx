@@ -23,7 +23,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 60, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 60 },
+    capacity: { freeMinutes: 540, plannedMinutes: 60, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 60, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }

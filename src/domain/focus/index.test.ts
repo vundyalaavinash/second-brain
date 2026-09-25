@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { focusRuns } from "@/db/schema";
-import { createTask } from "@/domain/tasks";
+import { createTask, completeTask } from "@/domain/tasks";
 import { addBlock } from "@/domain/blocks";
 import { ingestHeartbeat } from "@/domain/activity";
 import {
@@ -13,6 +13,7 @@ import {
   completedToday,
   focusWhere,
   getFocusSettings,
+  estimateActualPairs,
   FocusError,
   ABANDON_UNDER,
   STALE_AFTER,
@@ -311,5 +312,53 @@ describe("focusWhere", () => {
       { label: "App A", ms: 15 * 60_000 },
       { label: "App B", ms: 10 * 60_000 },
     ]);
+  });
+});
+
+describe("estimateActualPairs", () => {
+  it("sums a task's runs into one pair, and skips a task with no estimate, one still open, and one with only an abandoned run", () => {
+    const twoRuns = createTask(t.db, { title: "Two runs", estimateMinutes: 60 });
+    finishFocus(t.db, startFocus(t.db, { taskId: twoRuns.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+    finishFocus(t.db, startFocus(t.db, { taskId: twoRuns.id, minutes: 30 }, at("10:00")).id, "completed", at("10:30"));
+    completeTask(t.db, twoRuns.id);
+
+    const noEstimate = createTask(t.db, { title: "No estimate" });
+    finishFocus(t.db, startFocus(t.db, { taskId: noEstimate.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+    completeTask(t.db, noEstimate.id);
+
+    const stillOpen = createTask(t.db, { title: "Still open", estimateMinutes: 30 });
+    finishFocus(t.db, startFocus(t.db, { taskId: stillOpen.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+
+    const onlyAbandoned = createTask(t.db, { title: "Only abandoned", estimateMinutes: 30 });
+    finishFocus(t.db, startFocus(t.db, { taskId: onlyAbandoned.id, minutes: 30 }, at("09:00")).id, "abandoned", at("09:01"));
+    completeTask(t.db, onlyAbandoned.id);
+
+    expect(estimateActualPairs(t.db)).toEqual([{ estimateMinutes: 60, actualMinutes: 60 }]);
+  });
+
+  it("reads newest completion first", () => {
+    const older = createTask(t.db, { title: "Older", estimateMinutes: 30 });
+    finishFocus(t.db, startFocus(t.db, { taskId: older.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+    completeTask(t.db, older.id);
+    t.db.run(`update tasks set completed_at = '2026-09-01T12:00:00.000Z' where id = ${older.id}`);
+
+    const newer = createTask(t.db, { title: "Newer", estimateMinutes: 20 });
+    finishFocus(t.db, startFocus(t.db, { taskId: newer.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    completeTask(t.db, newer.id);
+    t.db.run(`update tasks set completed_at = '2026-09-20T12:00:00.000Z' where id = ${newer.id}`);
+
+    expect(estimateActualPairs(t.db)).toEqual([
+      { estimateMinutes: 20, actualMinutes: 20 },
+      { estimateMinutes: 30, actualMinutes: 30 },
+    ]);
+  });
+
+  it("respects the limit", () => {
+    for (let i = 0; i < 3; i++) {
+      const task = createTask(t.db, { title: `Task ${i}`, estimateMinutes: 30 });
+      finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+      completeTask(t.db, task.id);
+    }
+    expect(estimateActualPairs(t.db, 2)).toHaveLength(2);
   });
 });

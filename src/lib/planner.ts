@@ -5,11 +5,13 @@ import { addDays, getHelperState, listMeetings, localDay } from "@/domain/activi
 import { listContainers } from "@/domain/containers";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
+import { estimateActualPairs } from "@/domain/focus";
 import { parseMeta } from "@/domain/items";
+import { driftFactor, forecastMinutes } from "@/lib/drift";
 import { serializeMeeting, serializePlanTasks, serializeTasks } from "./api";
 import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
-import { getWorkHours } from "./work-hours";
+import { getWorkHours, getWorkingDays, isWorkingDay } from "./work-hours";
 import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
@@ -58,6 +60,9 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
   const workHours = getWorkHours(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
   const { planned, unestimated } = plannedMinutes(plan);
+  // One query for the whole request, never one per day — `plannerWeek` below reads the same
+  // rule (design: drift is a person's own history, not a daily re-measurement of it).
+  const drift = driftFactor(estimateActualPairs(db));
   return {
     date,
     plan,
@@ -73,6 +78,12 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
       workHours,
       blockedMinutes: blockedMinutes(plan, date),
       unplacedMinutes: unplacedMinutes(plan, date),
+      drift,
+      forecastMinutes: forecastMinutes(planned, drift),
+      // What is left between now and the end of the working day — distinct from `freeMinutes`
+      // above, which is the whole day's window and is what every existing reader of this field
+      // still gets.
+      leftTodayMinutes: freeMinutes(meetings, workHours, date, { now: new Date() }),
     },
   };
 }
@@ -97,16 +108,24 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   // The week's last day is the latest one a column can hold; anything later is not shown.
   const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }), window);
   const workHours = getWorkHours(db);
+  const workingDays = getWorkingDays(db);
   return {
     start,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
-      const dayPlan = serializePlanTasks(db, listPlan(db, date), window);
+      const working = isWorkingDay(workingDays, date);
+      // A Saturday is not nine hours: a non-working day's capacity is reported as zero rather
+      // than the whole window it would otherwise claim, and the plan it would need to read to
+      // say so truthfully is never even fetched.
+      const dayPlan = working ? serializePlanTasks(db, listPlan(db, date), window) : [];
       return {
         date,
+        working,
         meetings,
         due: open.filter((t) => t.dueDate === date),
-        capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(dayPlan).planned, blockedMinutes: blockedMinutes(dayPlan, date) },
+        capacity: working
+          ? { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(dayPlan).planned, blockedMinutes: blockedMinutes(dayPlan, date) }
+          : { freeMinutes: 0, plannedMinutes: 0, blockedMinutes: 0 },
       };
     }),
   };

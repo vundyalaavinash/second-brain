@@ -19,27 +19,51 @@ function minutesInto(date: string, iso: string): number {
   return (new Date(iso).getTime() - new Date(`${date}T00:00:00`).getTime()) / 60_000;
 }
 
+/** `YYYY-MM-DD` for the local calendar day `iso` falls on, built from local date components —
+ * never `new Date(iso).toISOString().slice(0, 10)`, which names the UTC day and is a day out
+ * anywhere west of Greenwich. */
+function localDayOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Minutes from local midnight to `d`'s own wall-clock time. */
+function minutesOfDay(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 /**
  * Working minutes not taken by timed meetings. Overlapping meetings are merged first so a
  * double booking is not subtracted twice; a meeting spilling past the hours only costs the
  * part inside them.
+ *
+ * `opts.now`, when given, makes the window honest about the time: a day already gone holds
+ * nothing, and the part of today that has already passed is not free time either — the
+ * scheduler has always known this (`notBefore`); this figure never did. Every existing caller
+ * passes no `opts`, so nothing changes under them — the window stays the whole working day.
  */
-export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date: string): number {
+export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date: string, opts: { now?: Date } = {}): number {
   const hours = parseWorkHours(workHours);
   if (!hours) return 0;
+  let start = hours.start;
+  if (opts.now) {
+    const today = localDayOf(opts.now);
+    if (date < today) return 0;
+    if (date === today) start = Math.max(start, minutesOfDay(opts.now));
+    if (start >= hours.end) return 0;
+  }
   const busy = meetings
     .filter((m) => !m.allDay && m.status !== "declined")
-    .map((m) => ({ start: Math.max(hours.start, minutesInto(date, m.startsAt)), end: Math.min(hours.end, minutesInto(date, m.endsAt)) }))
+    .map((m) => ({ start: Math.max(start, minutesInto(date, m.startsAt)), end: Math.min(hours.end, minutesInto(date, m.endsAt)) }))
     .filter((b) => b.end > b.start)
     .sort((a, b) => a.start - b.start);
   let taken = 0;
   let cursor = -Infinity;
   for (const b of busy) {
-    const start = Math.max(b.start, cursor);
-    if (b.end > start) taken += b.end - start;
+    const busyStart = Math.max(b.start, cursor);
+    if (b.end > busyStart) taken += b.end - busyStart;
     cursor = Math.max(cursor, b.end);
   }
-  return hours.end - hours.start - taken;
+  return hours.end - start - taken;
 }
 
 /** Open tasks' estimates added up, and how many open tasks carry none. */

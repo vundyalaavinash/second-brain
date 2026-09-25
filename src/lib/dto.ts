@@ -146,6 +146,14 @@ export interface CapacityDTO {
   workHours: string;
   blockedMinutes: number;
   unplacedMinutes: number;
+  /** The person's own actual-over-estimate multiplier, from their last `DRIFT_WINDOW` finished
+   * tasks — null below `DRIFT_MIN_PAIRS`, honestly, rather than a figure built from too little
+   * to mean anything (`src/lib/drift.ts`). */
+  drift: number | null;
+  /** `plannedMinutes` scaled by `drift`; null exactly when `drift` is. */
+  forecastMinutes: number | null;
+  /** Free minutes left between now and the end of the working day — 0 once the day is over. */
+  leftTodayMinutes: number;
 }
 
 export interface PersonDTO {
@@ -245,6 +253,9 @@ export interface PlannerDayDTO {
 
 export interface PlannerWeekDayDTO {
   date: string;
+  /** Whether this day is one of the saved working days; a non-working day's capacity is
+   * reported as zero across the board rather than the whole window it would otherwise show. */
+  working: boolean;
   meetings: ActivityMeetingDTO[];
   due: TaskDTO[];
   capacity: { freeMinutes: number; plannedMinutes: number; blockedMinutes: number };

@@ -8,7 +8,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const base = { freeMinutes: 270, plannedMinutes: 130, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 };
+const base = {
+  freeMinutes: 270,
+  plannedMinutes: 130,
+  unestimated: 0,
+  workHours: "09:00-18:00",
+  blockedMinutes: 0,
+  unplacedMinutes: 0,
+  drift: null,
+  forecastMinutes: null,
+  leftTodayMinutes: 270,
+};
 
 describe("CapacityLine", () => {
   it("reads planned against free with the meeting count", () => {

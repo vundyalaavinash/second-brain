@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { focusRuns, tasks, type FocusRun, type TaskBlock } from "@/db/schema";
 import type { FocusOutcome } from "@/db/enums";
@@ -7,6 +7,7 @@ import { getBlock } from "@/domain/blocks";
 import { getSetting, setSetting } from "@/domain/settings";
 import { addDays, dayBounds, localDay } from "@/domain/activity";
 import { getDay, topApps } from "@/domain/activity/report";
+import { DRIFT_WINDOW, type Pair } from "@/lib/drift";
 
 export class FocusError extends Error {
   constructor(
@@ -226,6 +227,37 @@ export function focusMinutesByTask(db: DB, taskIds: number[]): Map<number, numbe
     .all();
   for (const row of rows) out.set(row.taskId, (out.get(row.taskId) ?? 0) + (row.minutes ?? 0));
   return out;
+}
+
+/**
+ * Estimate against actual, one pair per finished task, for `driftFactor` to read the person's
+ * own history from — the outside view design §4.1 wants instead of the imagined multiple. Only
+ * a `done` task with an estimate on it and at least one run that booked minutes counts; its
+ * actual is the sum of every run's booked minutes, never just the last one, so a task worked in
+ * several sessions is not read as finished faster than it was. One grouped query, newest
+ * completion first, so a caller wanting the most recent `limit` pairs never has to query per
+ * task to get them.
+ */
+export function estimateActualPairs(db: DB, limit = DRIFT_WINDOW): Pair[] {
+  const rows = db
+    .select({ estimateMinutes: tasks.estimateMinutes, actualMinutes: sql<number>`sum(${focusRuns.actualMinutes})` })
+    .from(tasks)
+    .innerJoin(focusRuns, eq(focusRuns.taskId, tasks.id))
+    .where(
+      and(
+        eq(tasks.status, "done"),
+        isNotNull(tasks.estimateMinutes),
+        gt(tasks.estimateMinutes, 0),
+        isNotNull(focusRuns.actualMinutes),
+        gt(focusRuns.actualMinutes, 0),
+        ne(focusRuns.outcome, "abandoned"),
+      ),
+    )
+    .groupBy(tasks.id)
+    .orderBy(desc(tasks.completedAt))
+    .limit(limit)
+    .all();
+  return rows.map((row) => ({ estimateMinutes: row.estimateMinutes!, actualMinutes: Number(row.actualMinutes) }));
 }
 
 export interface FocusSummary {
