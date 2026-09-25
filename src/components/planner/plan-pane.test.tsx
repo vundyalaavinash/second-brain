@@ -144,6 +144,27 @@ describe("PlanPane", () => {
     expect(fill.style.width).toBe("100%");
   });
 
+  it("fills the bar against the same figure the capacity line judges the day by, not the bare plan", () => {
+    // Drift 2 turns 100 planned minutes into a 200-minute forecast; 120 minutes are left today.
+    // The bar has to read that as over — the forecast is what the line's own sentence fires on
+    // — not as calm because the *plan* alone (100) still fits inside 120.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const { container } = render(
+      <PlanPane
+        day={day({
+          capacity: { freeMinutes: 540, plannedMinutes: 100, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0, drift: 2, forecastMinutes: 200, leftTodayMinutes: 120 },
+        })}
+        today={TODAY}
+        onRefresh={vi.fn()}
+      />,
+    );
+    const fill = container.querySelector(".bg-danger") as HTMLElement;
+    expect(fill).toBeTruthy();
+    // 200 of 120 runs off the track; the bar stops at full rather than reading 83% (the plan's
+    // own share of 120) or 18.5% (the old bug's share of the whole 540-minute window).
+    expect(fill.style.width).toBe("100%");
+  });
+
   it("shows blocked time against the day's free hours, estimates or no estimates", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     // Three blocks nobody estimated: 75 minutes of a 300-minute day, and not one of them

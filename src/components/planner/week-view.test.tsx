@@ -133,14 +133,28 @@ describe("WeekView", () => {
     expect(within(column("Sat")).queryByRole("img", { name: /blocked/ })).toBeNull();
   });
 
-  it("reads the day's own leftTodayMinutes, not the whole-window freeMinutes", () => {
-    // Tuesday's window is still nine hours, but only 2h of it is left — the figure the column
-    // shows is the one that knows what time it is, not the one that never asks.
+  it("reads today's own leftTodayMinutes, not the whole-window freeMinutes", () => {
+    // Tuesday (today) has a nine-hour window, but only 2h of it is left — the figure the
+    // column shows is the one that knows what time it is, not the one that never asks.
     const w = week();
     w.days[1].capacity.leftTodayMinutes = 120;
     render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
     expect(within(column("Tue")).getByText("10h / 2h")).toBeTruthy();
     expect(within(column("Tue")).queryByText(/9h/)).toBeNull();
+  });
+
+  it("reads a past day's whole window, not its zeroed-out leftTodayMinutes (N2)", () => {
+    // Monday is before today (Tuesday): the server reports its leftTodayMinutes as 0, since
+    // "time left" is a live figure about now and Monday's now is long gone. A past week column
+    // is a different question — what was planned against what the day had — and Monday
+    // genuinely had nine hours, so the column reads `freeMinutes`, not a zero that would paint
+    // every past working day red.
+    const w = week();
+    w.days[0].capacity.leftTodayMinutes = 0;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
+    expect(within(column("Mon")).queryByText(/0m/)).toBeNull();
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).not.toContain("text-danger");
   });
 
   it("plans from the week on screen rather than from today", () => {

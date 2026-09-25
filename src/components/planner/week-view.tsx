@@ -85,24 +85,30 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
         </span>
         {/* A day nobody works is a quiet gap: the date above, and nothing here about capacity —
           * not "0h", not a struck-through nine hours. */}
-        {day.working && (
-          // `leftTodayMinutes`, not `freeMinutes`: the same honesty `plannerDay` already gives
-          // the day view — a day already gone reads 0, today reads what is left of it, and a
-          // day still ahead reads its whole window, rather than a nine-hour window this column
-          // never revisits once the day has moved on.
-          <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.leftTodayMinutes)]}`}>
-            {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.leftTodayMinutes)}
-            {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
-            {day.capacity.blockedMinutes > 0 && (
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-violet ml-1 align-middle"
-                title={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
-                aria-label={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
-                role="img"
-              />
-            )}
-          </span>
-        )}
+        {day.working && (() => {
+          // Today and every day still ahead read `leftTodayMinutes`, the same honesty
+          // `plannerDay` gives the day view — the remainder of today, or a day ahead's whole
+          // window. A day already gone is different: `leftTodayMinutes` is 0 there by design
+          // (§4.3's "time left" is a live figure about now), but a *past* column is a ratio of
+          // what was planned against what the day had, and a past day genuinely had its whole
+          // window — zero as a denominator would read as "100% over" on a day that is simply
+          // over. So a past day reads `freeMinutes`, the window itself, instead (N2).
+          const denom = day.date < today ? day.capacity.freeMinutes : day.capacity.leftTodayMinutes;
+          return (
+            <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, denom)]}`}>
+              {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(denom)}
+              {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
+              {day.capacity.blockedMinutes > 0 && (
+                <span
+                  className="inline-block w-1.5 h-1.5 rounded-full bg-violet ml-1 align-middle"
+                  title={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+                  aria-label={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+                  role="img"
+                />
+              )}
+            </span>
+          );
+        })()}
 
         {day.meetings.length > 0 && (
           <ul role="list" className="list-none m-0 p-0 flex flex-col">

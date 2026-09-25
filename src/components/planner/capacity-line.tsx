@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { CapacityDTO } from "@/lib/dto";
-import { formatMinutes, parseWorkHours } from "@/lib/capacity";
+import { formatMinutes, overBasis, parseWorkHours } from "@/lib/capacity";
 import { count } from "./open-meeting";
 
 interface Props {
@@ -42,8 +42,10 @@ export function CapacityLine({ capacity, meetings, onHours, quiet = false }: Pro
   // and its explanation, or show neither (F9): with a forecast, the forecast is the real cost;
   // without one, the plan is the best figure there is.
   const hasForecast = drift !== null && forecastMinutes !== null;
-  const overBasis = hasForecast ? forecastMinutes! : plannedMinutes;
-  const over = overBasis > leftTodayMinutes ? overBasis - leftTodayMinutes : 0;
+  // `overBasis` is shared with the Plan pane's meter (`@/lib/capacity`), so the two can never
+  // read the same day's over-commitment as two different numbers (N1).
+  const basis = overBasis(capacity);
+  const over = basis > leftTodayMinutes ? basis - leftTodayMinutes : 0;
   return (
     <span className="flex items-start gap-3 flex-wrap justify-end">
       <span role={quiet ? undefined : "status"} className="flex flex-col items-end gap-0.5 min-w-0">

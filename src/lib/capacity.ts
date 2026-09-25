@@ -114,3 +114,18 @@ export function capacityTone(planned: number, free: number): CapacityTone {
   if (free === 0) return "danger";
   return planned > free * 1.25 ? "danger" : "warn";
 }
+
+/** The pieces of a day's forecast an over-commitment judgement needs; both `CapacityDTO` and
+ * `PlannerWeekDayDTO`'s capacity satisfy it. */
+export type CapacityForecast = { plannedMinutes: number; forecastMinutes: number | null; drift: number | null };
+
+/**
+ * The figure to judge a day's plan against: the forecast when there is one (spec §4.2 — once a
+ * forecast exists it is the figure that counts), the plan itself when there is not (drift below
+ * `DRIFT_MIN_PAIRS` still deserves an honest comparison, not silence — see the capacity line's
+ * overrun sentence). Shared by every place that judges overcommitment, so a bar and a sentence
+ * reading the same day can never disagree about which number is being judged.
+ */
+export function overBasis(capacity: CapacityForecast): number {
+  return capacity.drift !== null && capacity.forecastMinutes !== null ? capacity.forecastMinutes : capacity.plannedMinutes;
+}
