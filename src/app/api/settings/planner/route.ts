@@ -6,11 +6,11 @@ import { getWorkHours, setWorkHours, getWorkingDays, setWorkingDays, assertValid
 
 export const dynamic = "force-dynamic";
 // Both fields are optional so a patch can move either without the view holding the other —
-// the same partial-patch shape `FocusSettingsBody` uses. No length cap on `workingDays`: the
-// domain's own check is on each day's *value* (1-7), not the list's length — `setWorkingDays`
-// dedupes, so a schema cap here could reject a list (e.g. eight repeats of one day) that would
-// shrink to a perfectly good one.
-const Body = z.object({ workHours: z.string().max(11).optional(), workingDays: z.array(z.number()).optional() }).strict();
+// the same partial-patch shape `FocusSettingsBody` uses. The `workingDays` cap is generous
+// rather than 7 on purpose: the domain checks each day's *value* (1-7) and `setWorkingDays`
+// dedupes, so a tight cap would reject a list — eight repeats of one day, say — that shrinks to
+// a perfectly good one. It is capped at all so an unbounded array never reaches the parser.
+const Body = z.object({ workHours: z.string().max(11).optional(), workingDays: z.array(z.number()).max(64).optional() }).strict();
 
 function settings(db: DB) {
   return { workHours: getWorkHours(db), workingDays: getWorkingDays(db) };
