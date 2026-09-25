@@ -1,7 +1,8 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { dataDir } from "@/lib/paths";
+import { backupsDir } from "@/jobs/handlers/backup";
 import type { DB } from "./client";
 
 export interface CheckResult {
@@ -11,10 +12,6 @@ export interface CheckResult {
 
 /** Every pre-migration snapshot's file name starts with this; the three-tier prune must never match it. */
 export const SNAPSHOT_PREFIX = "pre-";
-
-function backupsDir(): string {
-  return path.join(dataDir(), "backups");
-}
 
 /** `integrity_check` and `foreign_key_check` against an already-open connection, in one place so
  * `verifyDatabaseFile` and `checkOpenDatabase` can't drift apart on what "sound" means. */
@@ -31,40 +28,49 @@ function pragmaProblems(sqlite: Database.Database): string[] {
 }
 
 /**
- * Opens `file` read-only and checks it. A backup you have not opened is a rumour, so this is
- * what proves one is real, and it opens read-only so that checking a backup can never be the
- * thing that leaves a stale -wal beside it. Any failure -- a missing file, a file that is not a
+ * Checks `file` -- a backup you have not opened is a rumour, so this is what proves one is real.
+ * It never reads `file` in place: it copies it, and any -wal/-shm beside it, into a throwaway
+ * `mkdtemp` directory and checks the copy there. That is the only way to answer honestly, because
+ * opening a WAL-mode file read-only makes SQLite create -wal/-shm files of its own for locking
+ * bookkeeping (measured; a genuine better-sqlite3 quirk), and a read-only connection has no write
+ * access to clean them up on close -- they are left behind. An earlier version of this function
+ * tried to clean those up itself by deleting whatever sidecars did not exist before the call
+ * started, which meant it could delete a real -wal holding rows a concurrent writer had just
+ * committed but not yet checkpointed: the whole point of design's "ambiguous restore" warning.
+ * Verifying a copy removes that hazard entirely -- nothing in `file`'s own directory is ever
+ * written to or unlinked by this function, on any code path, including a read-only volume. The
+ * cost is one copy of a two-megabyte file. Any failure -- a missing file, a file that is not a
  * database at all, a truncated copy, a failed pragma -- comes back as a failed check, never a
  * thrown error.
- *
- * A read-only open of a WAL-mode file that has no -wal/-shm yet still makes SQLite create them,
- * purely for its own locking bookkeeping -- a genuine better-sqlite3/SQLite quirk, and the exact
- * mechanism that left the stray sidecars already on disk. Because this connection never writes,
- * anything it creates holds no data of ours, so any sidecar that did not exist before this call
- * is removed after closing; one that already existed (a real, possibly-uncheckpointed backup) is
- * never touched, so a directory that had sidecars keeps exactly the ones it had.
  */
 export function verifyDatabaseFile(file: string): CheckResult {
-  const walFile = `${file}-wal`;
-  const shmFile = `${file}-shm`;
-  const hadWal = fs.existsSync(walFile);
-  const hadShm = fs.existsSync(shmFile);
-  let sqlite: Database.Database | undefined;
+  let tmp: string | undefined;
   try {
-    sqlite = new Database(file, { readonly: true, fileMustExist: true });
-    const problems = pragmaProblems(sqlite);
-    sqlite.prepare("SELECT count(*) AS n FROM items").get();
-    return { ok: problems.length === 0, problems };
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sb-verify-"));
+    const copy = path.join(tmp, path.basename(file));
+    fs.copyFileSync(file, copy);
+    for (const suffix of ["-wal", "-shm"]) {
+      const side = `${file}${suffix}`;
+      if (fs.existsSync(side)) fs.copyFileSync(side, `${copy}${suffix}`);
+    }
+
+    const sqlite = new Database(copy, { readonly: true, fileMustExist: true });
+    try {
+      const problems = pragmaProblems(sqlite);
+      sqlite.prepare("SELECT count(*) AS n FROM items").get();
+      return { ok: problems.length === 0, problems };
+    } finally {
+      sqlite.close();
+    }
   } catch (err) {
     return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
   } finally {
     try {
-      sqlite?.close();
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     } catch {
-      // already closed or never opened; nothing to do
+      // best-effort cleanup of our own throwaway directory; a function documented never to
+      // throw cannot let failing to tidy up after itself be the exception that escapes it
     }
-    if (!hadWal && fs.existsSync(walFile)) fs.rmSync(walFile, { force: true });
-    if (!hadShm && fs.existsSync(shmFile)) fs.rmSync(shmFile, { force: true });
   }
 }
 
@@ -108,35 +114,51 @@ export function pendingMigrations(file: string, folder: string): string[] {
   }
 }
 
-/** Local timestamp stamp for a snapshot's file name: readable, and sortable alongside it. */
+/** UTC stamp for a snapshot's file name: readable, sortable alongside it, and independent of the
+ * machine's own timezone. */
 function snapshotStamp(now: Date): string {
   return now.toISOString().replace(/[:.]/g, "-");
 }
 
+/** Verifies a just-written snapshot. A backup that fails its own check is worse than no backup at
+ * all, because it is the one you would reach for -- so a failure discards the file and reports
+ * loudly, rather than handing back a path that looks fine and is not. */
+function keepIfSound(dest: string, tag: string): string | null {
+  const check = verifyDatabaseFile(dest);
+  if (check.ok) return dest;
+  console.error(`[db] pre-migration snapshot of ${tag} failed verification, discarding it: ${check.problems.join("; ")}`);
+  fs.rmSync(dest, { force: true });
+  return null;
+}
+
 /**
- * Copies `file` into the backups directory before a migration touches it, checkpointing the
- * write-ahead log into the main file first so the copy is one self-contained database with no
- * sidecars -- the same property a nightly backup has, for the same reason. Verifies what it
- * wrote and logs loudly if that fails, but still answers the path: the point is a database that
- * is about to be migrated, not one already proven perfect. Answers `null` when there is nothing
- * at `file` yet, which is a first run and has nothing to protect.
+ * Copies `file` into the backups directory before a migration touches it, as `pre-<tag>-<stamp>.db`,
+ * verifies what it wrote, and answers the path -- or `null` if there was nothing at `file` yet
+ * (a first run, with nothing to protect) or the copy failed its own verification.
+ *
+ * The copy is SQLite's own `VACUUM INTO`: a single statement, on the same connection, that reads
+ * a transactionally consistent snapshot of the database -- WAL-resident committed rows included --
+ * straight into a new file, and writes nothing at all back to `file`. An earlier version instead
+ * ran `wal_checkpoint(TRUNCATE)` on the source and ignored its return value; measured, a
+ * concurrent reader can make that checkpoint only partially complete, so the plain file copy that
+ * followed silently held a fraction of the database while still reporting a sound backup. This
+ * has no such partial state to ignore: it throws in that same situation (surfaced to the caller,
+ * who is expected to log and carry on rather than let a failed snapshot block opening the
+ * database) instead of quietly producing a lie.
  */
 export function snapshotBeforeMigrate(file: string, tag: string, now: Date = new Date()): string | null {
   if (!fs.existsSync(file)) return null;
 
-  const source = new Database(file);
+  const dir = backupsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, `${SNAPSHOT_PREFIX}${tag}-${snapshotStamp(now)}.db`);
+
+  const source = new Database(file, { fileMustExist: true });
   try {
-    source.pragma("wal_checkpoint(TRUNCATE)");
+    source.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
   } finally {
     source.close();
   }
 
-  const dir = backupsDir();
-  fs.mkdirSync(dir, { recursive: true });
-  const dest = path.join(dir, `${SNAPSHOT_PREFIX}${tag}-${snapshotStamp(now)}.db`);
-  fs.copyFileSync(file, dest);
-
-  const check = verifyDatabaseFile(dest);
-  if (!check.ok) console.error(`[db] pre-migration snapshot failed verification: ${check.problems.join("; ")}`);
-  return dest;
+  return keepIfSound(dest, tag);
 }

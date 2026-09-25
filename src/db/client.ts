@@ -23,8 +23,15 @@ export function openDatabase(file: string): DB {
   // is not good enough, because it costs the day's work.
   const pending = file === ":memory:" ? [] : pendingMigrations(file, folder);
   if (pending.length > 0) {
-    const at = snapshotBeforeMigrate(file, pending[0]);
-    if (at) console.log(`[db] snapshot before ${pending[0]}: ${at}`);
+    // A database we cannot open is worse than one opened without a snapshot, so a failure here
+    // -- a full disk, a permissions slip, a locked file -- is logged loudly and never stops the
+    // app from opening.
+    try {
+      const at = snapshotBeforeMigrate(file, pending[0]);
+      if (at) console.log(`[db] snapshot before ${pending[0]}: ${at}`);
+    } catch (err) {
+      console.error(`[db] pre-migration snapshot failed, continuing without one: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   const sqlite = new Database(file);
   sqlite.pragma("journal_mode = WAL");

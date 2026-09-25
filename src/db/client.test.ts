@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import * as safety from "@/db/safety";
@@ -20,6 +22,34 @@ describe("openDatabase", () => {
       db.$client.close();
       pendingSpy.mockRestore();
       snapshotSpy.mockRestore();
+    }
+  });
+
+  // A database you cannot open is worse than one opened without a snapshot -- a full disk, a
+  // permissions slip, a locked file must never be the reason boot fails.
+  it("survives a snapshot that fails, and still opens the database", async () => {
+    t = makeTestDb();
+    const file = t.db.$client.name;
+    const dir = path.dirname(file);
+
+    // Force the "something is pending" branch on a database that is genuinely fully migrated,
+    // so drizzle's own migrate() (which reads __drizzle_migrations itself, unaffected by this
+    // mock) has nothing real to do -- the only thing under test is the snapshot's own failure.
+    const pendingSpy = vi.spyOn(safety, "pendingMigrations").mockReturnValue(["0000_fake_pending"]);
+    // A plain file sitting where the backups directory needs to be created means
+    // fs.mkdirSync(..., { recursive: true }) throws inside the snapshot.
+    fs.writeFileSync(path.join(dir, "backups"), "not a directory");
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { openDatabase } = await import("@/db/client");
+    const db = openDatabase(file);
+    try {
+      expect(db.$client.prepare("SELECT count(*) AS c FROM items").get()).toEqual({ c: 0 });
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      db.$client.close();
+      errorSpy.mockRestore();
+      pendingSpy.mockRestore();
     }
   });
 
