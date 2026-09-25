@@ -310,12 +310,15 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
   // A ritual with no step to offer is not shown at all; once started it runs to the end.
   const showRitual = !hideRitual && ritual === true && (started || (day.plan.length === 0 && ritualSteps(day).length > 0));
   const capacity = day.capacity;
-  const tone = capacityTone(capacity.plannedMinutes, capacity.freeMinutes);
-  const fill = Math.min(100, capacity.freeMinutes ? (capacity.plannedMinutes / capacity.freeMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
+  // `leftTodayMinutes`, not `freeMinutes`: the same figure the capacity line above this bar
+  // reads, so the two never disagree about the same day at four in the afternoon (F3 — a bar
+  // that is calm on a denominator the text stopped trusting is worse than no bar at all).
+  const tone = capacityTone(capacity.plannedMinutes, capacity.leftTodayMinutes);
+  const fill = Math.min(100, capacity.leftTodayMinutes ? (capacity.plannedMinutes / capacity.leftTodayMinutes) * 100 : capacity.plannedMinutes ? 100 : 0);
   // Blocked time is measured against the same track as the fill, not against the fill itself:
   // a block on a task nobody estimated is real time on the timeline, and the estimates it is
   // missing from would otherwise keep it off the bar altogether.
-  const blockedFill = Math.min(100, capacity.freeMinutes ? (capacity.blockedMinutes / capacity.freeMinutes) * 100 : capacity.blockedMinutes ? 100 : 0);
+  const blockedFill = Math.min(100, capacity.leftTodayMinutes ? (capacity.blockedMinutes / capacity.leftTodayMinutes) * 100 : capacity.blockedMinutes ? 100 : 0);
   const ritualStrip = <RitualStrip day={day} today={today} onStarted={() => setStarted(true)} onDone={() => setRitual(false)} />;
   // The header has room a packed row does not: the plan's first open task gets the quick-start
   // button, with the length menu, rather than making the person open a row's own menu first.

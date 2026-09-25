@@ -50,6 +50,11 @@ describe("hasUserNotes", () => {
 describe("plannerDay", () => {
   let t: TestDb;
   const DATE = "2026-09-22";
+  // Well before every week these tests build (all start 2026-09-21 or later), so every day in
+  // them reads as still ahead and a week day's `leftTodayMinutes` comes out the same as its
+  // whole-window `freeMinutes` — these tests are not about the clock, so nothing here depends
+  // on the real one. The clock itself gets its own test further down.
+  const WEEK_NOW = new Date(2026, 8, 1, 9, 0);
   beforeEach(() => {
     t = makeTestDb();
   });
@@ -80,7 +85,7 @@ describe("plannerDay", () => {
     expect(day.sources.due.today.map((x) => x.id)).toEqual([due.id]);
 
     // The week ends on the 27th, so October's task is never loaded into a column.
-    const week = plannerWeek(t.db, "2026-09-21");
+    const week = plannerWeek(t.db, "2026-09-21", WEEK_NOW);
     expect(week.days.flatMap((d) => d.due.map((x) => x.title))).toEqual(["Due"]);
   });
 
@@ -96,7 +101,7 @@ describe("plannerDay", () => {
     expect(day.sources.inbox.find((x) => x.id === task.id)!.blocks.map((b) => b.startsAt)).toEqual([`${DATE}T10:00:00`]);
     // A week column may hold either of them, so the week payload carries both days'.
     addBlock(t.db, { taskId: task.id, startsAt: "2026-10-05T10:00:00", minutes: 45 });
-    const week = plannerWeek(t.db, "2026-09-21");
+    const week = plannerWeek(t.db, "2026-09-21", WEEK_NOW);
     expect(week.days[1].capacity.blockedMinutes).toBe(45);
     expect(week.days[2].capacity.blockedMinutes).toBe(45);
     // A session beyond the seven columns is outside the window the week asks for.
@@ -142,9 +147,29 @@ describe("plannerDay", () => {
       leftTodayMinutes: 480,
     });
     void empty;
-    const week = plannerWeek(t.db, "2026-09-21");
-    expect(week.days[2].capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, blockedMinutes: 60, forecastMinutes: null });
-    expect(week.days[0].capacity).toEqual({ freeMinutes: 540, plannedMinutes: 0, blockedMinutes: 0, forecastMinutes: null });
+    const week = plannerWeek(t.db, "2026-09-21", WEEK_NOW);
+    // `WEEK_NOW` is well before this week, so `leftTodayMinutes` reads the same as `freeMinutes`
+    // for every day here — the clock itself has its own test just below.
+    expect(week.days[2].capacity).toEqual({ freeMinutes: 480, plannedMinutes: 105, blockedMinutes: 60, forecastMinutes: null, leftTodayMinutes: 480 });
+    expect(week.days[0].capacity).toEqual({ freeMinutes: 540, plannedMinutes: 0, blockedMinutes: 0, forecastMinutes: null, leftTodayMinutes: 540 });
+  });
+
+  it("leftTodayMinutes on the week reads the pinned clock, the same as the day payload does", () => {
+    const date = "2026-09-23"; // the week's own Wednesday
+    replaceCalendarEvents(t.db, [
+      { externalId: "m1", title: "Sync", startsAt: `${date}T10:00:00`, endsAt: `${date}T11:00:00`, attendees: 2, hasCallLink: true },
+    ]);
+    // A day already gone: its whole window is spent, not just what a meeting took from it.
+    const yesterday = plannerWeek(t.db, "2026-09-21", new Date(2026, 8, 24, 9, 0));
+    expect(yesterday.days.find((d) => d.date === date)!.capacity.leftTodayMinutes).toBe(0);
+    // Mid-afternoon on the day itself, after the meeting has already passed: the window starts
+    // at 14:00, and the meeting (already behind `now`) costs nothing. 18:00 - 14:00 = 240.
+    const sameDay = plannerWeek(t.db, "2026-09-21", new Date(2026, 8, 23, 14, 0));
+    expect(sameDay.days.find((d) => d.date === date)!.capacity.leftTodayMinutes).toBe(240);
+    // A day still ahead is reported as its whole window, same as `freeMinutes` (540 minus the
+    // 60-minute meeting still sitting in it).
+    const before = plannerWeek(t.db, "2026-09-21", new Date(2026, 8, 20, 9, 0));
+    expect(before.days.find((d) => d.date === date)!.capacity.leftTodayMinutes).toBe(480);
   });
 
   it("leftTodayMinutes reads the pinned clock passed to it, never the machine's own", () => {
@@ -186,7 +211,7 @@ describe("plannerDay", () => {
     plannerDay(t.db, DATE);
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockClear();
-    plannerWeek(t.db, "2026-09-21");
+    plannerWeek(t.db, "2026-09-21", WEEK_NOW);
     // One call for the whole week, not zero (the week now carries its own `drift`) and not
     // seven (one per day would be the bug this test exists to catch).
     expect(spy).toHaveBeenCalledTimes(1);
@@ -197,11 +222,11 @@ describe("plannerDay", () => {
     setWorkingDays(t.db, [1, 2, 3, 4, 5]); // Monday through Friday
     const task = createTask(t.db, { title: "Weekend work", estimateMinutes: 45 });
     addToPlan(t.db, "2026-09-26", task.id); // a Saturday
-    const week = plannerWeek(t.db, "2026-09-21");
+    const week = plannerWeek(t.db, "2026-09-21", WEEK_NOW);
     const saturday = week.days.find((d) => d.date === "2026-09-26")!;
     const monday = week.days.find((d) => d.date === "2026-09-21")!;
     expect(saturday.working).toBe(false);
-    expect(saturday.capacity).toEqual({ freeMinutes: 0, plannedMinutes: 0, blockedMinutes: 0, forecastMinutes: null });
+    expect(saturday.capacity).toEqual({ freeMinutes: 0, plannedMinutes: 0, blockedMinutes: 0, forecastMinutes: null, leftTodayMinutes: 0 });
     expect(monday.working).toBe(true);
   });
 
@@ -216,7 +241,7 @@ describe("plannerDay", () => {
     const monday = createTask(t.db, { title: "Monday work", estimateMinutes: 40, containerId: null });
     addToPlan(t.db, "2026-09-21", monday.id);
 
-    const week = plannerWeek(t.db, "2026-09-21");
+    const week = plannerWeek(t.db, "2026-09-21", WEEK_NOW);
     expect(week.drift).toBe(2);
     // Monday (a working day, 40 planned minutes) forecasts at 2x; Saturday (a non-working day,
     // 0 planned) forecasts at 2x of nothing — still a number, since the week's own drift exists,

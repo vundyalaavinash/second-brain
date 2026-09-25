@@ -14,11 +14,13 @@ interface Props {
   quiet?: boolean;
 }
 
-/** A coarse "about Nh" for the overrun sentence — the middle figure already gave the precise
- * cost, so the alarm only needs to be close enough to feel. Under an hour it falls back to
- * `formatMinutes` rather than rounding to "0h". */
+/** A coarse "about Nh" for the overrun sentence — the middle figure (or, with no forecast, the
+ * plain planned figure) already gave the precise cost, so the alarm only needs to be close
+ * enough to feel. `Math.floor`, never `Math.round`: an overrun this states is real, so it is
+ * never rounded up past what it actually is. Under a full hour it falls back to `formatMinutes`
+ * rather than saying "0h". */
 function roughHours(n: number): string {
-  const hours = Math.round(n / 60);
+  const hours = Math.floor(n / 60);
   return hours >= 1 ? `${hours}h` : formatMinutes(n);
 }
 
@@ -26,21 +28,28 @@ function roughHours(n: number): string {
  * The Day header's mono line: what is planned, what it will really cost at this person's own
  * pace, and what the day still has room for — with a chip to say what the working hours are.
  *
- * Spec §4.2: three figures, in that order, and the middle one is the point. When the forecast
- * would not fit, the line says so in a sentence rather than a colour — there is no tone here to
- * read, because words carry the alarm a swatch used to.
+ * Spec §4.2: three figures, in that order, and the middle one is the point. When the day will
+ * not hold it, the line says so in a sentence rather than a colour — there is no tone here to
+ * read, because words carry the alarm a swatch used to. Below `DRIFT_MIN_PAIRS` finished tasks
+ * there is no pace to forecast from, so the middle figure is dropped and a line inside the same
+ * region says why — but the overrun sentence still fires, against the plan itself rather than a
+ * forecast, because "planned vs. what is left" is arithmetic on two numbers already in hand, not
+ * a guess: overcommitment has to be visible before drift exists to measure it (spec §2).
  */
 export function CapacityLine({ capacity, meetings, onHours, quiet = false }: Props) {
   const { plannedMinutes, forecastMinutes, leftTodayMinutes, drift, unestimated, blockedMinutes, unplacedMinutes } = capacity;
-  const over = forecastMinutes !== null && forecastMinutes > leftTodayMinutes ? forecastMinutes - leftTodayMinutes : 0;
+  // The two guards share one condition, so a slipped invariant can never drop both the figure
+  // and its explanation, or show neither (F9): with a forecast, the forecast is the real cost;
+  // without one, the plan is the best figure there is.
+  const hasForecast = drift !== null && forecastMinutes !== null;
+  const overBasis = hasForecast ? forecastMinutes! : plannedMinutes;
+  const over = overBasis > leftTodayMinutes ? overBasis - leftTodayMinutes : 0;
   return (
     <span className="flex items-start gap-3 flex-wrap justify-end">
-      <span className="flex flex-col items-end gap-0.5 min-w-0">
-        <span role={quiet ? undefined : "status"} className="font-mono text-[12px] text-fg-muted">
+      <span role={quiet ? undefined : "status"} className="flex flex-col items-end gap-0.5 min-w-0">
+        <span className="font-mono text-[12px] text-fg-muted">
           {formatMinutes(plannedMinutes)} planned
-          {/* Below `DRIFT_MIN_PAIRS` finished tasks there is no pace to forecast from — the
-           * figure is dropped rather than guessed, and the faint line below says why. */}
-          {drift !== null && forecastMinutes !== null && <> · about {formatMinutes(forecastMinutes)} at your pace</>}
+          {hasForecast && <> · about {formatMinutes(forecastMinutes!)} at your pace</>}
           {" · "}
           {formatMinutes(leftTodayMinutes)} left today
           {unestimated > 0 && ` (${unestimated} unestimated)`}
@@ -48,12 +57,15 @@ export function CapacityLine({ capacity, meetings, onHours, quiet = false }: Pro
           {blockedMinutes > 0 && <> · {formatMinutes(blockedMinutes)} blocked</>}
           {/* And how much of it the day had no room for, after the blocked figure it follows from. */}
           {unplacedMinutes > 0 && <> · {formatMinutes(unplacedMinutes)} unplaced</>}
-          {" · "}
-          {count(meetings, "meeting")}
+          {/* A count of zero meetings tells a reader nothing they did not know; it only earns
+           * its place once there is at least one. */}
+          {meetings > 0 && <> · {count(meetings, "meeting")}</>}
           {/* The sentence is the alarm — it replaces a colour rather than joining one. */}
           {over > 0 && <> · About {roughHours(over)} more than today holds.</>}
         </span>
-        {drift === null && <span className="text-[11px] text-fg-faint">Not enough finished work yet to know how your estimates run.</span>}
+        {/* Inside the same region the figures announce, not a silent sibling: this is the one
+         * line that explains why the middle figure just went missing. */}
+        {!hasForecast && <span className="text-[11px] text-fg-faint">Not enough finished work yet to know how your estimates run.</span>}
       </span>
       <HoursChip workHours={capacity.workHours} onChange={onHours} />
     </span>

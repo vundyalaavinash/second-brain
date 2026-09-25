@@ -86,8 +86,12 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
         {/* A day nobody works is a quiet gap: the date above, and nothing here about capacity —
           * not "0h", not a struck-through nine hours. */}
         {day.working && (
-          <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
-            {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
+          // `leftTodayMinutes`, not `freeMinutes`: the same honesty `plannerDay` already gives
+          // the day view — a day already gone reads 0, today reads what is left of it, and a
+          // day still ahead reads its whole window, rather than a nine-hour window this column
+          // never revisits once the day has moved on.
+          <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.leftTodayMinutes)]}`}>
+            {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.leftTodayMinutes)}
             {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
             {day.capacity.blockedMinutes > 0 && (
               <span

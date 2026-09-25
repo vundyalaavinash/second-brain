@@ -97,8 +97,14 @@ function dayWindow(date: string): { from: string; to: string } {
   return { from: date, to: addDays(date, 1) };
 }
 
-/** Seven days from `start`, each with its meetings and the tasks due on it. */
-export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
+/**
+ * Seven days from `start`, each with its meetings and the tasks due on it.
+ *
+ * `now` defaults to the real clock, the same as `plannerDay`, and is threaded to each working
+ * day's `leftTodayMinutes` the same way: a day already gone holds nothing, today holds what is
+ * left of it, and a day still ahead holds its whole window.
+ */
+export function plannerWeek(db: DB, start: string, now: Date = new Date()): PlannerWeekDTO {
   const end = addDays(start, 7);
   // The week's own seven days: a column can show nothing outside them.
   const window = { from: start, to: end };
@@ -138,6 +144,9 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
           plannedMinutes: planned,
           blockedMinutes: working ? blockedMinutes(dayPlan, date) : 0,
           forecastMinutes: forecastMinutes(planned, drift),
+          // Same figure `plannerDay`'s `leftTodayMinutes` reports, honest about the clock: a
+          // day already gone is 0, today is what remains of it, a day ahead is the whole window.
+          leftTodayMinutes: working ? freeMinutes(meetings, workHours, date, { now }) : 0,
         },
       };
     }),

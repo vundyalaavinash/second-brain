@@ -34,7 +34,7 @@ describe("CapacityLine", () => {
   });
 
   it("says plainly when the day will not hold it", () => {
-    render(<CapacityLine capacity={cap({ plannedMinutes: 270, forecastMinutes: 440, leftTodayMinutes: 310 })} meetings={4} onHours={vi.fn()} />);
+    render(<CapacityLine capacity={cap()} meetings={4} onHours={vi.fn()} />);
     expect(screen.getByText(/about 2h more than today holds/i)).toBeTruthy();
   });
 
@@ -47,6 +47,41 @@ describe("CapacityLine", () => {
     render(<CapacityLine capacity={cap({ drift: null, forecastMinutes: null })} meetings={4} onHours={vi.fn()} />);
     expect(screen.queryByText(/at your pace/i)).toBeNull();
     expect(screen.getByText(/not enough finished work yet/i)).toBeTruthy();
+  });
+
+  it("still says the day will not hold it with no forecast, from the plan itself", () => {
+    // No drift yet — the shipping default for a new install — but 10h planned against 2h left
+    // is overcommitted whether or not there is a forecast to say so.
+    render(<CapacityLine capacity={cap({ drift: null, forecastMinutes: null, plannedMinutes: 600, leftTodayMinutes: 120 })} meetings={0} onHours={vi.fn()} />);
+    expect(screen.queryByText(/at your pace/i)).toBeNull();
+    expect(screen.getByText(/about 8h more than today holds/i)).toBeTruthy();
+    // The explanation for the missing middle figure is still there alongside the alarm.
+    expect(screen.getByText(/not enough finished work yet/i)).toBeTruthy();
+  });
+
+  it("never rounds a partial-hour overrun up to the next hour", () => {
+    // 30 minutes over is 30 minutes over, not "about 1h" — Math.round would say the latter.
+    render(<CapacityLine capacity={cap({ forecastMinutes: 150, leftTodayMinutes: 120 })} meetings={0} onHours={vi.fn()} />);
+    expect(screen.getByText(/about 30m more than today holds/i)).toBeTruthy();
+    expect(screen.queryByText(/about 1h more/i)).toBeNull();
+  });
+
+  it("says nothing about meetings when there are none to name", () => {
+    render(<CapacityLine capacity={cap()} meetings={0} onHours={vi.fn()} />);
+    expect(screen.queryByText(/meeting/i)).toBeNull();
+  });
+
+  it("carries no colour alarm — the sentence is the only one", () => {
+    render(<CapacityLine capacity={cap()} meetings={4} onHours={vi.fn()} />);
+    const status = screen.getByRole("status");
+    expect(status.querySelector(".text-warn, .text-danger")).toBeNull();
+  });
+
+  it("announces the missing-history explanation inside the same live region as the figures", () => {
+    render(<CapacityLine capacity={cap({ drift: null, forecastMinutes: null })} meetings={0} onHours={vi.fn()} />);
+    const status = screen.getByRole("status");
+    expect(status.textContent).toContain("Not enough finished work yet to know how your estimates run.");
+    expect(status.querySelector(".text-fg-faint")).toBeTruthy();
   });
 
   it("holds its tongue when the page already has a region that speaks", () => {

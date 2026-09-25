@@ -268,6 +268,10 @@ export interface PlannerWeekDayDTO {
     /** `plannedMinutes` scaled by the week's own `drift` (`PlannerWeekDTO.drift`, one figure
      * for the whole week, not measured per day); null exactly when that drift is. */
     forecastMinutes: number | null;
+    /** The same figure `CapacityDTO.leftTodayMinutes` reports, for this day: 0 once the day is
+     * over, the remainder of today once part of it has passed, and the whole window for a day
+     * still ahead. Only genuinely reads as "time left" when this day is today. */
+    leftTodayMinutes: number;
   };
 }
 

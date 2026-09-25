@@ -125,7 +125,7 @@ describe("PlannerShell", () => {
   it("says the hours are the day's own and hands a new pair to the settings route", async () => {
     const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workHours: "08:00-16:00" }) });
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
-    expect(screen.getByRole("status").textContent).toBe("0m planned · 9h left today · 0 meetings");
+    expect(screen.getByRole("status").textContent).toBe("0m planned · 9h left todayNot enough finished work yet to know how your estimates run.");
     fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
     const field = screen.getByRole("textbox", { name: "Working hours" });
     fireEvent.change(field, { target: { value: "08:00-16:00" } });

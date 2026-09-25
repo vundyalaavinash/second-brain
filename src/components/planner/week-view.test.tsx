@@ -35,7 +35,10 @@ function week(): PlannerWeekDTO {
         working,
         meetings: [],
         due: date === START ? [task] : [],
-        capacity: { freeMinutes: working ? 540 : 0, plannedMinutes, blockedMinutes: 0, forecastMinutes: null },
+        // `leftTodayMinutes` is what the column actually reads; it matches `freeMinutes` here
+        // because none of these fixtures is testing the clock — the case where they differ has
+        // its own test below.
+        capacity: { freeMinutes: working ? 540 : 0, plannedMinutes, blockedMinutes: 0, forecastMinutes: null, leftTodayMinutes: working ? 540 : 0 },
       };
     }),
   };
@@ -130,10 +133,14 @@ describe("WeekView", () => {
     expect(within(column("Sat")).queryByRole("img", { name: /blocked/ })).toBeNull();
   });
 
-  it("still shows a working day's own capacity — only the non-working days go quiet", () => {
-    mount();
-    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
-    expect(within(column("Sat")).queryByText(/\/ 9h/)).toBeNull();
+  it("reads the day's own leftTodayMinutes, not the whole-window freeMinutes", () => {
+    // Tuesday's window is still nine hours, but only 2h of it is left — the figure the column
+    // shows is the one that knows what time it is, not the one that never asks.
+    const w = week();
+    w.days[1].capacity.leftTodayMinutes = 120;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Tue")).getByText("10h / 2h")).toBeTruthy();
+    expect(within(column("Tue")).queryByText(/9h/)).toBeNull();
   });
 
   it("plans from the week on screen rather than from today", () => {
