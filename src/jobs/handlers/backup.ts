@@ -193,6 +193,46 @@ function oldestBrainBackupDate(dir: string): Date | null {
   return oldest;
 }
 
+export interface RecoveryPointSummary {
+  /** How many `brain-*.db` backups currently survive `pruneBackups`' tiers. */
+  count: number;
+  /** The oldest surviving backup's date, `brain-<date>.db`'s own stamp -- not a file's mtime. */
+  oldest: string | null;
+  /** The newest surviving backup's file name, for a caller that wants its mtime -- the moment the
+   * backup actually ran, which the date-only name doesn't carry. */
+  newest: string | null;
+}
+
+/** Design §7's status surface reads this directly rather than re-deriving "how many recovery
+ * points, how far back" from its own copy of `NAME_RE` -- this function is `dateOf` and `NAME_RE`
+ * applied once, in the one place that already owns what a `brain-*.db` name means. As cheap as
+ * `oldestBrainBackupDate` above: one `readdirSync`, nothing opened. `pruneSnapshots` keeps using
+ * `oldestBrainBackupDate` for a bare `Date` rather than switching to this, since it never needs
+ * the count or the newest name -- no reason to carry the extra fields through a hot path. */
+export function recoveryPointSummary(dir: string): RecoveryPointSummary {
+  if (!fs.existsSync(dir)) return { count: 0, oldest: null, newest: null };
+  let count = 0;
+  let oldestDate: Date | null = null;
+  let oldestStamp: string | null = null;
+  let newestDate: Date | null = null;
+  let newestName: string | null = null;
+  for (const name of fs.readdirSync(dir)) {
+    const m = NAME_RE.exec(name);
+    const d = dateOf(name);
+    if (!m || !d) continue;
+    count++;
+    if (!oldestDate || d < oldestDate) {
+      oldestDate = d;
+      oldestStamp = m[1];
+    }
+    if (!newestDate || d > newestDate) {
+      newestDate = d;
+      newestName = name;
+    }
+  }
+  return { count, oldest: oldestStamp, newest: newestName };
+}
+
 interface SnapshotEntry {
   name: string;
   date: Date;

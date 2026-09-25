@@ -7,6 +7,7 @@ import { Button, Chip, IconButton, PageHeader } from "../ui";
 import { addDaysLocal, formatDayHeading, formatDuration, todayLocal } from "./format";
 import { weekStart as mondayOf } from "@/lib/week";
 import { StatusStrip } from "./status-strip";
+import { SafetyLine } from "./safety-line";
 import { Timeline } from "./timeline";
 import { Totals } from "./totals";
 import { Meetings } from "./meetings";
@@ -179,6 +180,8 @@ export function ActivityPage() {
       />
 
       {error && <p className="text-[13px] text-danger">{error}</p>}
+
+      <SafetyLine />
 
       {view === "day" ? (
         <>

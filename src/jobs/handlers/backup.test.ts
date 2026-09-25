@@ -17,6 +17,7 @@ import {
   pruneBackups,
   pruneSnapshots,
   sweepSidecars,
+  recoveryPointSummary,
   KEEP_DAILY,
   KEEP_WEEKLY,
   KEEP_MONTHLY,
@@ -285,6 +286,47 @@ describe("pruneBackups", () => {
 
   it("does nothing when the directory does not exist", () => {
     expect(() => pruneBackups(path.join(dir, "nope"))).not.toThrow();
+  });
+});
+
+describe("recoveryPointSummary", () => {
+  let root: string;
+  let dir: string;
+  beforeEach(() => {
+    root = makeTempDataDir();
+    dir = path.join(root, "backups");
+    fs.mkdirSync(dir, { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  function seed(dates: string[]): void {
+    for (const d of dates) fs.writeFileSync(path.join(dir, `brain-${d}.db`), "not a real db");
+  }
+
+  it("says there are none when the directory does not exist", () => {
+    expect(recoveryPointSummary(path.join(dir, "nope"))).toEqual({ count: 0, oldest: null, newest: null });
+  });
+
+  it("says there are none in an empty directory", () => {
+    expect(recoveryPointSummary(dir)).toEqual({ count: 0, oldest: null, newest: null });
+  });
+
+  it("counts the brain-*.db files and names the oldest and newest", () => {
+    seed(["2026-04-12", "2026-09-20", "2026-08-01"]);
+    expect(recoveryPointSummary(dir)).toEqual({ count: 3, oldest: "2026-04-12", newest: "brain-2026-09-20.db" });
+  });
+
+  it("ignores pre-*.db snapshots and sidecars -- only NAME_RE's brain-*.db counts", () => {
+    seed(["2026-09-20"]);
+    fs.writeFileSync(path.join(dir, "pre-0001_init-2026-09-19T00-00-00-000Z.db"), "x");
+    fs.writeFileSync(path.join(dir, "brain-2026-09-20.db-wal"), "x");
+    expect(recoveryPointSummary(dir)).toEqual({ count: 1, oldest: "2026-09-20", newest: "brain-2026-09-20.db" });
+  });
+
+  it("never counts a name that matches the pattern but is not a real calendar date", () => {
+    seed(["2026-09-20"]);
+    fs.writeFileSync(path.join(dir, "brain-2026-99-99.db"), "x");
+    expect(recoveryPointSummary(dir)).toEqual({ count: 1, oldest: "2026-09-20", newest: "brain-2026-09-20.db" });
   });
 });
 

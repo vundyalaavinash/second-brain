@@ -1,4 +1,5 @@
 import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep } from "@/db/enums";
+import type { CheckResult } from "@/db/safety";
 
 export interface ContainerRefDTO {
   id: number;
@@ -246,6 +247,16 @@ export interface CalendarFeedDTO {
 export interface MeetingSettingsDTO {
   autoRecord: boolean;
   autoRecordNeedsCallLink: boolean;
+}
+
+/** Design §7's one line: what `safetyStatus` (`src/lib/safety-status.ts`) knows about the last
+ * backup and the last integrity check, read by the Activity page's `SafetyLine`. */
+export interface SafetyStatusDTO {
+  lastBackupAt: string | null;
+  verified: boolean;
+  recoveryPoints: number;
+  oldest: string | null;
+  integrity: CheckResult;
 }
 
 /** What the Planner knows about the helper's calendar access, for the setup card. */
