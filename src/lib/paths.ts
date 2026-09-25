@@ -25,6 +25,10 @@ export function logsDir(): string {
   return path.join(dataDir(), "logs");
 }
 
+export function backupsDir(): string {
+  return path.join(dataDir(), "backups");
+}
+
 export function activityTokenPath(): string {
   return path.join(dataDir(), "activity-token");
 }

@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DB } from "@/db/client";
 import type { JobHandler } from "@/jobs/worker";
-import { dataDir, attachmentsDir } from "@/lib/paths";
+import { attachmentsDir, backupsDir } from "@/lib/paths";
 import { pruneActivity, retentionDays } from "@/domain/activity";
+
+export { backupsDir };
 
 const KEEP = 7;
 const NAME_RE = /^brain-.*\.db$/;
@@ -12,10 +14,6 @@ const ATTACHMENTS_NAME_RE = /^attachments-.*$/;
 /** Local YYYY-MM-DD stamp used in backup file names. */
 export function backupDateStamp(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
-}
-
-export function backupsDir(): string {
-  return path.join(dataDir(), "backups");
 }
 
 export function backupFilePath(now: Date = new Date()): string {

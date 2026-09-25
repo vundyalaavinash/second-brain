@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { makeTestDb, makeTempDataDir, type TestDb } from "@/test/db";
 import { openDatabase } from "@/db/client";
-import { backupsDir } from "@/jobs/handlers/backup";
+import { backupsDir } from "@/lib/paths";
 import { verifyDatabaseFile, checkOpenDatabase, pendingMigrations, snapshotBeforeMigrate, SNAPSHOT_PREFIX } from "./safety";
 
 const FOLDER = path.join(process.cwd(), "drizzle");
@@ -188,5 +188,26 @@ describe("snapshotBeforeMigrate", () => {
     const leftover = fs.existsSync(backupsDir()) ? fs.readdirSync(backupsDir()).filter((n) => n.startsWith("pre-0000_init-")) : [];
     expect(leftover).toEqual([]);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("N1: an interruption before the vacuum's temp file is renamed into place leaves nothing shaped like a recovery point", () => {
+    // The vacuum writes to a `.tmp` name and only a rename makes it `pre-*.db`; that rename is
+    // the last thing the function does, so making it fail is the strongest place to prove the
+    // property -- if nothing shaped like a snapshot exists when only the very last step failed,
+    // nothing shaped like one can exist for a real kill earlier in the vacuum either.
+    t = makeTestDb();
+    const file = t.db.$client.name;
+    const renameSpy = vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error("simulated interruption between the vacuum completing and the rename");
+    });
+    try {
+      expect(() => snapshotBeforeMigrate(file, "0016_commitments", new Date("2026-09-25T12:00:00.000Z"))).toThrow();
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    const dir = backupsDir();
+    const looksLikeASnapshot = fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => /^pre-.*\.db$/.test(n)) : [];
+    expect(looksLikeASnapshot).toEqual([]);
   });
 });
