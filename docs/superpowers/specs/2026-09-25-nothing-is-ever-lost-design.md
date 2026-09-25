@@ -166,7 +166,73 @@ program that tries to fix its own corruption unattended is how a recoverable
 problem becomes an unrecoverable one. It tells you, and it tells you what command
 to run.
 
-## 9. What this does not build
+## 9. Audio is the disposable part
+
+A meeting's transcript is a few kilobytes of text. Its recording is about 115
+megabytes per hour at the rate the helper captures, and several meetings a day
+becomes gigabytes a week. Nothing deletes them today, so the only reason the disk
+is not filling is that no meeting has been recorded for real yet. That makes this
+the right moment to decide, rather than the moment after.
+
+The position is simple: **the transcript is the record and the audio is
+scaffolding.** Keep the first forever, keep the second only as long as it might
+still be needed.
+
+### 9.1 The rule that cannot be broken
+
+**Audio with no transcript is never deleted.** If transcription failed, was never
+run, or produced nothing, the recording is the only copy of what was said and
+deleting it destroys the meeting. A retention window is a promise about
+disposable data; untranscribed audio is not disposable.
+
+This is checked at the moment of deletion, not assumed from a flag set earlier.
+
+### 9.2 The window
+
+A setting, `meetings.audioRetentionDays`, defaulting to **7**:
+
+| Value | Meaning |
+| --- | --- |
+| `0` | Release the audio as soon as a transcript exists |
+| `1`–`365` | Keep it that many days past the recording's end |
+| `null` | Keep it forever |
+
+Seven days out of the box because a week is long enough to notice a bad
+transcript and re-run it, and short enough that a busy fortnight does not cost
+ten gigabytes.
+
+### 9.3 What happens, and what is said afterwards
+
+The nightly job that already prunes activity and takes the backup gains one more
+pass. For each recording past the window with a transcript: delete the file,
+record `audioReleasedAt` in the item's meta, and leave everything else alone.
+
+The meeting page then says so plainly — "Audio removed on 3 October; the
+transcript is kept" — rather than offering a player for a file that is not there.
+A missing file with no explanation reads as a bug; a sentence reads as a policy.
+
+The same pass sweeps orphans: a `.wav` under the meetings directory that no item
+points at, left behind by a deleted meeting, goes too.
+
+### 9.4 Seeing it, and doing it now
+
+Wherever the app reports on itself it also reports audio: how many recordings are
+held, how much space they take, and when the next release is due. One line, and
+it is the line that makes the policy real rather than theoretical.
+
+A meeting whose transcript is good gains a "Remove the audio" action, for
+reclaiming a large file now rather than in six days.
+
+### 9.5 Backups are not the problem here
+
+Worth recording because it looks like it should be. The nightly backup copies the
+attachments directory; meeting audio lives under `files/meetings`, which it does
+not copy. So the seven daily backups do not hold seven copies of every recording.
+That is the right arrangement and this design does not change it: audio that is
+about to be deleted on purpose has no business being duplicated into a backup
+set first.
+
+## 10. What this does not build
 
 - **No cloud or off-machine backup.** Everything stays on this machine. That is a
   real limitation and it is the user's call to make, not mine to make for them.
@@ -176,8 +242,11 @@ to run.
   is proportionate here. A write-ahead-log archive is not.
 - **No encryption at rest.** The disk is already encrypted by FileVault on this
   machine, and a second key to lose helps nobody.
+- **No archiving of audio anywhere else before it is deleted.** §9 releases the
+  recording because the transcript is the record. Quietly copying it somewhere
+  first would defeat the point of asking for a retention policy at all.
 
-## 10. The gap this leaves
+## 11. The gap this leaves
 
 Every copy is on one disk. A disk failure, a lost laptop or a mistaken `rm -rf`
 of the data directory takes the backups with the original. Nothing in this design

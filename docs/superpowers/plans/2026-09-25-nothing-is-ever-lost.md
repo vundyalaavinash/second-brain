@@ -290,3 +290,102 @@ git commit -m "feat(safety): the app says when it cannot vouch for itself
 
 <trailers>"
 ```
+
+---
+
+### Task 5: Audio is the disposable part
+
+**Files:**
+- Create: `src/domain/meetings/audio-retention.ts` (+ test)
+- Modify: `src/jobs/handlers/backup.ts` (+ test), `src/domain/settings.ts` or wherever the meetings settings live, `src/app/api/settings/meetings/route.ts`, the meeting page and its rail, `src/lib/safety-status.ts` (+ test), `README.md`, `docs/superpowers/runbook.md`
+
+**Spec:** §9 of the design. Read it before writing anything.
+
+**Interfaces:**
+- Consumes: `filesDir` from `@/lib/paths`; `listItems`, `parseMeta`, `mergeItemMeta` from `@/domain/items`; `getSetting`/`setSetting` from `@/domain/settings`.
+- Produces:
+  - `export const DEFAULT_AUDIO_RETENTION_DAYS = 7;` and `AUDIO_RETENTION_KEY = "meetings.audioRetentionDays"`.
+  - `audioRetentionDays(db): number | null` — `null` means keep forever; `0` means release as soon as a transcript exists.
+  - `releasableRecordings(db, now?): { itemId: number; wavPath: string; bytes: number }[]`
+  - `releaseAudio(db, itemId, now?): { freedBytes: number } | null`
+  - `sweepOrphanAudio(db): { files: number; bytes: number }`
+  - `audioFootprint(db): { recordings: number; bytes: number; nextReleaseAt: string | null }`
+
+- [ ] **Step 1: Write the failing test**
+
+The rule that cannot be broken goes first, because it is the one that would lose data:
+
+```ts
+it("never releases audio that has no transcript, however old", () => {
+  // A recording from a year ago whose transcription never ran or produced nothing.
+  // If the audio goes, the meeting is gone — this is the only copy of what was said.
+  const item = meetingWith({ endedAt: yearAgo, transcript: null });
+  expect(releasableRecordings(t.db, now).map((r) => r.itemId)).not.toContain(item.id);
+});
+
+it("checks for the transcript at the moment of deletion, not from a flag set earlier", () => {
+  // Seed an item whose meta claims a transcript but whose transcript is an empty string.
+});
+
+it("releases a transcribed recording past the window and keeps the transcript", () => {
+  const item = meetingWith({ endedAt: eightDaysAgo, transcript: "we agreed to ship on Friday" });
+  releaseAudio(t.db, item.id, now);
+  expect(fs.existsSync(wav)).toBe(false);
+  expect(parseMeta(getItem(t.db, item.id)!).transcript).toContain("ship on Friday");
+  expect(parseMeta(getItem(t.db, item.id)!).audioReleasedAt).toBeTruthy();
+});
+
+it("keeps a transcribed recording that is still inside the window", () => {});
+
+it("releases as soon as there is a transcript when the window is zero", () => {});
+it("never releases when the setting is null", () => {});
+
+it("sweeps a wav no item points at, and leaves one that is pointed at", () => {
+  // The orphan a deleted meeting leaves behind.
+});
+
+it("survives a wav that has already gone from disk", () => {
+  // Meta says there is a file; the file is not there. Releasing must not throw, and must
+  // still mark the item so the page stops offering a player.
+});
+
+it("reports the footprint in bytes and when the next release is due", () => {});
+```
+
+- [ ] **Step 2: Run to verify it fails, then write the module**
+
+`releasableRecordings` reads items of type `meeting`, takes those whose meta has a `recording.wavPath` and no `audioReleasedAt`, and keeps the ones that have a **non-empty** transcript and whose `recording.endedAt` is past the window. Zero days means past-the-window is always true once a transcript exists. A null setting returns nothing at all.
+
+`releaseAudio` deletes the file with `{ force: true }` so a file already gone is not an error, records `audioReleasedAt` and the bytes freed in the item's meta, and never touches the transcript.
+
+`sweepOrphanAudio` lists `files/meetings/*.wav`, subtracts every path any meeting item currently points at, and deletes the remainder. It is the only thing here allowed to delete a file no row references, so it must build the "referenced" set from **all** meeting items including archived ones before deleting anything.
+
+- [ ] **Step 3: Into the nightly pass**
+
+The backup handler already prunes activity. Add the release and the orphan sweep beside it, each logging what it freed in megabytes. This is one nightly housekeeping job, not a new scheduler.
+
+Order matters: back up first, then release. A recording released before the backup ran is one the backup never saw, which is fine because audio is not backed up anyway — but doing it in this order means a failure in the release never costs the backup.
+
+- [ ] **Step 4: The setting, and the page that reads it**
+
+`GET/PATCH /api/settings/meetings` gains `audioRetentionDays`, validated as `null` or an integer 0–365, gated on `crossSite`, following `src/app/api/settings/planner/route.ts` as it stands after the forecast slice fixed it.
+
+The meeting page says what happened rather than offering a player for a file that is not there: "Audio removed on 3 October; the transcript is kept." A missing file with no explanation reads as a bug. Add the "Remove the audio" action for a meeting whose transcript is good, so a large file can be reclaimed now rather than in six days.
+
+- [ ] **Step 5: Say what it is holding**
+
+`safetyStatus` from Task 4 gains the audio footprint, so the one line that reports on the app's own state covers the disk too: how many recordings, how much space, and when the next release is due. That line is what makes the policy real rather than theoretical.
+
+- [ ] **Step 6: README and runbook**
+
+A short section: the transcript is the record, the audio is scaffolding, seven days by default, and audio without a transcript is never deleted. Add "my disk is filling up" to the runbook with the command that shows the footprint and the one that releases now.
+
+- [ ] **Step 7: Run the suite and commit**
+
+Run: `npm test && npx tsc --noEmit && npm run lint`, plus `TZ=Pacific/Midway npm test`.
+
+```bash
+git commit -m "feat(meetings): keep the transcript, release the audio, never the other way round
+
+<trailers>"
+```
