@@ -31,3 +31,21 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/nowhere")).toEqual([{ label: "Home" }]);
   });
 });
+
+describe("the routes the closing-the-loop slices added", () => {
+  it("names Goals rather than falling through to Home", () => {
+    // `/goals` renders no `<Crumb>` of its own, so the trail is the only thing that can name it;
+    // without an entry here the fallback labelled the page "Home".
+    expect(crumbsFor("/goals")).toEqual([{ label: "Goals" }]);
+  });
+
+  it("leaves a goal's own page to supply both halves", () => {
+    // `GoalPage` renders `<Crumb title={goal.title} parent={{ label: "Goals" }} />`, so a trail
+    // here would repeat the parent — the same rule container pages follow.
+    expect(crumbsFor("/goals/7")).toEqual([{ label: "Home" }]);
+  });
+
+  it("leaves /review to its own Crumb", () => {
+    expect(crumbsFor("/review")).toEqual([{ label: "Home" }]);
+  });
+});
