@@ -1,3 +1,5 @@
+import { localDay } from "@/lib/time";
+
 /** The pieces of a meeting capacity needs; both MeetingListDTO and CalendarEvent satisfy it. */
 export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; status: string };
 
@@ -17,13 +19,6 @@ export function parseWorkHours(s: string): { start: number; end: number } | null
 /** Minutes from local midnight of `date` to the timestamp; timestamps are local ISO strings. */
 function minutesInto(date: string, iso: string): number {
   return (new Date(iso).getTime() - new Date(`${date}T00:00:00`).getTime()) / 60_000;
-}
-
-/** `YYYY-MM-DD` for the local calendar day `iso` falls on, built from local date components —
- * never `new Date(iso).toISOString().slice(0, 10)`, which names the UTC day and is a day out
- * anywhere west of Greenwich. */
-function localDayOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Minutes from local midnight to `d`'s own wall-clock time. */
@@ -46,7 +41,7 @@ export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date
   if (!hours) return 0;
   let start = hours.start;
   if (opts.now) {
-    const today = localDayOf(opts.now);
+    const today = localDay(opts.now.toISOString());
     if (date < today) return 0;
     if (date === today) start = Math.max(start, minutesOfDay(opts.now));
     if (start >= hours.end) return 0;

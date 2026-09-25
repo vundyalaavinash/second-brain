@@ -152,7 +152,10 @@ export interface CapacityDTO {
   drift: number | null;
   /** `plannedMinutes` scaled by `drift`; null exactly when `drift` is. */
   forecastMinutes: number | null;
-  /** Free minutes left between now and the end of the working day — 0 once the day is over. */
+  /** Free minutes left in the working day, as of `now`: the remainder of today once part of it
+   * has passed, 0 once today's window is over, and — for a date other than today — the whole
+   * window, the same figure `freeMinutes` reports with no `now` at all. Only genuinely reads as
+   * "time left" when the day in question is today. */
   leftTodayMinutes: number;
 }
 
@@ -258,11 +261,23 @@ export interface PlannerWeekDayDTO {
   working: boolean;
   meetings: ActivityMeetingDTO[];
   due: TaskDTO[];
-  capacity: { freeMinutes: number; plannedMinutes: number; blockedMinutes: number };
+  capacity: {
+    freeMinutes: number;
+    plannedMinutes: number;
+    blockedMinutes: number;
+    /** `plannedMinutes` scaled by the week's own `drift` (`PlannerWeekDTO.drift`, one figure
+     * for the whole week, not measured per day); null exactly when that drift is. */
+    forecastMinutes: number | null;
+  };
 }
 
 export interface PlannerWeekDTO {
   start: string;
+  /** The person's own actual-over-estimate multiplier, read once for the whole week — never
+   * once per day — and null below `DRIFT_MIN_PAIRS`, the same honesty rule `CapacityDTO.drift`
+   * follows. Each day's `capacity.forecastMinutes` is this same figure applied to that day's
+   * own planned minutes. */
+  drift: number | null;
   days: PlannerWeekDayDTO[];
 }
 

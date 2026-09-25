@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { getWorkHours, setWorkHours, getWorkingDays, setWorkingDays, isWorkingDay, DEFAULT_WORKING_DAYS } from "./work-hours";
+import { setSetting } from "@/domain/settings";
+import { getWorkHours, setWorkHours, getWorkingDays, setWorkingDays, isWorkingDay, DEFAULT_WORKING_DAYS, WORKING_DAYS_KEY } from "./work-hours";
 
 let t: TestDb;
 beforeEach(() => {
@@ -26,6 +27,13 @@ describe("working days", () => {
   it("saves a new list, deduplicated and sorted", () => {
     expect(setWorkingDays(t.db, [6, 1, 1, 3])).toEqual([1, 3, 6]);
     expect(getWorkingDays(t.db)).toEqual([1, 3, 6]);
+  });
+
+  it("dedupes and sorts on read too, not only on write", () => {
+    // Written directly, bypassing `setWorkingDays` — a hand-edited row, or a value some other
+    // format once wrote. The read path must not trust the stored order or uniqueness.
+    setSetting(t.db, WORKING_DAYS_KEY, "3,1,3,7,1");
+    expect(getWorkingDays(t.db)).toEqual([1, 3, 7]);
   });
 
   it("rejects an empty list", () => {

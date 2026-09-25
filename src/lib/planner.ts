@@ -50,8 +50,12 @@ export function plannerSources(db: DB, date: string, plannedIds: Set<number>, wi
  * One day of the Planner: the day's plan, what yesterday left open, the day's meetings, the
  * calendar's state, and every open task by where it lives for the picker to draw on. What is
  * due reaches the day through `sources.due`; the day itself lists none of it.
+ *
+ * `now` defaults to the real clock for every caller that doesn't care, and is threaded to
+ * `freeMinutes` rather than read inline, so a test (or a future caller in another timezone) can
+ * pin it instead of depending on the machine's own wall clock.
  */
-export function plannerDay(db: DB, date: string): PlannerDayDTO {
+export function plannerDay(db: DB, date: string, now: Date = new Date()): PlannerDayDTO {
   // Every task in the payload carries the day's own sessions and no others: this screen draws
   // one column, and a task's hours on any other day are another day's business.
   const window = dayWindow(date);
@@ -60,8 +64,8 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
   const workHours = getWorkHours(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
   const { planned, unestimated } = plannedMinutes(plan);
-  // One query for the whole request, never one per day — `plannerWeek` below reads the same
-  // rule (design: drift is a person's own history, not a daily re-measurement of it).
+  // One query for the whole request, never one per day — see `plannerWeek`'s own single
+  // `driftFactor` call below, hoisted out of its per-day loop the same way.
   const drift = driftFactor(estimateActualPairs(db));
   return {
     date,
@@ -83,7 +87,7 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
       // What is left between now and the end of the working day — distinct from `freeMinutes`
       // above, which is the whole day's window and is what every existing reader of this field
       // still gets.
-      leftTodayMinutes: freeMinutes(meetings, workHours, date, { now: new Date() }),
+      leftTodayMinutes: freeMinutes(meetings, workHours, date, { now }),
     },
   };
 }
@@ -109,8 +113,13 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }), window);
   const workHours = getWorkHours(db);
   const workingDays = getWorkingDays(db);
+  // Drift is one scalar per person per request, never per day: one call here, beside the other
+  // once-per-week reads above, and every day below reads the same value rather than each
+  // re-measuring it.
+  const drift = driftFactor(estimateActualPairs(db));
   return {
     start,
+    drift,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
       const working = isWorkingDay(workingDays, date);
@@ -118,14 +127,18 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
       // than the whole window it would otherwise claim, and the plan it would need to read to
       // say so truthfully is never even fetched.
       const dayPlan = working ? serializePlanTasks(db, listPlan(db, date), window) : [];
+      const planned = working ? plannedMinutes(dayPlan).planned : 0;
       return {
         date,
         working,
         meetings,
         due: open.filter((t) => t.dueDate === date),
-        capacity: working
-          ? { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(dayPlan).planned, blockedMinutes: blockedMinutes(dayPlan, date) }
-          : { freeMinutes: 0, plannedMinutes: 0, blockedMinutes: 0 },
+        capacity: {
+          freeMinutes: working ? freeMinutes(meetings, workHours, date) : 0,
+          plannedMinutes: planned,
+          blockedMinutes: working ? blockedMinutes(dayPlan, date) : 0,
+          forecastMinutes: forecastMinutes(planned, drift),
+        },
       };
     }),
   };

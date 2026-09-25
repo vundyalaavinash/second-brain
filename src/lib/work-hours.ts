@@ -11,8 +11,15 @@ export function getWorkHours(db: DB): string {
   return parseWorkHours(value) ? value : DEFAULT_WORK_HOURS;
 }
 
-export function setWorkHours(db: DB, value: string): string {
+/** The check `setWorkHours` throws on, extracted so the settings route can validate a whole
+ * patch — every field, `workHours` included — before writing any of it (honest-forecast review
+ * F2: a patch that fails on a later field must not have already saved an earlier one). */
+export function assertValidWorkHours(value: string): void {
   if (!parseWorkHours(value)) throw new TaskError("Hours must be HH:MM-HH:MM with the start before the end", 400);
+}
+
+export function setWorkHours(db: DB, value: string): string {
+  assertValidWorkHours(value);
   setSetting(db, WORK_HOURS_KEY, value);
   return value;
 }
@@ -25,10 +32,18 @@ export const DEFAULT_WORKING_DAYS = "1,2,3,4,5";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Deduplicated and sorted, the one shape both the write path and the read path answer in —
+ * a stored value nobody wrote through `setWorkingDays` (a hand-edited row, an older format)
+ * must not read back with duplicates just because the write path was the only place that
+ * promised to remove them. */
+function dedupeSorted(days: number[]): number[] {
+  return [...new Set(days)].sort((a, b) => a - b);
+}
+
 function parseWorkingDays(value: string): number[] | null {
   const days = value.split(",").map(Number);
   if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) return null;
-  return days;
+  return dedupeSorted(days);
 }
 
 export function getWorkingDays(db: DB): number[] {
@@ -36,10 +51,16 @@ export function getWorkingDays(db: DB): number[] {
   return parseWorkingDays(value) ?? parseWorkingDays(DEFAULT_WORKING_DAYS)!;
 }
 
-export function setWorkingDays(db: DB, days: number[]): number[] {
+/** The check `setWorkingDays` throws on, extracted for the same reason `assertValidWorkHours`
+ * is: so a caller validating a whole patch can check this field without writing it. */
+export function assertValidWorkingDays(days: number[]): void {
   if (days.length === 0) throw new TaskError("Pick at least one working day", 400);
   if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) throw new TaskError("A working day is 1 (Monday) to 7 (Sunday)", 400);
-  const unique = [...new Set(days)].sort((a, b) => a - b);
+}
+
+export function setWorkingDays(db: DB, days: number[]): number[] {
+  assertValidWorkingDays(days);
+  const unique = dedupeSorted(days);
   setSetting(db, WORKING_DAYS_KEY, unique.join(","));
   return unique;
 }

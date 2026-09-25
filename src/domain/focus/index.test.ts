@@ -353,12 +353,27 @@ describe("estimateActualPairs", () => {
     ]);
   });
 
-  it("respects the limit", () => {
-    for (let i = 0; i < 3; i++) {
-      const task = createTask(t.db, { title: `Task ${i}`, estimateMinutes: 30 });
-      finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
-      completeTask(t.db, task.id);
-    }
-    expect(estimateActualPairs(t.db, 2)).toHaveLength(2);
+  it("respects the limit by keeping the newest, not just some two of the three", () => {
+    // Distinct estimates and completion dates, so a limit that silently kept the two *oldest*
+    // (which would also satisfy a bare `toHaveLength(2)`) is told apart from the correct answer.
+    const oldest = createTask(t.db, { title: "Oldest", estimateMinutes: 10 });
+    finishFocus(t.db, startFocus(t.db, { taskId: oldest.id, minutes: 10 }, at("09:00")).id, "completed", at("09:10"));
+    completeTask(t.db, oldest.id);
+    t.db.run(`update tasks set completed_at = '2026-09-01T12:00:00.000Z' where id = ${oldest.id}`);
+
+    const middle = createTask(t.db, { title: "Middle", estimateMinutes: 20 });
+    finishFocus(t.db, startFocus(t.db, { taskId: middle.id, minutes: 20 }, at("09:00")).id, "completed", at("09:20"));
+    completeTask(t.db, middle.id);
+    t.db.run(`update tasks set completed_at = '2026-09-10T12:00:00.000Z' where id = ${middle.id}`);
+
+    const newest = createTask(t.db, { title: "Newest", estimateMinutes: 30 });
+    finishFocus(t.db, startFocus(t.db, { taskId: newest.id, minutes: 30 }, at("09:00")).id, "completed", at("09:30"));
+    completeTask(t.db, newest.id);
+    t.db.run(`update tasks set completed_at = '2026-09-20T12:00:00.000Z' where id = ${newest.id}`);
+
+    expect(estimateActualPairs(t.db, 2)).toEqual([
+      { estimateMinutes: 30, actualMinutes: 30 },
+      { estimateMinutes: 20, actualMinutes: 20 },
+    ]);
   });
 });

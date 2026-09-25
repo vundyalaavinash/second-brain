@@ -20,13 +20,22 @@ const task: TaskDTO = {
 function week(): PlannerWeekDTO {
   return {
     start: START,
+    drift: null,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
       // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
       const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
       // 2026-09-21 is a Monday, so the first five days (Mon-Fri) are working days and the
-      // last two (Sat, Sun) are not.
-      return { date, working: i < 5, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes, blockedMinutes: 0 } };
+      // last two (Sat, Sun) are not. `working` is required by `PlannerWeekDayDTO` but `WeekView`
+      // does not yet read it — only `capacity.*` — so this is here to satisfy the type, not to
+      // exercise anything the component does with it.
+      return {
+        date,
+        working: i < 5,
+        meetings: [],
+        due: date === START ? [task] : [],
+        capacity: { freeMinutes: 540, plannedMinutes, blockedMinutes: 0, forecastMinutes: null },
+      };
     }),
   };
 }

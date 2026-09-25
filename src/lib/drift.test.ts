@@ -19,6 +19,14 @@ describe("driftFactor", () => {
     expect(driftFactor(pairs(ratios))).toBeCloseTo(1.1, 5);
   });
 
+  it("averages the two middle ratios on an even count, when they actually differ", () => {
+    // Eight pairs, the middle two (sorted) genuinely distinct: (1.4 + 1.6) / 2 = 1.5. Every other
+    // even-length case in this file happens to use a run of identical ratios, which a mutant
+    // that just picks `ratios[mid]` would also pass — this one cannot.
+    const ratios = [1, 1, 1, 1.4, 1.6, 2, 2, 2];
+    expect(driftFactor(pairs(ratios))).toBe(1.5);
+  });
+
   it("reads only the most recent window", () => {
     // Older entries come last: the newest DRIFT_WINDOW are all 2, the tail is all 1.
     const recent = pairs(Array(DRIFT_WINDOW).fill(2));

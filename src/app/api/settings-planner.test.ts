@@ -45,8 +45,36 @@ describe("planner settings api", () => {
     expect(await (await r.planner.GET()).json()).toEqual({ workHours: "08:30-17:00", workingDays: [1, 3, 6] });
   });
 
-  it("gates PATCH on the same-origin guard, the pre-existing gap this route was missing", async () => {
-    const res = await r.planner.PATCH(foreign("PATCH", "/api/settings/planner", { workHours: "10:00-16:00" }));
+  it("accepts a list that only dedupes down to a valid one, longer than the number of ISO weekdays", async () => {
+    // Eight repeats of one day: a length cap ahead of the dedupe would reject this even though
+    // it collapses to a single, perfectly valid working day.
+    const ok = await r.planner.PATCH(json("PATCH", "/api/settings/planner", { workingDays: Array(8).fill(1) }));
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ workHours: "08:30-17:00", workingDays: [1] });
+    // Restore Mon-Fri for the tests that follow.
+    await r.planner.PATCH(json("PATCH", "/api/settings/planner", { workingDays: [1, 2, 3, 4, 5] }));
+  });
+
+  it("validates every field before writing any of them: a good workHours beside a bad workingDays saves neither", async () => {
+    const before = await (await r.planner.GET()).json();
+    const res = await r.planner.PATCH(json("PATCH", "/api/settings/planner", { workHours: "07:00-15:00", workingDays: [0, 1] }));
+    expect(res.status).toBe(400);
+    // The valid half of the patch did not land just because the other half failed.
+    expect(await (await r.planner.GET()).json()).toEqual(before);
+  });
+
+  it("is a no-op that still answers 200 with an empty patch", async () => {
+    const before = await (await r.planner.GET()).json();
+    const res = await r.planner.PATCH(json("PATCH", "/api/settings/planner", {}));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(before);
+  });
+
+  it("gates PATCH on the same-origin guard, the pre-existing gap this route was missing, and the write never happens", async () => {
+    const before = await (await r.planner.GET()).json();
+    const res = await r.planner.PATCH(foreign("PATCH", "/api/settings/planner", { workHours: "10:00-16:00", workingDays: [7] }));
     expect(res.status).toBe(403);
+    // The point of the guard: not just the status code, but that nothing was actually saved.
+    expect(await (await r.planner.GET()).json()).toEqual(before);
   });
 });
