@@ -109,6 +109,15 @@ describe("saveReviewStep", () => {
     expect(getReview(t.db, "2026-09-21")!.body).toContain("Shipped the API.");
   });
 
+  it("reads back through the Library's own listing, its body the Markdown of the answers", () => {
+    openReview(t.db, "2026-09-21");
+    saveReviewStep(t.db, "2026-09-21", "clear", "Inbox is empty.");
+    saveReviewStep(t.db, "2026-09-21", "back", "Shipped the API.");
+    const [found] = listItems(t.db, { type: "review" });
+    expect(found).toMatchObject({ title: "Week of 21 September 2026", reviewWeek: "2026-09-21" });
+    expect(found.body).toBe(renderReviewBody("2026-09-21", { clear: "Inbox is empty.", back: "Shipped the API." }));
+  });
+
   it("opens the review itself when nothing has been opened yet", () => {
     saveReviewStep(t.db, "2026-09-21", "clear", "Inbox is empty.");
     expect(getReview(t.db, "2026-09-21")).toBeDefined();

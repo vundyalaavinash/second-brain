@@ -25,6 +25,7 @@ interface Props {
   day: PlannerDayDTO;
   counts: HomeDTO["counts"];
   focus: HomeDTO["focus"];
+  review: HomeDTO["review"];
   onHours: (workHours: string) => void;
 }
 
@@ -32,8 +33,13 @@ interface Props {
  * The day's own header: the Planner's numeral and weekday, its capacity line with the hours
  * chip, and the three figures under them. Home is always today, so the header carries no
  * arrows — the figures are the way out of it instead.
+ *
+ * Design §5.3: from Friday, a week with no review yet adds one quiet line under the figures —
+ * no badge, no colour, no count, nothing that grows more insistent as Sunday nears. Once the
+ * week has a review it renders nothing at all, not even a tick, because this is a nudge and the
+ * research behind it is explicit that the nagging version is the one people turn off.
  */
-export function TopBand({ day, counts, focus, onHours }: Props) {
+export function TopBand({ day, counts, focus, review, onHours }: Props) {
   return (
     <header className="flex flex-col gap-3">
       <DateHeader
@@ -51,6 +57,13 @@ export function TopBand({ day, counts, focus, onHours }: Props) {
         ))}
         {/* What the day has cost so far — nowhere of its own to lead to yet, so it is read, not linked. */}
         <li>{focus.minutes === 0 ? "Nothing focused yet" : `${formatDuration(focus.minutes * 60_000)} focused`}</li>
+        {review.due && (
+          <li>
+            <Link href="/review" className="focus-ring rounded-sm text-fg-muted hover:text-fg transition-colors duration-150">
+              Review your week
+            </Link>
+          </li>
+        )}
       </ul>
     </header>
   );

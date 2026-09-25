@@ -328,6 +328,10 @@ export interface HomeDTO {
    * too so the page's first paint already knows it rather than waiting on that store's own
    * fetch. */
   focus: { minutes: number; running: FocusRunDTO | null };
+  /** Design §5.3: the one quiet nudge toward `/review`. `due` is true only from Friday on, and
+   * only while the current week has opened no review yet — it never turns true again once one
+   * exists, and it never turns red or insistent as Sunday nears. */
+  review: { week: string; due: boolean; savedAt: string | null };
 }
 
 export interface GoalMeasureDTO {
