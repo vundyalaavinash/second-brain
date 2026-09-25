@@ -44,6 +44,17 @@ export function formatDayHeading(day: string): string {
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+/** "3 October" from an ISO instant's own UTC calendar date -- never the local one. Audio-release
+ * stamps (`audioReleasedAt`, `nextReleaseAt`) are written in UTC (see `backupDateStamp`'s own
+ * doc comment for why), so this reads the same day regardless of the machine's timezone rather
+ * than risking a shift across midnight under an odd zone -- no `Date` construction at all, just
+ * the digits already in the string, the same trick `formatRecoveryDate` in `safety-line.tsx` uses
+ * for a bare `YYYY-MM-DD`. */
+export function formatUtcDay(iso: string): string {
+  const [, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return `${d} ${MONTHS[m - 1]}`;
+}
+
 export function addDaysLocal(day: string, n: number): string {
   const [y, m, d] = day.split("-").map(Number);
   return todayLocal(new Date(y, m - 1, d + n));

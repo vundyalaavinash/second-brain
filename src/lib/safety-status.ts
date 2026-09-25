@@ -3,6 +3,7 @@ import path from "node:path";
 import type { DB } from "@/db/client";
 import { getLastDbCheck, type CheckResult } from "@/db/safety";
 import { recoveryPointSummary } from "@/jobs/handlers/backup";
+import { audioFootprint, type AudioFootprint } from "@/domain/meetings/audio-retention";
 import { backupsDir } from "@/lib/paths";
 
 export interface SafetyStatus {
@@ -23,6 +24,8 @@ export interface SafetyStatus {
    * ran last -- `db/safety.ts`'s single shared verdict. `{ ok: false, ... }` when nothing has been
    * recorded yet: silence must mean checked and sound, never merely unchecked (design §2, §7). */
   integrity: CheckResult;
+  /** Design §9: how many recordings are held, how much space, and when the next release is due. */
+  audio: AudioFootprint;
 }
 
 /**
@@ -32,14 +35,13 @@ export interface SafetyStatus {
  * backup for its mtime, and a read of `getLastDbCheck`'s single in-memory slot. Nothing here
  * opens or copies a database file -- that is what `npm run verify` is for, not a status read.
  *
- * `db` is accepted but not yet read: task 5 adds the audio footprint (how many recordings, how
- * much space, when the next release is due) to this same line, and will need it to query items.
- * Threading it through now, unused, is the seam that lets that task extend this function rather
- * than change every caller's signature.
+ * `now` follows the same rule every clock-needing function in this design does -- a default so
+ * tests never depend on the real one -- though nothing here reads it yet: `audioFootprint`
+ * reports an absolute due instant rather than something already relative to `now`, so it is the
+ * caller (`describeSafety`) that turns it into "in 3 days" against its own clock.
  */
 export function safetyStatus(db: DB, now: Date = new Date()): SafetyStatus {
-  void db;
-  void now; // unused until task 5's audio footprint needs both -- see the doc comment above
+  void now;
 
   const dir = backupsDir();
   const { count, oldest, newest } = recoveryPointSummary(dir);
@@ -49,5 +51,5 @@ export function safetyStatus(db: DB, now: Date = new Date()): SafetyStatus {
   const integrity: CheckResult = last ? { ok: last.ok, problems: last.problems } : { ok: false, problems: ["no integrity check has run yet"] };
   const verified = !(last?.source === "backup" && !last.ok);
 
-  return { lastBackupAt, verified, recoveryPoints: count, oldest, integrity };
+  return { lastBackupAt, verified, recoveryPoints: count, oldest, integrity, audio: audioFootprint(db) };
 }

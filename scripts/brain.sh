@@ -48,6 +48,10 @@ Usage: scripts/brain.sh <command>
   verify           open every backup, print one line each, and fail if any is unsound
   restore [file]   with no file, list what is available and stop; with one, replace the
                    live database with it -- see docs/superpowers/runbook.md first
+  audio-status     how many meeting recordings are held, how much space, when the next
+                   release is due -- read-only
+  release-audio    run design's audio-release pass right now, rather than waiting for
+                   tonight's backup job to get to it
 
 Data directory: $DATA_DIR   (override with SB_DATA_DIR)
 USAGE
@@ -480,6 +484,20 @@ cmd_verify() {
   SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/verify-backups.ts
 }
 
+cmd_audio_status() {
+  require_node
+  cd "$ROOT"
+  SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/audio-status.ts
+}
+
+cmd_release_audio() {
+  require_node
+  cd "$ROOT"
+  say "releasing audio past the retention window"
+  SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/release-audio.ts
+  ok "done"
+}
+
 # Resolves $1 (a bare filename or an absolute path) against the backups directory and refuses
 # anything that would land outside it -- an absolute path elsewhere, a `../` escape, or a symlink
 # that points outside (realpath resolves it before the prefix check, so a link inside the
@@ -806,6 +824,8 @@ case "${1:-}" in
   dev)     cmd_dev ;;
   backup)  cmd_backup ;;
   verify)  cmd_verify ;;
+  audio-status)   cmd_audio_status ;;
+  release-audio)  cmd_release_audio ;;
   restore) shift; cmd_restore "$@" ;;
   -h|--help|help|"") usage ;;
   *) usage; fail "unknown command: $1" ;;

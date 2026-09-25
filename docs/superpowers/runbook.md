@@ -76,6 +76,24 @@ refuse, naming the path; remove it by hand once you're sure nothing is still run
 A stale lock only ever blocks a *new* restore from starting — it has no bearing on the database or
 attachments themselves, so there is nothing else to recover before removing it.
 
+## My disk is filling up
+
+    npm run audio-status
+
+Read-only. Prints how many meeting recordings are currently held, how much space they take, and
+when the next one is due for release under `meetings.audioRetentionDays` (seven days by default,
+past a recording's end -- see "Meetings and recording" in the README). A recording with no
+transcript is never counted as due, and never will be: it is the only copy of what was said, and
+this design will not delete it, whatever the setting says.
+
+    npm run release-audio
+
+Runs that same release pass right now instead of waiting for tonight's backup job to get to it --
+useful right after lowering the retention window, or when the disk just needs the space back
+today. It also sweeps any `.wav` under `files/meetings` that no meeting item points to any more,
+the same way the nightly job does. Nothing here touches a transcript, and nothing here touches
+audio that has not yet been transcribed.
+
 ## How do I check my backups are real?
 
     npm run verify
@@ -104,7 +122,7 @@ Prints the data directory on its `data:` line. Inside it:
 | `backups/brain-replaced-<timestamp>.db` | A database a restore moved aside, kept, never deleted |
 | `attachments/` | The live attachments |
 | `attachments-replaced-<timestamp>` | Attachments a restore moved aside, kept, never deleted — beside `attachments/`, not inside `backups/`, so the nightly prune can never see or delete it |
-| `files/` | Uploaded files and meeting recordings — **not backed up**; nothing here is copied by the nightly job or touched by a restore |
+| `files/` | Uploaded files and meeting recordings — **not backed up**; nothing here is copied by the nightly job or touched by a restore. Meeting audio under `files/meetings/` also has its own retention, in the same nightly job: gone once transcribed and past `meetings.audioRetentionDays`, kept forever with no transcript. See "My disk is filling up" above |
 | `.restore.lock` | Held only while a restore is running; see "I want to go back to yesterday" above if one is left behind |
 | `logs/app.log` | The server log |
 

@@ -13,6 +13,7 @@ function status(over: Partial<SafetyStatusDTO> = {}): SafetyStatusDTO {
     recoveryPoints: 17,
     oldest: "2026-04-12",
     integrity: { ok: true, problems: [] },
+    audio: { recordings: 0, bytes: 0, nextReleaseAt: null },
     ...over,
   };
 }
@@ -26,7 +27,7 @@ describe("describeSafety", () => {
   it("says nothing is wrong in one line when nothing is wrong", () => {
     const { ok, text } = describeSafety(status(), NOW);
     expect(ok).toBe(true);
-    expect(text).toBe("Backed up 3 hours ago, verified. 17 recovery points, back to 12 April.");
+    expect(text).toBe("Backed up 3 hours ago, verified. 17 recovery points, back to 12 April. No audio held.");
   });
 
   it("says so when the newest backup is older than two days", () => {
@@ -72,6 +73,26 @@ describe("describeSafety", () => {
     expect(text).not.toContain("failed to verify");
     expect(text).toContain("disk io error");
   });
+
+  it("reports design §9's audio footprint: how many, how much, and when the next release is due", () => {
+    const { text } = describeSafety(
+      status({ audio: { recordings: 3, bytes: 340 * 1024 * 1024, nextReleaseAt: "2026-10-03T09:00:00.000Z" } }),
+      NOW,
+    );
+    expect(text).toContain("3 recordings held, 340.0 MB, next release 3 October.");
+  });
+
+  it("says one recording, singular, and omits the next-release clause when there is none due", () => {
+    const { text } = describeSafety(status({ audio: { recordings: 1, bytes: 500, nextReleaseAt: null } }), NOW);
+    expect(text).toContain("1 recording held, 500 B.");
+    expect(text).not.toContain("1 recordings");
+    expect(text).not.toContain("next release");
+  });
+
+  it("does not append the audio clause to a problem sentence -- it rides only on the good line", () => {
+    const { text } = describeSafety(status({ verified: false, integrity: { ok: false, problems: ["not a database"] }, audio: { recordings: 9, bytes: 1, nextReleaseAt: null } }), NOW);
+    expect(text).not.toContain("recording");
+  });
 });
 
 describe("SafetyLine", () => {
@@ -83,7 +104,7 @@ describe("SafetyLine", () => {
     // A fixed `now` prop, not the real clock: the component defaults to `new Date()` in
     // production, but a test asserting the exact sentence needs a moment that never moves.
     render(<SafetyLine now={NOW} />);
-    await waitFor(() => expect(screen.getByText("Backed up 3 hours ago, verified. 17 recovery points, back to 12 April.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Backed up 3 hours ago, verified. 17 recovery points, back to 12 April. No audio held.")).toBeTruthy());
   });
 
   it("renders nothing before the fetch resolves", () => {

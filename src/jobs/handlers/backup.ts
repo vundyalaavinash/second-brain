@@ -4,9 +4,16 @@ import type { DB } from "@/db/client";
 import type { JobHandler } from "@/jobs/worker";
 import { attachmentsDir, backupsDir, dataDir } from "@/lib/paths";
 import { pruneActivity, retentionDays } from "@/domain/activity";
+import { releasableRecordings, releaseAudio, sweepOrphanAudio } from "@/domain/meetings/audio-retention";
 import { verifyDatabaseFile, recordDbCheck, SNAPSHOT_PREFIX } from "@/db/safety";
 
 export { backupsDir };
+
+/** Bytes to megabytes, one decimal -- the scale every log line in this file reports freed space
+ * at, since a WAV of speech is the only thing here that reaches it. */
+function mb(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
 
 /** Kept outright, newest first: the most recent seven calendar days of `brain-*.db`. */
 export const KEEP_DAILY = 7;
@@ -407,6 +414,11 @@ export function sweepSidecars(dir: string): number {
  * A failed verification does not cancel the attachments backup or the activity prune below --
  * those are separate artifacts with their own retention, and a bad database copy is not a reason
  * to also lose a night of attachments.
+ *
+ * Last is design §9's audio pass: release a transcribed recording past `meetings.audioRetentionDays`,
+ * then sweep orphaned `.wav`s. It runs after everything above, including a failed verification,
+ * because a bug there must never cost the backup that already happened -- see the try/catch
+ * around it below.
  */
 export function createBackupHandler(deps: { db: DB }): JobHandler {
   return async () => {
@@ -437,5 +449,30 @@ export function createBackupHandler(deps: { db: DB }): JobHandler {
 
     const pruned = pruneActivity(deps.db, retentionDays(deps.db));
     if (pruned.sessions || pruned.events) console.log(`[backup] pruned ${pruned.sessions} activity session(s), ${pruned.events} event(s)`);
+
+    // Design §9: the transcript is the record, the audio is scaffolding. Runs after the backup
+    // (and after its own verification and the prunes above) so a bug in here -- which touches
+    // files this job did not write and is asked to delete -- can never cost the backup that
+    // already happened; it is caught rather than left to fail the whole nightly job. Release
+    // before the orphan sweep: a release that fails partway still leaves a file a real meeting
+    // item points at, which the sweep must never touch, so the sweep has to run last and re-read
+    // what release actually left rather than what it meant to do.
+    try {
+      let released = 0;
+      let freedBytes = 0;
+      for (const recording of releasableRecordings(deps.db)) {
+        const result = releaseAudio(deps.db, recording.itemId);
+        if (result) {
+          released += 1;
+          freedBytes += result.freedBytes;
+        }
+      }
+      if (released) console.log(`[backup] released ${released} recording(s), freeing ${mb(freedBytes)} MB`);
+
+      const orphans = sweepOrphanAudio(deps.db);
+      if (orphans.files) console.log(`[backup] swept ${orphans.files} orphaned recording(s), freeing ${mb(orphans.bytes)} MB`);
+    } catch (err) {
+      console.error(`[backup] audio retention pass failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 }

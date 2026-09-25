@@ -2,6 +2,14 @@ export function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Rounded to one decimal above a megabyte, which is the only scale a WAV of speech reaches. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} kB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }

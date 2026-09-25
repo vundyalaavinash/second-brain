@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SafetyStatusDTO } from "@/lib/dto";
-import { MONTHS } from "./format";
+import type { AudioFootprintDTO, SafetyStatusDTO } from "@/lib/dto";
+import { formatBytes } from "@/lib/format";
+import { MONTHS, formatUtcDay } from "./format";
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -25,6 +26,17 @@ function formatRecoveryDate(day: string): string {
   return `${d} ${MONTHS[m - 1]}`;
 }
 
+/** Design §9.4's clause: how many recordings are held, how much space, and when the next one is
+ * due -- appended only to the "nothing is wrong" sentence, the same place recovery points and
+ * their reach already live, so an active problem above is never buried under it. */
+function describeAudio(audio: AudioFootprintDTO): string {
+  if (audio.recordings === 0) return "No audio held.";
+  const count = `${audio.recordings} recording${audio.recordings === 1 ? "" : "s"} held`;
+  const size = formatBytes(audio.bytes);
+  const next = audio.nextReleaseAt ? `, next release ${formatUtcDay(audio.nextReleaseAt)}` : "";
+  return `${count}, ${size}${next}.`;
+}
+
 /**
  * Turns `SafetyStatusDTO` into design §7's one line: the governing rule is that silence means
  * checked and sound, not unchecked, so every branch here either says the specific thing that is
@@ -36,9 +48,13 @@ function formatRecoveryDate(day: string): string {
  * (`verified` and `integrity` can both come from the same recorded check when it was the backup's
  * own -- see `safetyStatus`'s doc comment -- so the more specific, more actionable message wins),
  * and staleness is checked last because a fresh failure already explains itself without it.
+ *
+ * Design §9.4's audio clause (`describeAudio`) rides along on the "nothing is wrong" sentence
+ * only: a disk-filling-up detail belongs beside the good news, never competing with an active
+ * backup or integrity problem for the one line's attention.
  */
 export function describeSafety(status: SafetyStatusDTO, now: Date = new Date()): { ok: boolean; text: string } {
-  const { lastBackupAt, verified, recoveryPoints, oldest, integrity } = status;
+  const { lastBackupAt, verified, recoveryPoints, oldest, integrity, audio } = status;
 
   if (!verified) {
     return { ok: false, text: "The last backup failed to verify. Run npm run verify to see which backups are sound." };
@@ -60,7 +76,7 @@ export function describeSafety(status: SafetyStatusDTO, now: Date = new Date()):
 
   const points = `${recoveryPoints} recovery point${recoveryPoints === 1 ? "" : "s"}`;
   const reach = oldest ? `, back to ${formatRecoveryDate(oldest)}` : "";
-  return { ok: true, text: `Backed up ${timeAgo(lastBackupAt!, now)}, verified. ${points}${reach}.` };
+  return { ok: true, text: `Backed up ${timeAgo(lastBackupAt!, now)}, verified. ${points}${reach}. ${describeAudio(audio)}` };
 }
 
 /**

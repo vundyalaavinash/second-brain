@@ -16,7 +16,9 @@
     "status": "scripts/brain.sh status",
     "logs": "scripts/brain.sh logs",
     "backup": "scripts/brain.sh backup",
-    "verify": "scripts/brain.sh verify"
+    "verify": "scripts/brain.sh verify",
+    "audio-status": "scripts/brain.sh audio-status",
+    "release-audio": "scripts/brain.sh release-audio"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.127.0",

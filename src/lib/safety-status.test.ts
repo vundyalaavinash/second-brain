@@ -4,6 +4,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { recordDbCheck } from "@/db/safety";
 import { backupsDir } from "@/lib/paths";
+import { createItem, updateItem } from "@/domain/items";
+import type { RecordingMeta } from "@/domain/meetings/recorder";
 import { safetyStatus } from "./safety-status";
 
 /** `getLastDbCheck`'s recorded state lives on `globalThis`, independent of `SB_DATA_DIR` --
@@ -35,6 +37,23 @@ describe("safetyStatus", () => {
     // Silence must mean checked and sound, not unchecked (design §2, §7) -- a process that has
     // never recorded a check cannot claim its database is sound.
     expect(status.integrity.ok).toBe(false);
+    // Design §9's seam: nothing held, nothing due.
+    expect(status.audio).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
+  });
+
+  it("folds design §9's audio footprint into the same status", () => {
+    const wavPath = "meetings/Standup.wav";
+    const recording: RecordingMeta = { startedAt: "2026-09-01T10:00:00.000Z", endedAt: "2026-09-01T10:00:00.000Z", wavPath, state: "done", autoStarted: false };
+    const item = createItem(t.db, { type: "meeting", title: "Standup", status: "ready", meta: { recording } });
+    updateItem(t.db, item.id, { extractedText: "what was said" });
+    const file = path.join(t.dir, "files", wavPath);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.alloc(2048));
+
+    const status = safetyStatus(t.db);
+    expect(status.audio.recordings).toBe(1);
+    expect(status.audio.bytes).toBe(2048);
+    expect(status.audio.nextReleaseAt).toBe(new Date(Date.parse(recording.endedAt!) + 7 * 86_400_000).toISOString());
   });
 
   it("reads the newest backup's own mtime, not its date-only file name", () => {

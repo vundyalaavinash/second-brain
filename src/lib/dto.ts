@@ -243,10 +243,22 @@ export interface CalendarFeedDTO {
   sync?: { state: "off" } | { state: "ok"; count: number; syncedAt: string } | { state: "error"; error: string };
 }
 
-/** The two auto-record switches in the Meetings header. */
+/** The two auto-record switches in the Meetings header, plus design §9's audio retention window:
+ * `null` keeps every recording forever, `0`-`365` the days past a recording's end. Optional here
+ * only so existing object literals in tests that predate it still typecheck -- the route always
+ * includes it. */
 export interface MeetingSettingsDTO {
   autoRecord: boolean;
   autoRecordNeedsCallLink: boolean;
+  audioRetentionDays?: number | null;
+}
+
+/** Design §9's audio footprint, folded into the same status line: how many recordings are
+ * held, how much space they take, and when the next one is due for release. */
+export interface AudioFootprintDTO {
+  recordings: number;
+  bytes: number;
+  nextReleaseAt: string | null;
 }
 
 /** Design §7's one line: what `safetyStatus` (`src/lib/safety-status.ts`) knows about the last
@@ -257,6 +269,7 @@ export interface SafetyStatusDTO {
   recoveryPoints: number;
   oldest: string | null;
   integrity: CheckResult;
+  audio: AudioFootprintDTO;
 }
 
 /** What the Planner knows about the helper's calendar access, for the setup card. */

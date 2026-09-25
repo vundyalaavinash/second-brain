@@ -6,8 +6,10 @@ import { makeTestDb, makeTempDataDir, type TestDb } from "@/test/db";
 import { enqueueJob } from "@/jobs/queue";
 import { activitySessions } from "@/db/schema";
 import { ingestHeartbeat } from "@/domain/activity";
-import { createItem } from "@/domain/items";
+import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { saveAttachment, attachmentPath } from "@/domain/attachments";
+import { setAudioRetentionDays } from "@/domain/meetings/audio-retention";
+import type { RecordingMeta } from "@/domain/meetings/recorder";
 import { getLastDbCheck } from "@/db/safety";
 import {
   createBackupHandler,
@@ -104,6 +106,98 @@ describe("backup handler", () => {
     const remaining = t.db.select().from(activitySessions).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].title).toBe("new");
+  });
+
+  /** A meeting item shaped like a finished, transcribed recording, with its wav actually on
+   * disk. `endedAt` defaults well past the default seven-day window. */
+  function transcribedMeeting(opts: { title: string; endedAt?: string; transcript?: string; bytes?: number } = { title: "Meeting" }): { itemId: number; wavPath: string } {
+    const wavPath = `meetings/${opts.title}.wav`;
+    const recording: RecordingMeta = { startedAt: "2026-08-01T10:00:00.000Z", endedAt: opts.endedAt ?? "2026-08-01T10:00:00.000Z", wavPath, state: "done", autoStarted: false };
+    const item = createItem(t.db, { type: "meeting", title: opts.title, status: "ready", meta: { recording } });
+    updateItem(t.db, item.id, { extractedText: opts.transcript ?? "what was actually said" });
+    const file = path.join(t.dir, "files", wavPath);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.alloc(opts.bytes ?? 4096));
+    return { itemId: item.id, wavPath: file };
+  }
+
+  it("releases a transcribed recording past the window and sweeps an orphan, in the same run", async () => {
+    const { itemId, wavPath } = transcribedMeeting({ title: "Past window" });
+    const orphan = path.join(t.dir, "files", "meetings", "nobody-points-here.wav");
+    fs.mkdirSync(path.dirname(orphan), { recursive: true });
+    fs.writeFileSync(orphan, Buffer.alloc(1024));
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    expect(fs.existsSync(wavPath)).toBe(false);
+    expect(fs.existsSync(orphan)).toBe(false);
+    const meta = parseMeta<{ audioReleasedAt?: string }>(getItem(t.db, itemId)!);
+    expect(meta.audioReleasedAt).toBeTruthy();
+    expect(getItem(t.db, itemId)!.extractedText).toBe("what was actually said");
+    // Read the recorded calls before mockRestore -- restore also clears mock.calls.
+    const logged = logSpy.mock.calls.map((c) => String(c[0]));
+    logSpy.mockRestore();
+    expect(logged.some((line) => line.includes("released 1 recording"))).toBe(true);
+    expect(logged.some((line) => line.includes("swept 1 orphaned recording"))).toBe(true);
+  });
+
+  it("never releases a recording that has no transcript, however old", async () => {
+    const { wavPath } = transcribedMeeting({ title: "Untranscribed", transcript: "" });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    expect(fs.existsSync(wavPath)).toBe(true);
+  });
+
+  it("keeps a recording inside the window, and releases nothing when the setting is null", async () => {
+    setAudioRetentionDays(t.db, null);
+    const { wavPath } = transcribedMeeting({ title: "Kept forever" });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    expect(fs.existsSync(wavPath)).toBe(true);
+  });
+
+  it("still runs the audio pass when the backup itself failed verification", async () => {
+    const backupSpy = vi.spyOn(t.db.$client, "backup").mockImplementation(async (destination: string) => {
+      fs.writeFileSync(destination, "not a real db");
+      return undefined as never;
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { wavPath } = transcribedMeeting({ title: "Past window despite bad backup" });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    expect(fs.existsSync(wavPath)).toBe(false); // released anyway -- unrelated to backup soundness
+    backupSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("does not let a failure in the audio pass touch the backup, the prune, or the job itself", async () => {
+    // A directory sitting where the wav is expected: `fs.rmSync` without `recursive` throws
+    // EISDIR on it, which is exactly the kind of bug this pass must survive without costing
+    // anything that already ran -- reached the moment `releaseAudio` tries to delete it.
+    const wavPath = "meetings/Trap.wav";
+    const recording: RecordingMeta = { startedAt: "2026-08-01T10:00:00.000Z", endedAt: "2026-08-01T10:00:00.000Z", wavPath, state: "done", autoStarted: false };
+    const item = createItem(t.db, { type: "meeting", title: "Trap", status: "ready", meta: { recording } });
+    updateItem(t.db, item.id, { extractedText: "a real transcript" });
+    const trap = path.join(t.dir, "files", wavPath);
+    fs.mkdirSync(trap, { recursive: true }); // a directory, not a file, at the path meta names
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const job = enqueueJob(t.db, "backup", {});
+    await expect(createBackupHandler({ db: t.db })(job)).resolves.toBeUndefined();
+
+    expect(fs.existsSync(backupFilePath())).toBe(true);
+    expect(getLastDbCheck()).toMatchObject({ ok: true, source: "backup" });
+    expect(fs.existsSync(trap)).toBe(true); // untouched -- the failed pass never got past it
+    expect(errorSpy.mock.calls.some((c) => String(c[0]).includes("audio retention pass failed"))).toBe(true);
+    errorSpy.mockRestore();
   });
 
   it("copies the attachments directory into the backup", async () => {

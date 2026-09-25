@@ -98,6 +98,17 @@ Two permissions matter, both asked for on that first run: **Microphone**, and on
 
 Recordings are written as 16 kHz mono WAV under `DATA_DIR/files/meetings/`, alongside their transcripts; nothing is uploaded, and both whisper models run locally.
 
+The transcript is the record; the audio is scaffolding. Once a meeting has a transcript, its
+recording is deleted seven days later by default, in the same nightly pass that takes the
+backup — `meetings.audioRetentionDays` (`PATCH /api/settings/meetings`) takes any number of days
+from 0 (release as soon as the transcript lands) to 365, or `null` to keep every recording
+forever. Audio with no transcript is never deleted, however old: if transcription failed or
+never ran, that recording is the only copy of what was said, and a retention window is only ever
+a promise about disposable data. A meeting page whose audio has been released says so — "Audio
+removed on 3 October; the transcript is kept" — instead of silently offering nothing, and a
+meeting whose transcript is good offers **Remove the audio** to reclaim the file right away
+instead of waiting for the window.
+
 ### Recording automatically
 
 Two switches sit in the Meetings header. **Record meetings automatically** is off until you turn it on; with it on, a meeting starts recording itself as it begins — anywhere from two minutes after its start time to a minute before it. **Only with a join link** is on by default and keeps the rule to meetings that have somewhere to join, so a block held in the diary is not recorded.
@@ -150,8 +161,10 @@ Goals set the direction, Focus and the Planner are where the week's hours actual
 
 The database backs itself up every night, verified before it is trusted and kept for six months;
 a migration takes its own snapshot first; and one command puts any of them back without deleting
-what it replaces. See `docs/superpowers/runbook.md` for what to run when something looks wrong —
-it names the one thing this does not cover: everything above lives on this one machine.
+what it replaces. Meeting audio is not part of that backup — see "Meetings and recording" above
+for its own retention, which the same nightly job runs. See `docs/superpowers/runbook.md` for
+what to run when something looks wrong — it names the one thing this does not cover: everything
+above lives on this one machine.
 
 ## Design docs
 
