@@ -7,9 +7,11 @@ import { listContainers } from "@/domain/containers";
 import { countInbox, listItems, parseMeta } from "@/domain/items";
 import { containerProgress, getTask } from "@/domain/tasks";
 import { focusSummary, runningFocus } from "@/domain/focus";
+import { getReview } from "@/domain/review";
 import { serializeFocusRun } from "./api";
 import { daysBetween } from "./deadline";
 import { plannerDay } from "./planner";
+import { isoWeekday, weekStart } from "./week";
 import type { HomeDTO, HomeItemDTO, ProjectCardDTO, RecentItemDTO } from "./dto";
 
 /** How many project cards the right column holds. */
@@ -22,8 +24,23 @@ const RECENT_LIMIT = 5;
 const TOP_ACTIVITY = 3;
 /** How many timed things stand under the current one. */
 const NEXT_LIMIT = 2;
+/** Design §5.3: the review nudge starts on Friday, Monday being 1, and never earlier — it does
+ * not grow more insistent as the week runs out, so nothing later than this ever reads it. */
+const PROMPT_FROM_WEEKDAY = 5;
 
 const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * The one quiet line Home can carry toward the week's review. `due` holds from Friday morning
+ * until the week has a review item, then never again that week — Design §5.3 is explicit that
+ * this does not grow, repeat, or turn urgent as Sunday nears, so nothing here counts down or
+ * escalates.
+ */
+function reviewPrompt(db: DB, date: string): HomeDTO["review"] {
+  const week = weekStart(date);
+  const review = getReview(db, week);
+  return { due: isoWeekday(date) >= PROMPT_FROM_WEEKDAY && !review };
+}
 
 /** A session's end in the same local wall-clock spelling its start uses. */
 function sessionEnd(startsAt: string, minutes: number): string {
@@ -191,5 +208,6 @@ export function homePayload(db: DB, now: Date): HomeDTO {
       minutes: focusToday.minutes,
       running: running ? serializeFocusRun(running, getTask(db, running.taskId)?.title ?? "") : null,
     },
+    review: reviewPrompt(db, date),
   };
 }

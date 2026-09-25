@@ -18,6 +18,12 @@ describe("NAV_ITEMS", () => {
     expect(hrefs.indexOf("/goals")).toBe(hrefs.indexOf("/planner") + 1);
     expect(NAV_ITEMS.find((n) => n.href === "/goals")).toEqual({ href: "/goals", label: "Goals", shortcut: "g g", icon: "goal", section: "brain" });
   });
+
+  it("sits Review directly after Goals, on its own free shortcut", () => {
+    const hrefs = NAV_ITEMS.map((n) => n.href);
+    expect(hrefs.indexOf("/review")).toBe(hrefs.indexOf("/goals") + 1);
+    expect(NAV_ITEMS.find((n) => n.href === "/review")).toEqual({ href: "/review", label: "Review", shortcut: "g w", icon: "review", section: "brain" });
+  });
 });
 
 describe("isNavActive", () => {

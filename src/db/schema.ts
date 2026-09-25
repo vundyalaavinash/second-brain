@@ -273,6 +273,10 @@ export const tasks = sqliteTable(
     /** How long each placed session should be; null means the default sizing (spec §2). */
     sessionMinutes: integer("session_minutes"),
     completedAt: text("completed_at"),
+    /** The instant a drop happened — its own column because `updatedAt` moves on any later
+     * edit, and a review of a past week must not have a task migrate into it because someone
+     * touched the title months after. */
+    droppedAt: text("dropped_at"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

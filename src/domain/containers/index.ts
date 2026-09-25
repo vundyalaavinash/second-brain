@@ -162,8 +162,11 @@ export function archiveContainer(db: DB, id: number, opts: { moveItemsTo?: numbe
       .orderBy(asc(tasks.sortOrder))
       .all();
     if (opts.moveItemsTo === undefined) {
+      // The bulk drop bypasses `setStatus` (this is many tasks in one statement, not the
+      // single-task funnel), so it has to stamp `droppedAt` itself — a review of the week a
+      // project was archived would otherwise never see the tasks it took down with it.
       tx.update(tasks)
-        .set({ status: "dropped", updatedAt: now })
+        .set({ status: "dropped", droppedAt: now, updatedAt: now })
         .where(and(eq(tasks.containerId, id), eq(tasks.status, "open")))
         .run();
     } else {
@@ -203,8 +206,8 @@ export function restoreContainer(db: DB, id: number): Container {
         .where(and(eq(items.containerId, id), eq(items.archivedAt, container.archivedAt)))
         .run();
       tx.update(tasks)
-        .set({ status: "open", updatedAt: now })
-        .where(and(eq(tasks.containerId, id), eq(tasks.status, "dropped"), eq(tasks.updatedAt, container.archivedAt)))
+        .set({ status: "open", droppedAt: null, updatedAt: now })
+        .where(and(eq(tasks.containerId, id), eq(tasks.status, "dropped"), eq(tasks.droppedAt, container.archivedAt)))
         .run();
     }
     const row = tx

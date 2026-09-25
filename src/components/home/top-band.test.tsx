@@ -19,8 +19,10 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
   };
 }
 
-function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }) {
-  render(<TopBand day={day()} counts={counts} focus={focus} onHours={() => {}} />);
+const NOT_DUE: HomeDTO["review"] = { due: false };
+
+function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }, review: HomeDTO["review"] = NOT_DUE) {
+  render(<TopBand day={day()} counts={counts} focus={focus} review={review} onHours={() => {}} />);
 }
 
 /** Every figure as it reads, paired with where it leads. */
@@ -79,5 +81,16 @@ describe("TopBand", () => {
     const line = screen.getByText("1h 20m focused");
     expect(line.tagName).toBe("LI");
     expect(screen.getAllByRole("link")).toHaveLength(3);
+  });
+
+  it("carries one quiet line to the review when the week is due for one", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, { due: true });
+    const link = screen.getByRole("link", { name: "Review your week" });
+    expect(link.getAttribute("href")).toBe("/review");
+  });
+
+  it("says nothing at all once the week already has a review", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, { due: false });
+    expect(screen.queryByText("Review your week")).toBeNull();
   });
 });

@@ -1,9 +1,20 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, type ReviewStep } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const LocalTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+
+/** `DateString`, plus a real calendar date: `2026-13-45` matches the regex but `new Date` rolls
+ * it over to 2027-02-08, and the review routes write a permanent record keyed by whatever date
+ * they are given, so a malformed-but-well-formed date must 400 here rather than silently open
+ * a different week's review. (The regex-only gap is pre-existing elsewhere in the app, e.g.
+ * `/api/plan` — out of scope to fix everywhere from this route.) */
+export const CalendarDateString = DateString.refine((s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}, "not a real calendar date");
 
 export const ContainerBody = z
   .object({
@@ -88,3 +99,27 @@ export const FocusSettingsBody = z
   })
   .partial()
   .strict();
+
+/** Ties `step` to the shape `value` must take: a piece of prose for every step but `goals`,
+ * which takes a note per goal id. A plain union of the two value types would accept a string for
+ * `goals` — silently spread into an index-keyed object by `saveReviewStep` — or a record for
+ * any other step, rendered as `[object Object]` in the body; the discriminant rules both out at
+ * the door. */
+export const SaveReviewBody = z.discriminatedUnion("step", [
+  z.object({ week: CalendarDateString, step: z.literal("clear"), value: z.string() }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("back"), value: z.string() }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("goals"), value: z.record(z.string(), z.string()) }).strict(),
+  z.object({ week: CalendarDateString, step: z.literal("ahead"), value: z.string() }).strict(),
+]);
+
+/** Ties the four literals above to `REVIEW_STEPS` without building the union programmatically
+ * (which `z.discriminatedUnion` can't infer a literal tuple type from): `StepsMatch` is `true`
+ * only when the two string unions have exactly the same members, so a step added to, removed
+ * from, or renamed in `REVIEW_STEPS` without a matching edit here fails to compile instead of
+ * type-checking everywhere and being silently rejected at the route. */
+type StepsMatch<A extends string, B extends string> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type SaveReviewStep = z.infer<typeof SaveReviewBody>["step"];
+const _reviewStepsTiedToSaveReviewBody: StepsMatch<ReviewStep, SaveReviewStep> = true;
+void _reviewStepsTiedToSaveReviewBody;
+
+export const ReviewPlanBody = z.object({ week: CalendarDateString, taskIds: z.array(z.number().int().positive()) }).strict();

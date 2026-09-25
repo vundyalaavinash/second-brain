@@ -1,4 +1,4 @@
-import { House, CalendarCheck, Inbox, Target, Flag, Layers, BookMarked, Users, Activity, LayoutList, Archive, Search, Plus, type LucideIcon } from "lucide-react";
+import { House, CalendarCheck, Inbox, Target, RotateCcw, Flag, Layers, BookMarked, Users, Activity, LayoutList, Archive, Search, Plus, type LucideIcon } from "lucide-react";
 import type { IconName } from "./nav";
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -6,6 +6,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   planner: CalendarCheck,
   inbox: Inbox,
   goal: Target,
+  review: RotateCcw,
   project: Flag,
   area: Layers,
   resource: BookMarked,

@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep } from "@/db/enums";
 
 export interface ContainerRefDTO {
   id: number;
@@ -328,6 +328,12 @@ export interface HomeDTO {
    * too so the page's first paint already knows it rather than waiting on that store's own
    * fetch. */
   focus: { minutes: number; running: FocusRunDTO | null };
+  /** Design §5.3: the one quiet nudge toward `/review`. `due` is true only from Friday on, and
+   * only while the current week has opened no review yet — it never turns true again once one
+   * exists, and it never turns red or insistent as Sunday nears. The link this badges is a
+   * static `/review`, not `/review?week=…`, so only `due` is read here — the week and the save
+   * time belong to `/review`'s own payload, not to Home's. */
+  review: { due: boolean };
 }
 
 export interface GoalMeasureDTO {
@@ -393,4 +399,80 @@ export interface FocusSummaryDTO {
   minutes: number;
   runs: number;
   byTask: { taskId: number; title: string; minutes: number; runs: number }[];
+}
+
+/** What a review has answered so far, one entry per step; `goals` is a note per goal id. */
+export interface ReviewAnswersDTO {
+  clear?: string;
+  back?: string;
+  goals?: Record<string, string>;
+  ahead?: string;
+}
+
+/**
+ * The week's review, assembled: what the week itself looked like — done, dropped, still open,
+ * booked focus time, the projects that moved — and what is coming in the week after, read from
+ * the same domains Home and the Planner already read them from, so the two screens can never
+ * disagree about the same week.
+ */
+export interface ReviewDTO {
+  /** The Monday the review is for. */
+  week: string;
+  label: string;
+  days: string[];
+  /** The day this payload was assembled on — for date math that genuinely means "now",
+   * distinct from `asOf` below. */
+  today: string;
+  /** The day `goals[].measure` was actually measured as of: today for the current week, the
+   * week's own last day for a closed one (design §5.1's "movement for the week" rule). Pass
+   * this to `GoalRow`, never `today` — a past week's `stalled`/`movement` were computed against
+   * its own end, not against whatever day the review happens to be read on. */
+  asOf: string;
+  /** Whether the week being reviewed is the one the app is being used in. */
+  current: boolean;
+  /** Where to resume: the first step with no answer yet, or the last step once every one does. */
+  step: ReviewStep;
+  answers: ReviewAnswersDTO;
+  clear: {
+    inbox: number;
+    /** Still open on any day of the week, each counted once even if planned on several. */
+    leftover: PlanTaskDTO[];
+  };
+  back: {
+    /** Completed inside the week, by `completedAt`. */
+    done: number;
+    /** Dropped inside the week, by `droppedAt` — its own column, so editing a dropped task
+     * later can never move it into a different week's count the way `updatedAt` would. */
+    dropped: number;
+    /** Planned in the week and still open — the same set `clear.leftover` lists, as a count. */
+    slipped: number;
+    focusMinutes: number;
+    focusRuns: number;
+    /** Meetings not declined and not all-day, on the calendar day they start — the same rule
+     * and the same day-column selection `homePayload` counts by. A meeting that crosses local
+     * midnight is attributed to the day it starts, once, here as there. */
+    meetings: number;
+    projects: { container: ContainerRefDTO; closed: number; percent: number }[];
+    /** True when these figures are the snapshot frozen in the item's meta at save time rather
+     * than a live re-query — a past week whose review has one. A live re-query of `slipped`
+     * (still-open tasks) drifts as soon as those tasks are closed, which would otherwise show
+     * "Still open: 0" beside prose written about four open tasks. Design §5.2's snapshot exists
+     * precisely so a review read back long after the fact still says what the week looked like
+     * when it was written. */
+    frozen: boolean;
+  };
+  /** Active goals, each with its movement measured as of the week's own last day — or as of
+   * today when the week under review is the current one, since a week still in progress cannot
+   * yet have movement from days it hasn't reached. */
+  goals: GoalDTO[];
+  ahead: {
+    /** Next Monday. */
+    week: string;
+    due: TaskDTO[];
+    deadlines: { container: ContainerRefDTO; deadline: string }[];
+    meetings: ActivityMeetingDTO[];
+  };
+  /** When a step was last saved; null until the first one is — an opened-but-untouched review
+   * has nothing to call "saved" yet. */
+  savedAt: string | null;
 }

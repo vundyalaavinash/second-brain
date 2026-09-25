@@ -36,6 +36,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
     recent: [{ id: 9, type: "note", title: "Kickoff notes", updatedAt: "2026-09-22T10:00:00.000Z", status: "ready" }],
     activity: { activeMs: 3_600_000, top: [{ label: "Code", ms: 3_600_000 }] },
     focus: { minutes: 0, running: null },
+    review: { due: false },
     ...over,
   };
 }

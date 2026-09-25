@@ -48,3 +48,21 @@ export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 export const FOCUS_OUTCOMES = ["completed", "stopped", "abandoned"] as const;
 export type FocusOutcome = (typeof FOCUS_OUTCOMES)[number];
+
+/** The four questions a review walks through, in the order it walks them. Kept beside the other
+ * enums, not in `@/domain/review`, so `src/lib/dto.ts` — read by client components — can name the
+ * type without a domain edge; `@/db/enums` is already the one module it imports from. */
+export const REVIEW_STEPS = ["clear", "back", "goals", "ahead"] as const;
+export type ReviewStep = (typeof REVIEW_STEPS)[number];
+
+/** The one name for each step — the on-screen step nav and announcer heading (`StepNav`) and the
+ * `##` heading `renderReviewBody` writes into the item's Markdown both read this, so renaming a
+ * step here renames it everywhere at once rather than only where whoever renamed it remembered
+ * to look. Kept beside `REVIEW_STEPS` for the same reason that constant is kept here rather than
+ * in `@/domain/review`: a client component needs the words without a domain edge. */
+export const REVIEW_STEP_LABELS: Record<ReviewStep, string> = {
+  clear: "Clear the decks",
+  back: "Look back",
+  goals: "Goals",
+  ahead: "Look ahead",
+};

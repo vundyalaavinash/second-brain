@@ -76,7 +76,7 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-6">
-      <TopBand day={data.day} counts={data.counts} focus={data.focus} onHours={saveHours} />
+      <TopBand day={data.day} counts={data.counts} focus={data.focus} review={data.review} onHours={saveHours} />
 
       {/* Two columns from 1100 px, the left wider. Below that they stack in source order, so a
         * phone reads the band, then what is on now, then the plan — and the right column last. */}
