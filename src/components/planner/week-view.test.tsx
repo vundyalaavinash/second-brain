@@ -25,16 +25,17 @@ function week(): PlannerWeekDTO {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
       // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
       const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
-      // 2026-09-21 is a Monday, so the first five days (Mon-Fri) are working days and the
-      // last two (Sat, Sun) are not. `working` is required by `PlannerWeekDayDTO` but `WeekView`
-      // does not yet read it — only `capacity.*` — so this is here to satisfy the type, not to
-      // exercise anything the component does with it.
+      // 2026-09-21 is a Monday, so the first five days (Mon-Fri) are working days and the last
+      // two (Sat, Sun) are not — the payload zeroes a non-working day's capacity across the
+      // board, the same way the server does, but `WeekView` reads `working` directly rather
+      // than infer it from zeros.
+      const working = i < 5;
       return {
         date,
-        working: i < 5,
+        working,
         meetings: [],
         due: date === START ? [task] : [],
-        capacity: { freeMinutes: 540, plannedMinutes, blockedMinutes: 0, forecastMinutes: null },
+        capacity: { freeMinutes: working ? 540 : 0, plannedMinutes, blockedMinutes: 0, forecastMinutes: null },
       };
     }),
   };
@@ -108,6 +109,31 @@ describe("WeekView", () => {
     mount();
     expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
     expect(within(column("Tue")).getByText("10h / 9h").className).toContain("text-warn");
+  });
+
+  it("shows a non-working day as a quiet gap: the date, and nothing about capacity", () => {
+    mount();
+    const sat = column("Sat");
+    // The date and weekday are still there.
+    expect(within(sat).getByText("26")).toBeTruthy();
+    expect(within(sat).getByText("Sat")).toBeTruthy();
+    // Nothing about capacity: not a figure, not "0h", not a blocked dot.
+    expect(within(sat).queryByText(/\/ /)).toBeNull();
+    expect(within(sat).queryByText(/0h/)).toBeNull();
+    expect(within(sat).queryByRole("img", { name: /blocked/ })).toBeNull();
+  });
+
+  it("keeps the blocked dot off a non-working day even when it has blocked minutes", () => {
+    const w = week();
+    w.days[5].capacity.blockedMinutes = 80;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Sat")).queryByRole("img", { name: /blocked/ })).toBeNull();
+  });
+
+  it("still shows a working day's own capacity — only the non-working days go quiet", () => {
+    mount();
+    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
+    expect(within(column("Sat")).queryByText(/\/ 9h/)).toBeNull();
   });
 
   it("plans from the week on screen rather than from today", () => {

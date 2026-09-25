@@ -41,8 +41,7 @@ describe("TopBand", () => {
 
   it("says the capacity in the Planner's own line, with the hours chip", () => {
     band({ planned: 3, meetings: 2, inbox: 4 });
-    // The figure link under the band says "3 planned" too; the free time names the capacity line.
-    expect(screen.getByText(/of 9h free/).textContent).toBe("3 planned · 2h of 9h free · 1h blocked · 30m unplaced · 2 meetings");
+    expect(screen.getByText(/left today/).textContent).toBe("2h planned · 9h left today · 1h blocked · 30m unplaced · 2 meetings");
     expect(screen.getByRole("button", { name: "Hours 09:00-18:00" })).toBeTruthy();
   });
 

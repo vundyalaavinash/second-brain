@@ -83,18 +83,22 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           <span className={`font-doc text-[24px] leading-none ${isToday ? "text-violet-bright" : ""}`}>{Number(day.date.slice(8, 10))}</span>
           <span className="micro">{weekdayOf(day.date)}</span>
         </span>
-        <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
-          {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
-          {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
-          {day.capacity.blockedMinutes > 0 && (
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full bg-violet ml-1 align-middle"
-              title={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
-              aria-label={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
-              role="img"
-            />
-          )}
-        </span>
+        {/* A day nobody works is a quiet gap: the date above, and nothing here about capacity —
+          * not "0h", not a struck-through nine hours. */}
+        {day.working && (
+          <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, day.capacity.freeMinutes)]}`}>
+            {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(day.capacity.freeMinutes)}
+            {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
+            {day.capacity.blockedMinutes > 0 && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-violet ml-1 align-middle"
+                title={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+                aria-label={`${formatMinutes(day.capacity.blockedMinutes)} blocked`}
+                role="img"
+              />
+            )}
+          </span>
+        )}
 
         {day.meetings.length > 0 && (
           <ul role="list" className="list-none m-0 p-0 flex flex-col">

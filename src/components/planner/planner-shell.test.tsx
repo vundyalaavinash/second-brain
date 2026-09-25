@@ -77,8 +77,6 @@ const planTask = (id: number, title: string): PlanTaskDTO => ({
 });
 const dayCalls = (fetchMock: ReturnType<typeof stubRoutes>) =>
   (fetchMock.mock.calls as unknown as FetchCall[]).filter(([input]) => String(input).startsWith("/api/planner/day"));
-/** How many tasks the header says are planned — the only place the loaded day shows itself. */
-const plannedCount = () => screen.getByRole("status").textContent?.split(" ")[0];
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("PlannerShell", () => {
@@ -127,7 +125,7 @@ describe("PlannerShell", () => {
   it("says the hours are the day's own and hands a new pair to the settings route", async () => {
     const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workHours: "08:00-16:00" }) });
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
-    expect(screen.getByRole("status").textContent).toBe("0 planned · 0m of 9h free · 0 meetings");
+    expect(screen.getByRole("status").textContent).toBe("0m planned · 9h left today · 0 meetings");
     fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
     const field = screen.getByRole("textbox", { name: "Working hours" });
     fireEvent.change(field, { target: { value: "08:00-16:00" } });
@@ -198,10 +196,11 @@ describe("PlannerShell", () => {
 
     // The newer day lands first; the older one, held up on the wire, arrives behind it.
     gates[1]();
-    await waitFor(() => expect(plannedCount()).toBe("2"));
+    await waitFor(() => expect(screen.getByText("Two")).toBeTruthy());
     gates[0]();
     await settle(20);
-    expect(plannedCount()).toBe("2");
+    // The stale, slower response landing after does not put the plan back to just "One".
+    expect(screen.getByText("Two")).toBeTruthy();
   });
 
   it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {

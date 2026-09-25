@@ -171,11 +171,9 @@ export function PlannerShell(props: Props) {
           unit="day"
           summary={
             // The figures `homePayload` reckons, so `/` and `/planner` never read different
-            // numbers for the same day: a finished row is no longer planned, and a declined or
-            // all-day meeting takes none of the hours.
+            // numbers for the same day: a declined or all-day meeting takes none of the hours.
             <CapacityLine
               capacity={day.capacity}
-              planned={day.plan.filter((t) => t.status === "open").length}
               meetings={day.meetings.filter((m) => !m.allDay && m.status !== "declined").length}
               onHours={saveHours}
             />
