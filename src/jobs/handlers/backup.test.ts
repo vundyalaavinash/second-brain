@@ -454,6 +454,7 @@ describe("sweepSidecars", () => {
     fs.writeFileSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-shm"), "shm");
 
     expect(sweepSidecars(dir)).toBe(0);
+    expect(fs.existsSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db"))).toBe(true);
     expect(fs.existsSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-wal"))).toBe(true);
     expect(fs.existsSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-shm"))).toBe(true);
   });

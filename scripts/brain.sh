@@ -9,6 +9,8 @@ PORT="${SB_PORT:-3141}"
 DATA_DIR="${SB_DATA_DIR:-$HOME/Library/Application Support/second-brain}"
 LOG_DIR="$DATA_DIR/logs"
 LOG_FILE="$LOG_DIR/app.log"
+DB_FILE="$DATA_DIR/brain.db"
+BACKUPS_DIR="$DATA_DIR/backups"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 URL="http://127.0.0.1:$PORT"
@@ -42,6 +44,10 @@ Usage: scripts/brain.sh <command>
   logs             tail the server log
   open             open the app in the browser
   dev              run the dev server in the foreground (port $PORT)
+  backup           take a backup right now and verify it
+  verify           open every backup, print one line each, and fail if any is unsound
+  restore [file]   with no file, list what is available and stop; with one, replace the
+                   live database with it -- see docs/superpowers/runbook.md first
 
 Data directory: $DATA_DIR   (override with SB_DATA_DIR)
 USAGE
@@ -460,6 +466,136 @@ cmd_dev() {
   exec npm run dev
 }
 
+cmd_backup() {
+  require_node
+  cd "$ROOT"
+  say "taking a backup"
+  SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/take-backup.ts
+  ok "backup complete"
+}
+
+cmd_verify() {
+  require_node
+  cd "$ROOT"
+  SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/verify-backups.ts
+}
+
+# Resolves $1 (a bare filename or an absolute path) against the backups directory and refuses
+# anything that would land outside it -- an absolute path elsewhere, or a `../` escape. Nothing
+# has been touched by the time this returns; it only decides what "the file" in `restore <file>`
+# actually names.
+resolve_backup_file() {
+  local name="$1" dir="$2" dir_real candidate resolved
+  [ -d "$dir" ] || fail "no backups directory at $dir"
+  dir_real="$(cd "$dir" && pwd -P)"
+  case "$name" in
+    /*) candidate="$name" ;;
+    *)  candidate="$dir_real/$name" ;;
+  esac
+  resolved="$(realpath "$candidate" 2>/dev/null)" || fail "no such backup: $name"
+  case "$resolved" in
+    "$dir_real"/*) ;;
+    *) fail "refusing: $name is outside the backups directory ($dir_real)" ;;
+  esac
+  [ -f "$resolved" ] || fail "no such backup: $resolved"
+  printf '%s\n' "$resolved"
+}
+
+# restore                 lists what is available, sound or not, and stops -- it never guesses.
+# restore <file>          the full procedure, each step announced as it happens. Steps 1-3 are
+#                          reversible (nothing on disk has changed yet); a typed "restore"
+#                          confirmation is required before step 4, which is not.
+cmd_restore() {
+  require_node
+  cd "$ROOT"
+  local arg="${1:-}"
+
+  if [ -z "$arg" ]; then
+    say "available backups:"
+    SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/verify-backups.ts || true
+    say "restore <file> to restore one of these"
+    return 0
+  fi
+
+  say "1/8 resolving $arg"
+  local target
+  target="$(resolve_backup_file "$arg" "$BACKUPS_DIR")"
+  ok "resolved to $target"
+
+  say "2/8 verifying it -- nothing is touched until this passes"
+  SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/verify-backups.ts "$(basename "$target")" \
+    || fail "backup failed verification; refusing to restore. Nothing has changed."
+  ok "backup verified sound"
+
+  say "3/8 stopping the server"
+  cmd_stop
+  is_up && fail "server is still answering; refusing to continue"
+  ok "server is down"
+
+  echo
+  echo "This will move the current database aside and replace it with:"
+  echo "  $target"
+  printf 'Type "restore" to continue, anything else to stop here and restart the server: '
+  local confirm
+  read -r confirm
+  if [ "$confirm" != "restore" ]; then
+    say "confirmation not given; restarting the server, nothing else changed"
+    cmd_start --no-open
+    fail "restore cancelled"
+  fi
+
+  say "4/8 moving the current database aside"
+  mkdir -p "$BACKUPS_DIR"
+  local stamp replaced
+  stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+  replaced="$BACKUPS_DIR/brain-replaced-$stamp.db"
+  if [ -f "$DB_FILE" ]; then
+    mv "$DB_FILE" "$replaced"
+    [ -f "$DB_FILE-wal" ] && mv "$DB_FILE-wal" "$replaced-wal"
+    [ -f "$DB_FILE-shm" ] && mv "$DB_FILE-shm" "$replaced-shm"
+    ok "current database moved to $replaced"
+  else
+    say "no current database at $DB_FILE; nothing to move aside"
+    replaced=""
+  fi
+
+  say "5/8 copying the backup into place"
+  cp "$target" "$DB_FILE"
+  ok "backup copied to $DB_FILE"
+
+  say "6/8 restoring attachments for that date"
+  local base date_part
+  base="$(basename "$target")"
+  date_part=""
+  if [[ "$base" =~ ^brain-([0-9]{4}-[0-9]{2}-[0-9]{2})\.db$ ]]; then
+    date_part="${BASH_REMATCH[1]}"
+  fi
+  if [ -n "$date_part" ] && [ -d "$BACKUPS_DIR/attachments-$date_part" ]; then
+    rm -rf "$DATA_DIR/attachments"
+    cp -R "$BACKUPS_DIR/attachments-$date_part" "$DATA_DIR/attachments"
+    ok "attachments restored from attachments-$date_part"
+  else
+    say "no attachments backup for that date; current attachments left as they are, unchanged"
+  fi
+
+  say "7/8 starting the server"
+  cmd_start --no-open
+  local boot_line
+  boot_line="$(grep "database integrity check" "$LOG_FILE" 2>/dev/null | tail -1 || true)"
+  if [ -n "$boot_line" ]; then
+    say "boot check: $boot_line"
+  else
+    say "boot check: no result found yet in $LOG_FILE"
+  fi
+
+  say "8/8 done"
+  if [ -n "$replaced" ]; then
+    ok "the replaced database is at: $replaced"
+  else
+    ok "restore complete (there was no previous database to keep)"
+  fi
+}
+
 case "${1:-}" in
   setup)   cmd_setup ;;
   update)  cmd_update ;;
@@ -471,6 +607,9 @@ case "${1:-}" in
   status)  cmd_status ;;
   logs)    cmd_logs ;;
   dev)     cmd_dev ;;
+  backup)  cmd_backup ;;
+  verify)  cmd_verify ;;
+  restore) shift; cmd_restore "$@" ;;
   -h|--help|help|"") usage ;;
   *) usage; fail "unknown command: $1" ;;
 esac

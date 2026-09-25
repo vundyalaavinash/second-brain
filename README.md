@@ -146,6 +146,13 @@ What **stalls gets reconciled**: a run left open past its planned end by more th
 
 Goals set the direction, Focus and the Planner are where the week's hours actually go, and the weekly review is where the two are read back against each other — what moved, what didn't, and what next week should carry. Direction, execution, reflection: three slices, one loop, each closing into the next.
 
+## Data safety
+
+The database backs itself up every night, verified before it is trusted and kept for six months;
+a migration takes its own snapshot first; and one command puts any of them back without deleting
+what it replaces. See `docs/superpowers/runbook.md` for what to run when something looks wrong —
+it names the one thing this does not cover: everything above lives on this one machine.
+
 ## Design docs
 
 - Spec: `docs/superpowers/specs/2026-09-12-second-brain-design.md`
