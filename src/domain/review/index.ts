@@ -91,8 +91,8 @@ export function reviewSnapshot(item: Item): ReviewSnapshot | undefined {
 
 /**
  * When a review was last saved — the one definition every caller shares. Null until the first
- * *step* is actually saved: `openReview` alone (opening the page, or a get-or-create from any
- * other caller) stamps an item with no answers at all, and a review nothing has been written to
+ * *step* is actually saved: `openReview` alone — a get-or-create from any caller, which
+ * opening the page is not — stamps an item with no answers at all, and a review nothing has been written to
  * has nothing to call "last saved", however recent `item.updatedAt` (the row's own creation
  * timestamp in that case) might be.
  */

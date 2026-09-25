@@ -30,7 +30,10 @@ function toContainerRef(c: { id: number; name: string; slug: string; kind: Conta
  * The still-open tasks planned on any day of the week, each counted once however many of the
  * week's days it sits on — a task planned Monday and carried to Tuesday is one thing left open,
  * not two. `clear.leftover` and `back.slipped` both read this same set, as rows and as a count,
- * so the two can never drift apart the way a second query for either would risk.
+ * so on the week being lived they cannot drift apart the way a second query for either
+ * would risk. On a past week they can and should: `back` comes from the frozen snapshot and
+ * says what was open when the prose was written, while `clear.leftover` stays live because
+ * a carry or a drop acts on the task as it is now.
  *
  * One query across all seven days rather than `listPlan` called once per day: the join and the
  * `status = "open"` filter both run in SQL, and the per-task dedup is the only work left to JS.
