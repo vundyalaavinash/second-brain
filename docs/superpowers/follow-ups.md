@@ -79,3 +79,7 @@ The capacity line itself wraps correctly, so the cause is elsewhere in the day
 view or the shell. It does not affect use on a laptop at full width, which is why
 it was recorded rather than chased mid-slice. Worth a pass of its own, measuring
 which element actually forces the width rather than guessing.
+
+A lead, from the Task 2 review: `src/components/planner/calendar-feed.tsx`'s
+`min-w-[240px]` is the most likely culprit. Measure before believing it — the
+point of this note is that the element was guessed at rather than found.
