@@ -23,7 +23,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import { dbPath } from "@/lib/paths";
 import { backupsDir, backupFilePath } from "@/jobs/handlers/backup";
-import { verifyDatabaseFile, recordDbCheck } from "@/db/safety";
+import { verifyDatabaseFile, recordDbCheck, writeBackupCheckSetting } from "@/db/safety";
 
 async function main(): Promise<void> {
   const file = dbPath();
@@ -39,6 +39,12 @@ async function main(): Promise<void> {
 
     const check = verifyDatabaseFile(dest);
     recordDbCheck(check, "backup");
+    // This process exits right after main() returns, which would otherwise take the record above
+    // with it -- persisted here so a failed `npm run backup` stays visible to the running app,
+    // not just to whoever's terminal this was. A short-lived writable connection of its own (see
+    // `writeBackupCheckSetting`'s doc comment): it never calls `migrate()`, so it carries none of
+    // the risk this file's own readonly connection above exists to avoid.
+    writeBackupCheckSetting(file, check);
     if (check.ok) {
       console.log(`backup written and verified: ${dest}`);
     } else {

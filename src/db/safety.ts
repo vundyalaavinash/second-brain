@@ -46,6 +46,72 @@ export function getLastDbCheck(): DbCheckStatus | undefined {
   return statusGlobal.__sbDbCheck;
 }
 
+/** Where the backup's own verification outcome is persisted -- see `persistBackupCheck` for why
+ * this is separate from the in-memory slot above. A plain settings row, not a new table. */
+const BACKUP_CHECK_SETTINGS_KEY = "db.lastBackupCheck";
+
+/**
+ * Writes `check` -- specifically the backup job's own verification, never boot's -- to the
+ * `settings` table on `sqlite`, an already-open, writable connection. Best-effort: catches and
+ * logs rather than throwing, because losing the durable copy of a check that already ran and was
+ * reported is not a reason to fail the command that just ran it.
+ *
+ * This exists because `recordDbCheck`'s slot above is a `globalThis` value: per-process, gone on
+ * restart. Reproduced: the nightly backup fails verification at 3am and records it there; the
+ * process restarts for any reason (update, sleep/wake, crash) before anyone reads the status
+ * line; boot's own check runs against the live database (unrelated to whether last night's
+ * *backup* was sound) and overwrites the same shared slot with `ok: true`; the status line then
+ * reads "verified" the morning after a backup genuinely failed and was discarded. A settings row
+ * survives exactly the restart that loses the in-memory one, and boot's checks never touch this
+ * key at all -- so `getLastBackupCheck` can answer "was the last *backup* actually sound"
+ * independently of whatever boot found about the live database, which is the question
+ * `SafetyStatus.verified` exists to answer and the in-memory slot alone could not keep answering.
+ */
+export function persistBackupCheck(sqlite: Database.Database, check: CheckResult, now: Date = new Date()): void {
+  try {
+    sqlite
+      .prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(BACKUP_CHECK_SETTINGS_KEY, JSON.stringify({ ...check, checkedAt: now.toISOString() }));
+  } catch (err) {
+    console.error(`[db] could not persist the backup check result: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * `persistBackupCheck`, for a caller that holds only a readonly connection to `file` -- `npm run
+ * backup` (`take-backup.ts`) deliberately does, so its own failed verification does not vanish
+ * the moment the CLI process exits either (the same failure mode this whole mechanism exists
+ * for, just from a different process than the nightly job's). Opens a short-lived writable
+ * connection for exactly this one row and closes it; never calls `migrate()` or anything else
+ * that could apply a pending migration, so this carries none of the risk `openDatabase()` would.
+ * Best-effort like `persistBackupCheck`: a failure here is logged, not thrown.
+ */
+export function writeBackupCheckSetting(file: string, check: CheckResult, now: Date = new Date()): void {
+  let sqlite: Database.Database | undefined;
+  try {
+    sqlite = new Database(file);
+    persistBackupCheck(sqlite, check, now);
+  } catch (err) {
+    console.error(`[db] could not persist the backup check result: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    sqlite?.close();
+  }
+}
+
+/** The last persisted backup verification outcome, or `null` when there is none yet (nothing has
+ * ever written it) or it cannot be read. Read-only-safe: works against any open connection,
+ * `sqlite`, whether or not it happens to be writable. */
+export function getLastBackupCheck(sqlite: Database.Database): CheckResult | null {
+  try {
+    const row = sqlite.prepare(`SELECT value FROM settings WHERE key = ?`).get(BACKUP_CHECK_SETTINGS_KEY) as { value: string } | undefined;
+    if (!row) return null;
+    const parsed = JSON.parse(row.value) as CheckResult;
+    return { ok: !!parsed.ok, problems: Array.isArray(parsed.problems) ? parsed.problems : [] };
+  } catch {
+    return null;
+  }
+}
+
 /** `integrity_check` and `foreign_key_check` against an already-open connection, in one place so
  * `verifyDatabaseFile` and `checkOpenDatabase` can't drift apart on what "sound" means. */
 function pragmaProblems(sqlite: Database.Database): string[] {

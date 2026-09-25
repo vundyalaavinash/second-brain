@@ -8,7 +8,7 @@ import { activitySessions } from "@/db/schema";
 import { ingestHeartbeat } from "@/domain/activity";
 import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { saveAttachment, attachmentPath } from "@/domain/attachments";
-import { setAudioRetentionDays } from "@/domain/meetings/audio-retention";
+import { setAudioRetentionDays, readAudioFootprintSnapshot } from "@/domain/meetings/audio-retention";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 import { getLastDbCheck } from "@/db/safety";
 import {
@@ -141,6 +141,18 @@ describe("backup handler", () => {
     logSpy.mockRestore();
     expect(logged.some((line) => line.includes("released 1 recording"))).toBe(true);
     expect(logged.some((line) => line.includes("swept 1 orphaned recording"))).toBe(true);
+  });
+
+  it("finding 4: records a fresh audio footprint snapshot for the status line to read, after the release and sweep", async () => {
+    transcribedMeeting({ title: "Held", endedAt: "2026-09-24T10:00:00.000Z" }); // inside the window -- stays held
+    expect(readAudioFootprintSnapshot(t.db)).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    const snapshot = readAudioFootprintSnapshot(t.db);
+    expect(snapshot.recordings).toBe(1);
+    expect(snapshot.bytes).toBeGreaterThan(0);
   });
 
   it("never releases a recording that has no transcript, however old", async () => {

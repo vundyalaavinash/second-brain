@@ -37,6 +37,11 @@ describe("DELETE /api/meetings/[id]/audio", () => {
     const after = getItem(db, meeting.id)!;
     expect(after.extractedText).toContain("ship on Friday");
     expect(parseMeta<{ audioReleasedAt?: string }>(after).audioReleasedAt).toBeTruthy();
+
+    // finding 4: this action refreshes the status line's snapshot immediately, rather than
+    // leaving it to lag until the next nightly pass.
+    const { readAudioFootprintSnapshot } = await import("@/domain/meetings/audio-retention");
+    expect(readAudioFootprintSnapshot(db)).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
   });
 
   it("refuses a meeting with no transcript -- the rule that cannot be broken", async () => {

@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq } from "drizzle-orm";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
+import { items } from "@/db/schema";
 import { archiveItem, createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { setSetting } from "@/domain/settings";
 import type { RecordingMeta } from "./recorder";
@@ -10,6 +12,8 @@ import {
   DEFAULT_AUDIO_RETENTION_DAYS,
   audioFootprint,
   audioRetentionDays,
+  readAudioFootprintSnapshot,
+  recordAudioFootprint,
   releasableRecordings,
   releaseAudio,
   setAudioRetentionDays,
@@ -103,6 +107,15 @@ describe("audioRetentionDays", () => {
     setSetting(t.db, AUDIO_RETENTION_KEY, "not a number");
     expect(audioRetentionDays(t.db)).toBe(DEFAULT_AUDIO_RETENTION_DAYS);
   });
+
+  it("finding 5: falls back to the default for an empty or blank stored value, never 0 -- the most destructive reading", () => {
+    // Number("") is 0, not NaN, and 0 means "release as soon as a transcript exists": the most
+    // aggressive value this setting has. A blank value must land on the safe default instead.
+    setSetting(t.db, AUDIO_RETENTION_KEY, "");
+    expect(audioRetentionDays(t.db)).toBe(DEFAULT_AUDIO_RETENTION_DAYS);
+    setSetting(t.db, AUDIO_RETENTION_KEY, "   ");
+    expect(audioRetentionDays(t.db)).toBe(DEFAULT_AUDIO_RETENTION_DAYS);
+  });
 });
 
 describe("releasableRecordings", () => {
@@ -129,6 +142,13 @@ describe("releasableRecordings", () => {
 
   it("treats a whitespace-only transcript as absent", () => {
     const item = meetingWith(t, { title: "Whitespace", endedAt: isoDaysAgo(30), transcript: "   \n\t  " });
+    expect(releasableRecordings(t.db, NOW).map((r) => r.itemId)).not.toContain(item);
+  });
+
+  it("finding 7: treats a transcript of only zero-width characters as absent", () => {
+    // String.prototype.trim() does not recognise the zero-width space, zero-width joiners, or
+    // the word joiner as whitespace, unlike ordinary whitespace, NBSP, and the BOM.
+    const item = meetingWith(t, { title: "Zero width", endedAt: isoDaysAgo(30), transcript: "​‌‍⁠" });
     expect(releasableRecordings(t.db, NOW).map((r) => r.itemId)).not.toContain(item);
   });
 
@@ -230,6 +250,44 @@ describe("releaseAudio", () => {
   it("returns null for an unknown item", () => {
     expect(releaseAudio(t.db, 999999, NOW)).toBeNull();
   });
+
+  it("finding 6: refuses a wavPath that resolves outside files/meetings, and never touches that file", () => {
+    const outside = path.join(t.dir, "files", "attachments", "important.pdf");
+    fs.mkdirSync(path.dirname(outside), { recursive: true });
+    fs.writeFileSync(outside, Buffer.alloc(35));
+
+    const recording: RecordingMeta = {
+      startedAt: STARTED_AT,
+      endedAt: isoDaysAgo(30),
+      wavPath: "../attachments/important.pdf",
+      state: "done",
+      autoStarted: false,
+    };
+    const item = createItem(t.db, { type: "meeting", title: "Escape attempt", status: "ready", meta: { recording } });
+    updateItem(t.db, item.id, { extractedText: "we agreed to ship on Friday" });
+
+    expect(releaseAudio(t.db, item.id, NOW)).toBeNull();
+    expect(fs.existsSync(outside)).toBe(true);
+    expect(parseMeta<{ audioReleasedAt?: string }>(getItem(t.db, item.id)!).audioReleasedAt).toBeUndefined();
+  });
+
+  it("finding 8: ignores the retention window (documented, on purpose -- this is what the 'Remove the audio' action calls)", () => {
+    setAudioRetentionDays(t.db, null); // "keep forever" -- releasableRecordings would return nothing at all
+    const item = meetingWith(t, { title: "Manual override", endedAt: isoDaysAgo(1), transcript: "still there" });
+    expect(releaseAudio(t.db, item, NOW)).not.toBeNull();
+  });
+
+  it("finding 8: stamps audioReleasedAt with whatever now says, even a rewound clock, though the rule that cannot be broken still holds", () => {
+    const rewound = new Date("2019-01-01T00:00:00.000Z");
+    const item = meetingWith(t, { title: "Rewound clock", endedAt: isoDaysAgo(30), transcript: "still transcribed" });
+    expect(releaseAudio(t.db, item, rewound)).not.toBeNull();
+    expect(parseMeta<{ audioReleasedAt?: string }>(getItem(t.db, item)!).audioReleasedAt).toBe(rewound.toISOString());
+
+    // The rule that cannot be broken is unaffected by the clock: an untranscribed recording is
+    // still refused regardless of what now says.
+    const untranscribed = meetingWith(t, { title: "Rewound, no transcript", endedAt: isoDaysAgo(30) });
+    expect(releaseAudio(t.db, untranscribed, rewound)).toBeNull();
+  });
 });
 
 describe("sweepOrphanAudio", () => {
@@ -287,6 +345,68 @@ describe("sweepOrphanAudio", () => {
   it("does nothing when the meetings directory does not exist", () => {
     expect(sweepOrphanAudio(t.db)).toEqual({ files: 0, bytes: 0 });
   });
+
+  it("finding 1: refuses to sweep anything -- not just the unreadable item's own file -- when any meeting item's meta cannot be read, and says which item", () => {
+    // Reproduces the review's finding exactly: a live meeting with no transcript, whose meta
+    // column has been truncated to invalid JSON (the shape a partial write or disk damage could
+    // leave behind), sitting beside an ordinary kept recording and a genuine orphan.
+    const kept = meetingWith(t, { title: "Kept", endedAt: isoDaysAgo(1) });
+    const keptWav = wavFile(t, parseMeta<{ recording: RecordingMeta }>(getItem(t.db, kept)!).recording.wavPath);
+
+    const live = createItem(t.db, { type: "meeting", title: "Live, no transcript", status: "processing" });
+    t.db
+      .update(items)
+      .set({ meta: '{"recording":{"wavPath":"meetings/b.wav"' }) // deliberately truncated -- invalid JSON
+      .where(eq(items.id, live.id))
+      .run();
+    writeWav(t, "meetings/b.wav", 900);
+
+    const orphan = wavFile(t, "meetings/d-orphan.wav");
+    fs.mkdirSync(path.dirname(orphan), { recursive: true });
+    fs.writeFileSync(orphan, Buffer.alloc(29));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = sweepOrphanAudio(t.db);
+    const logged = errorSpy.mock.calls.map((c) => String(c[0]));
+    errorSpy.mockRestore();
+
+    // Nothing is deleted at all -- an incomplete keep-set is not a keep-set, so even the genuine
+    // orphan is left alone rather than trusting a partial reading of "what is referenced".
+    expect(result).toEqual({ files: 0, bytes: 0 });
+    expect(fs.existsSync(keptWav)).toBe(true);
+    expect(fs.existsSync(wavFile(t, "meetings/b.wav"))).toBe(true);
+    expect(fs.existsSync(orphan)).toBe(true);
+    expect(logged.some((line) => line.includes(String(live.id)))).toBe(true);
+  });
+
+  it("finding 1: refuses a candidate whose own file name encodes a readable item with no transcript, even though nothing currently references that exact path", () => {
+    // A second, independent guard on top of the referenced-paths set: cross-checks the file's
+    // own name (Recorder.start's <itemId>-<startedAt>.wav convention) against a live lookup.
+    const item = createItem(t.db, { type: "meeting", title: "Re-recorded", status: "processing" });
+    const stray = wavFile(t, `meetings/${item.id}-stray.wav`);
+    fs.mkdirSync(path.dirname(stray), { recursive: true });
+    fs.writeFileSync(stray, Buffer.alloc(40));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(sweepOrphanAudio(t.db)).toEqual({ files: 0, bytes: 0 });
+    errorSpy.mockRestore();
+    expect(fs.existsSync(stray)).toBe(true);
+
+    // Once that item has a transcript, the same stray file is a genuine orphan and is swept.
+    updateItem(t.db, item.id, { extractedText: "the actual transcript" });
+    expect(sweepOrphanAudio(t.db)).toEqual({ files: 1, bytes: 40 });
+    expect(fs.existsSync(stray)).toBe(false);
+  });
+
+  it("finding 1: a wav whose name encodes no item id (a genuine, nameless orphan) sweeps normally regardless of any item's transcript state", () => {
+    meetingWith(t, { title: "Untranscribed elsewhere", endedAt: isoDaysAgo(1) }); // no transcript, irrelevant to this file
+    const orphan = wavFile(t, "meetings/leftover.wav");
+    fs.mkdirSync(path.dirname(orphan), { recursive: true });
+    fs.writeFileSync(orphan, Buffer.alloc(12));
+
+    expect(sweepOrphanAudio(t.db)).toEqual({ files: 1, bytes: 12 });
+    expect(fs.existsSync(orphan)).toBe(false);
+  });
 });
 
 describe("audioFootprint", () => {
@@ -332,5 +452,42 @@ describe("audioFootprint", () => {
     const footprint = audioFootprint(t.db);
     expect(footprint.recordings).toBe(1);
     expect(footprint.nextReleaseAt).toBeNull();
+  });
+});
+
+describe("recordAudioFootprint / readAudioFootprintSnapshot", () => {
+  let t: TestDb;
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  it("finding 4: reads all-zero before anything has ever recorded a snapshot -- never a live scan", () => {
+    meetingWith(t, { title: "Held but never snapshotted", endedAt: isoDaysAgo(1), transcript: "x" });
+    // A live audioFootprint would see this recording; the snapshot reader must not.
+    expect(audioFootprint(t.db).recordings).toBe(1);
+    expect(readAudioFootprintSnapshot(t.db)).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
+  });
+
+  it("persists exactly what audioFootprint computed at the moment it was recorded", () => {
+    meetingWith(t, { title: "Held", endedAt: isoDaysAgo(6), transcript: "x", bytes: 1234 });
+    const live = audioFootprint(t.db);
+
+    recordAudioFootprint(t.db, NOW);
+    expect(readAudioFootprintSnapshot(t.db)).toEqual(live);
+  });
+
+  it("stays put after the underlying state changes, until recorded again -- proving it is a snapshot, not a passthrough", () => {
+    const item = meetingWith(t, { title: "Held", endedAt: isoDaysAgo(6), transcript: "x" });
+    recordAudioFootprint(t.db, NOW);
+    expect(readAudioFootprintSnapshot(t.db).recordings).toBe(1);
+
+    releaseAudio(t.db, item, NOW);
+    // The live state has changed (nothing held any more) but the snapshot has not been re-recorded.
+    expect(audioFootprint(t.db).recordings).toBe(0);
+    expect(readAudioFootprintSnapshot(t.db).recordings).toBe(1);
+
+    recordAudioFootprint(t.db, NOW);
+    expect(readAudioFootprintSnapshot(t.db).recordings).toBe(0);
   });
 });

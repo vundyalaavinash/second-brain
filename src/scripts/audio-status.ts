@@ -16,10 +16,7 @@ import * as schema from "@/db/schema";
 import { dbPath } from "@/lib/paths";
 import { audioFootprint } from "@/domain/meetings/audio-retention";
 import { formatUtcDay } from "@/components/activity/format";
-
-function mb(bytes: number): string {
-  return (bytes / (1024 * 1024)).toFixed(1);
-}
+import { formatBytes } from "@/lib/format";
 
 function main(): void {
   const file = dbPath();
@@ -37,7 +34,7 @@ function main(): void {
       console.log("no audio held");
       return;
     }
-    console.log(`${recordings} recording(s) held, ${mb(bytes)} MB`);
+    console.log(`${recordings} recording(s) held, ${formatBytes(bytes)}`);
     console.log(nextReleaseAt ? `next release due ${formatUtcDay(nextReleaseAt)} (${nextReleaseAt})` : "nothing currently due for release");
   } finally {
     sqlite.close();

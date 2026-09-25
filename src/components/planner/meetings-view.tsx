@@ -218,6 +218,43 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
               )}
             </div>
           )}
+          {/* Design §9.2: 0 releases as soon as a transcript exists, 1-365 keeps that many days
+              past the recording's end, and "keep forever" turns the window off entirely. */}
+          {settings && settings.audioRetentionDays !== undefined && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] text-fg-faint">Audio retention</span>
+              {settings.audioRetentionDays !== null && (
+                <>
+                  <div className="w-16">
+                    <Input
+                      key={settings.audioRetentionDays}
+                      size="sm"
+                      type="number"
+                      min={0}
+                      max={365}
+                      aria-label="Audio retention, in days"
+                      defaultValue={settings.audioRetentionDays}
+                      onBlur={(e) => {
+                        const n = Number(e.target.value);
+                        if (Number.isInteger(n) && n >= 0 && n <= 365) saveSetting({ audioRetentionDays: n });
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                  <span className="text-[12px] text-fg-faint">days</span>
+                </>
+              )}
+              <Chip
+                role="switch"
+                aria-checked={settings.audioRetentionDays === null}
+                active={settings.audioRetentionDays === null}
+                onClick={() => saveSetting({ audioRetentionDays: settings.audioRetentionDays === null ? 7 : null })}
+                className="h-6 px-2 text-[11.5px]"
+              >
+                Keep forever
+              </Chip>
+            </div>
+          )}
           <CalendarFeed onSynced={onRefresh} />
         </section>
       )}

@@ -1,10 +1,12 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import Database from "better-sqlite3";
 import { describe, it, expect, afterEach } from "vitest";
 import { openDatabase, type DB } from "@/db/client";
+import { makeTempDataDir } from "@/test/db";
 import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
+import { readAudioFootprintSnapshot } from "@/domain/meetings/audio-retention";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -35,7 +37,7 @@ describe("release-audio.ts CLI", () => {
   });
 
   it("releases a transcribed recording past the window, and never one with no transcript", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-release-audio-"));
+    dataDir = makeTempDataDir();
     const db: DB = openDatabase(path.join(dataDir, "brain.db"));
     const past = meeting(db, dataDir, { title: "Past window", endedAt: "2026-01-01T10:00:00.000Z", transcript: "we agreed to ship on Friday" });
     const untranscribed = meeting(db, dataDir, { title: "No transcript", endedAt: "2020-01-01T10:00:00.000Z" });
@@ -55,7 +57,7 @@ describe("release-audio.ts CLI", () => {
   });
 
   it("sweeps an orphaned wav no item points at", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-release-audio-"));
+    dataDir = makeTempDataDir();
     const db: DB = openDatabase(path.join(dataDir, "brain.db"));
     db.$client.close();
     const orphan = path.join(dataDir, "files", "meetings", "nobody-points-here.wav");
@@ -70,12 +72,56 @@ describe("release-audio.ts CLI", () => {
   });
 
   it("says so when there is nothing to do", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-release-audio-"));
+    dataDir = makeTempDataDir();
     openDatabase(path.join(dataDir, "brain.db")).$client.close();
 
     const { status, stdout } = runReleaseAudio(dataDir);
     expect(status).toBe(0);
     expect(stdout).toContain("nothing was due for release");
     expect(stdout).not.toContain("swept");
+  });
+
+  it("finding 4: records a fresh audio footprint snapshot for the status line to read", () => {
+    dataDir = makeTempDataDir();
+    const db: DB = openDatabase(path.join(dataDir, "brain.db"));
+    meeting(db, dataDir, { title: "Held", endedAt: "2026-09-24T10:00:00.000Z", transcript: "still held" }); // inside the window
+    db.$client.close();
+
+    const { status } = runReleaseAudio(dataDir);
+    expect(status).toBe(0);
+
+    const after: DB = openDatabase(path.join(dataDir, "brain.db"));
+    const snapshot = readAudioFootprintSnapshot(after);
+    expect(snapshot.recordings).toBe(1);
+    expect(snapshot.bytes).toBeGreaterThan(0);
+    after.$client.close();
+  });
+
+  it("finding 10: refuses to run, and touches nothing, when a migration is pending -- rather than being the thing that applies it", () => {
+    dataDir = makeTempDataDir();
+    const file = path.join(dataDir, "brain.db");
+    const db: DB = openDatabase(file); // applies every real migration once, normally
+    const orphaned = meeting(db, dataDir, { title: "Held", endedAt: "2026-09-24T10:00:00.000Z", transcript: "still held" });
+
+    // Make the newest migration look pending, the same way `pendingMigrations` reads it:
+    // MAX(created_at) in __drizzle_migrations behind the journal's newest entry.
+    const before = db.$client.prepare("SELECT MAX(created_at) AS c FROM __drizzle_migrations").get() as { c: number };
+    db.$client.prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?").run(before.c);
+    db.$client.close();
+
+    const { status, stderr } = runReleaseAudio(dataDir);
+    expect(status).toBe(1);
+    expect(stderr).toContain("refusing to run");
+    expect(stderr).toContain("pending");
+
+    // Nothing moved: the file this run would otherwise have released is untouched. Reads the
+    // settings table directly through a plain readonly connection -- deliberately never
+    // `openDatabase` again here, which would itself apply the very migration this test made
+    // look pending, the one thing this whole test exists to prove the CLI does not do.
+    expect(fs.existsSync(orphaned.wavPath)).toBe(true);
+    const raw = new Database(file, { readonly: true, fileMustExist: true });
+    const row = raw.prepare("SELECT value FROM settings WHERE key = ?").get("meetings.audioFootprintSnapshot");
+    raw.close();
+    expect(row).toBeUndefined();
   });
 });

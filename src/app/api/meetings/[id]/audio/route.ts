@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { getItem } from "@/domain/items";
 import { MeetingError } from "@/domain/meetings/errors";
-import { releaseAudio } from "@/domain/meetings/audio-retention";
+import { releaseAudio, recordAudioFootprint } from "@/domain/meetings/audio-retention";
 import { crossSite, errorResponse, forbidden, parseId, serializeItem } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,9 @@ export async function DELETE(req: Request, ctx: Ctx): Promise<Response> {
     if (!result) {
       throw new MeetingError("This meeting's audio cannot be removed: there is no transcript yet, or it was already removed", 409);
     }
+    // Keeps the status line's snapshot in step with this action, rather than leaving it to lag
+    // until the next nightly pass (design §9.4, and see `recordAudioFootprint`'s own comment).
+    recordAudioFootprint(db);
     return NextResponse.json(serializeItem(db, getItem(db, id)!));
   } catch (err) {
     return errorResponse(err);

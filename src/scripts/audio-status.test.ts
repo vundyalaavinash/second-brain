@@ -1,9 +1,9 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, it, expect, afterEach } from "vitest";
 import { openDatabase, type DB } from "@/db/client";
+import { makeTempDataDir } from "@/test/db";
 import { createItem, updateItem } from "@/domain/items";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 
@@ -24,14 +24,14 @@ describe("audio-status.ts CLI", () => {
   });
 
   it("reports a real error when there is no database yet", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-audio-status-"));
+    dataDir = makeTempDataDir();
     const { status, stderr } = runAudioStatus(dataDir);
     expect(status).toBe(1);
     expect(stderr).toContain("no database at");
   });
 
   it("says so when nothing is held", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-audio-status-"));
+    dataDir = makeTempDataDir();
     openDatabase(path.join(dataDir, "brain.db")).$client.close();
 
     const { status, stdout } = runAudioStatus(dataDir);
@@ -40,7 +40,7 @@ describe("audio-status.ts CLI", () => {
   });
 
   it("reports how many recordings, how much space, and when the next release is due, without writing anything", () => {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-audio-status-"));
+    dataDir = makeTempDataDir();
     const file = path.join(dataDir, "brain.db");
     const db: DB = openDatabase(file);
     const wavPath = "meetings/standup.wav";

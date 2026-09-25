@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { recordDbCheck } from "@/db/safety";
+import { recordDbCheck, persistBackupCheck } from "@/db/safety";
 import { backupsDir } from "@/lib/paths";
 import { createItem, updateItem } from "@/domain/items";
+import { recordAudioFootprint } from "@/domain/meetings/audio-retention";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 import { safetyStatus } from "./safety-status";
 
@@ -41,7 +42,7 @@ describe("safetyStatus", () => {
     expect(status.audio).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
   });
 
-  it("folds design §9's audio footprint into the same status", () => {
+  it("folds design §9's audio footprint into the same status, from the snapshot the nightly job (or the remove action) recorded", () => {
     const wavPath = "meetings/Standup.wav";
     const recording: RecordingMeta = { startedAt: "2026-09-01T10:00:00.000Z", endedAt: "2026-09-01T10:00:00.000Z", wavPath, state: "done", autoStarted: false };
     const item = createItem(t.db, { type: "meeting", title: "Standup", status: "ready", meta: { recording } });
@@ -50,6 +51,11 @@ describe("safetyStatus", () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, Buffer.alloc(2048));
 
+    // Nothing shows up until something has actually recorded a snapshot -- a live scan on every
+    // status read is exactly what this design was changed to avoid (finding 4).
+    expect(safetyStatus(t.db).audio).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
+
+    recordAudioFootprint(t.db);
     const status = safetyStatus(t.db);
     expect(status.audio.recordings).toBe(1);
     expect(status.audio.bytes).toBe(2048);
@@ -91,5 +97,30 @@ describe("safetyStatus", () => {
     const status = safetyStatus(t.db);
     expect(status.verified).toBe(true);
     expect(status.integrity).toEqual({ ok: false, problems: ["1 foreign key violation(s)"] });
+  });
+
+  it("finding 2: keeps reporting an unverified backup across a restart, unlike the in-memory-only slot", () => {
+    persistBackupCheck(t.db.$client, { ok: false, problems: ["not a database"] }, new Date());
+    recordDbCheck({ ok: false, problems: ["not a database"] }, "backup");
+    expect(safetyStatus(t.db).verified).toBe(false);
+
+    // The process "restarts": the in-memory slot is gone, and boot's own (unrelated) check of
+    // the live database runs and finds it perfectly sound.
+    resetDbCheck();
+    recordDbCheck({ ok: true, problems: [] }, "boot");
+
+    // Still unverified -- the persisted record says the last *backup* failed, and boot's check
+    // of the live database says nothing about that.
+    const status = safetyStatus(t.db);
+    expect(status.verified).toBe(false);
+    expect(status.integrity).toEqual({ ok: true, problems: [] }); // boot's own finding is unaffected
+  });
+
+  it("finding 2: a later sound backup clears the persisted failure", () => {
+    persistBackupCheck(t.db.$client, { ok: false, problems: ["not a database"] }, new Date());
+    expect(safetyStatus(t.db).verified).toBe(false);
+
+    persistBackupCheck(t.db.$client, { ok: true, problems: [] }, new Date());
+    expect(safetyStatus(t.db).verified).toBe(true);
   });
 });

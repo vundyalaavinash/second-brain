@@ -9,7 +9,16 @@ import { createItem, rechunkItem } from "@/domain/items";
 import { createFakeEmbedProvider } from "@/providers/embed/fake";
 import { createEmbedHandler } from "@/jobs/handlers/embed";
 import { enqueueJob } from "@/jobs/queue";
-import { verifyDatabaseFile, checkOpenDatabase, pendingMigrations, snapshotBeforeMigrate, SNAPSHOT_PREFIX } from "./safety";
+import {
+  verifyDatabaseFile,
+  checkOpenDatabase,
+  pendingMigrations,
+  snapshotBeforeMigrate,
+  persistBackupCheck,
+  getLastBackupCheck,
+  writeBackupCheckSetting,
+  SNAPSHOT_PREFIX,
+} from "./safety";
 
 const FOLDER = path.join(process.cwd(), "drizzle");
 
@@ -296,5 +305,69 @@ describe("snapshotBeforeMigrate", () => {
     const dir = backupsDir();
     const looksLikeASnapshot = fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => /^pre-.*\.db$/.test(n)) : [];
     expect(looksLikeASnapshot).toEqual([]);
+  });
+});
+
+describe("persistBackupCheck / getLastBackupCheck", () => {
+  it("round-trips through the settings table, independent of the in-memory slot", () => {
+    t = makeTestDb();
+    expect(getLastBackupCheck(t.db.$client)).toBeNull();
+
+    persistBackupCheck(t.db.$client, { ok: false, problems: ["not a database"] }, new Date());
+    expect(getLastBackupCheck(t.db.$client)).toEqual({ ok: false, problems: ["not a database"] });
+
+    persistBackupCheck(t.db.$client, { ok: true, problems: [] }, new Date());
+    expect(getLastBackupCheck(t.db.$client)).toEqual({ ok: true, problems: [] });
+  });
+
+  it("survives closing and reopening the connection -- the point of persisting it at all", () => {
+    const dir = makeTempDataDir();
+    const file = path.join(dir, "brain.db");
+    const first = openDatabase(file);
+    persistBackupCheck(first.$client, { ok: false, problems: ["not a database"] }, new Date());
+    first.$client.close();
+
+    const second = openDatabase(file);
+    expect(getLastBackupCheck(second.$client)).toEqual({ ok: false, problems: ["not a database"] });
+    second.$client.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does not throw when the connection cannot write, and getLastBackupCheck reads it as absent", () => {
+    const dir = makeTempDataDir();
+    const file = path.join(dir, "brain.db");
+    openDatabase(file).$client.close();
+    const readonly = new Database(file, { readonly: true, fileMustExist: true });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => persistBackupCheck(readonly, { ok: true, problems: [] }, new Date())).not.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+    expect(getLastBackupCheck(readonly)).toBeNull();
+    readonly.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("writeBackupCheckSetting", () => {
+  it("opens its own short-lived writable connection to persist the check, for a caller with only a readonly one", () => {
+    const dir = makeTempDataDir();
+    const file = path.join(dir, "brain.db");
+    openDatabase(file).$client.close();
+
+    writeBackupCheckSetting(file, { ok: false, problems: ["not a database"] }, new Date());
+
+    const check = new Database(file, { readonly: true, fileMustExist: true });
+    expect(getLastBackupCheck(check)).toEqual({ ok: false, problems: ["not a database"] });
+    check.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does not throw and does not migrate when there is no database at all yet", () => {
+    const dir = makeTempDataDir();
+    const file = path.join(dir, "brain.db");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => writeBackupCheckSetting(file, { ok: true, problems: [] }, new Date())).not.toThrow();
+    errorSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -4,16 +4,11 @@ import type { DB } from "@/db/client";
 import type { JobHandler } from "@/jobs/worker";
 import { attachmentsDir, backupsDir, dataDir } from "@/lib/paths";
 import { pruneActivity, retentionDays } from "@/domain/activity";
-import { releasableRecordings, releaseAudio, sweepOrphanAudio } from "@/domain/meetings/audio-retention";
-import { verifyDatabaseFile, recordDbCheck, SNAPSHOT_PREFIX } from "@/db/safety";
+import { releasableRecordings, releaseAudio, recordAudioFootprint, sweepOrphanAudio } from "@/domain/meetings/audio-retention";
+import { verifyDatabaseFile, recordDbCheck, persistBackupCheck, SNAPSHOT_PREFIX } from "@/db/safety";
+import { formatBytes } from "@/lib/format";
 
 export { backupsDir };
-
-/** Bytes to megabytes, one decimal -- the scale every log line in this file reports freed space
- * at, since a WAV of speech is the only thing here that reaches it. */
-function mb(bytes: number): string {
-  return (bytes / (1024 * 1024)).toFixed(1);
-}
 
 /** Kept outright, newest first: the most recent seven calendar days of `brain-*.db`. */
 export const KEEP_DAILY = 7;
@@ -429,6 +424,10 @@ export function createBackupHandler(deps: { db: DB }): JobHandler {
 
     const check = verifyDatabaseFile(file);
     recordDbCheck(check, "backup");
+    // Persisted separately from the in-memory slot above: a restart before anyone reads the
+    // status line must not let boot's own (unrelated) check paper over a genuine backup failure.
+    // See `persistBackupCheck`'s doc comment for the failure mode this closes.
+    persistBackupCheck(deps.db.$client, check);
     if (!check.ok) {
       fs.rmSync(file, { force: true });
       console.error(`[backup] verification failed, discarding what was just written: ${check.problems.join("; ")}`);
@@ -467,10 +466,13 @@ export function createBackupHandler(deps: { db: DB }): JobHandler {
           freedBytes += result.freedBytes;
         }
       }
-      if (released) console.log(`[backup] released ${released} recording(s), freeing ${mb(freedBytes)} MB`);
+      if (released) console.log(`[backup] released ${released} recording(s), freeing ${formatBytes(freedBytes)}`);
 
       const orphans = sweepOrphanAudio(deps.db);
-      if (orphans.files) console.log(`[backup] swept ${orphans.files} orphaned recording(s), freeing ${mb(orphans.bytes)} MB`);
+      if (orphans.files) console.log(`[backup] swept ${orphans.files} orphaned recording(s), freeing ${formatBytes(orphans.bytes)}`);
+
+      // Refreshes the snapshot the status line reads, so it is never more stale than one night.
+      recordAudioFootprint(deps.db);
     } catch (err) {
       console.error(`[backup] audio retention pass failed: ${err instanceof Error ? err.message : String(err)}`);
     }
