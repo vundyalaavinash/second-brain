@@ -1,14 +1,11 @@
 import { AlertTriangle, Check } from "lucide-react";
-import { REVIEW_STEPS, type ReviewStep } from "@/db/enums";
+import { REVIEW_STEP_LABELS, REVIEW_STEPS, type ReviewStep } from "@/db/enums";
 import type { ReviewAnswersDTO } from "@/lib/dto";
 
-/** Shared with `ReviewPage`, whose pane headings and free-text prompts read the same words. */
-export const STEP_LABELS: Record<ReviewStep, string> = {
-  clear: "Clear the decks",
-  back: "Look back",
-  goals: "Goals",
-  ahead: "Look ahead",
-};
+/** Shared with `ReviewPage` (whose pane headings and free-text prompts read the same words) and
+ * with the `##` headings `renderReviewBody` writes into the item's own Markdown — all three read
+ * `REVIEW_STEP_LABELS`, the one place the four names are spelled out. */
+export const STEP_LABELS = REVIEW_STEP_LABELS;
 
 /** A step counts as answered once its own key is in `answers` — set the moment a save for it
  * has gone through, however short what it holds. */

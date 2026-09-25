@@ -153,8 +153,10 @@ describe("containers domain", () => {
     dropTask(t.db, manual.id);
     // Give the manual drop a timestamp far from the archive below, the same way the items test
     // above pins one via updateItem, so this doesn't depend on the two operations landing in
-    // different milliseconds.
-    t.db.update(tasks).set({ updatedAt: "2026-01-01T00:00:00.000Z" }).where(eq(tasks.id, manual.id)).run();
+    // different milliseconds. `droppedAt` is the field restore actually keys on; `updatedAt` is
+    // pinned alongside it only because a hand-dropped task ought to look untouched by the
+    // archive on both counts, not because restore reads it.
+    t.db.update(tasks).set({ droppedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }).where(eq(tasks.id, manual.id)).run();
     const auto = createTask(t.db, { title: "auto drop", containerId: p.id });
 
     archiveContainer(t.db, p.id);
@@ -172,6 +174,21 @@ describe("containers domain", () => {
     archiveContainer(t.db, p.id);
     expect(getTask(t.db, task.id)).toMatchObject({ status: "dropped" });
     expect(getTask(t.db, task.id)?.droppedAt).not.toBeNull();
+
+    restoreContainer(t.db, p.id);
+    expect(getTask(t.db, task.id)).toMatchObject({ status: "open", droppedAt: null });
+  });
+
+  it("restores a bulk-dropped task by droppedAt even after something else has moved its updatedAt on", () => {
+    const p = createContainer(t.db, { kind: "project", name: "Touched after archive" });
+    const task = createTask(t.db, { title: "one", containerId: p.id });
+    archiveContainer(t.db, p.id);
+    const dropped = getTask(t.db, task.id)!;
+    expect(dropped.droppedAt).toBe(dropped.updatedAt); // both stamped by the same archive
+
+    // An edit unrelated to the archive/restore pair moves `updatedAt` off `container.archivedAt`
+    // without touching `droppedAt` at all — a title change on an archived project's task, say.
+    t.db.run(`update tasks set updated_at = '2099-01-01T00:00:00.000Z' where id = ${task.id}`);
 
     restoreContainer(t.db, p.id);
     expect(getTask(t.db, task.id)).toMatchObject({ status: "open", droppedAt: null });

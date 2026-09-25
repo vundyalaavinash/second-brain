@@ -7,6 +7,13 @@ import { addDaysLocal, MONTHS } from "@/components/activity/format";
  * get it.
  */
 
+/** 1 through 7, Monday first — the local calendar day `date` falls on, never `Date#getDay`'s own
+ * Sunday-first count. */
+export function isoWeekday(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return ((new Date(y, m - 1, d).getDay() + 6) % 7) + 1;
+}
+
 /** The Monday on or before `day`. Sunday counts as the week's last day, not the next week's first. */
 export function weekStart(day: string): string {
   const [y, m, d] = day.split("-").map(Number);

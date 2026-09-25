@@ -180,6 +180,18 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
     if (res?.ok) setPayload((await res.json()) as ReviewDTO);
   }
 
+  // `<InboxProcessor>` inside the Clear pane does its own fetching and its own mutations — the
+  // inbox count above it is otherwise only as fresh as the page load, so clearing it down to
+  // zero right there would leave the heading reading the old count until something else
+  // happened to refresh the page. `InboxProcessor` already fires this event for every filing
+  // decision (`src/components/inbox-processor.tsx`), same as capture and the prompt bar do.
+  useEffect(() => {
+    const onInboxChanged = () => void refresh();
+    window.addEventListener("sb:inbox-changed", onInboxChanged);
+    return () => window.removeEventListener("sb:inbox-changed", onInboxChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload.week]);
+
   async function carry(taskId: number) {
     const res = await fetch("/api/plan", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ date: payload.ahead.week, taskId }) }).catch(() => null);
     if (!res?.ok) {
@@ -210,7 +222,7 @@ export function ReviewPage({ initial }: { initial: ReviewDTO }) {
     }
     const body = (await res.json()) as { planned: number };
     window.dispatchEvent(new Event("sb:plan-changed"));
-    window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: `Planned ${body.planned} task${body.planned === 1 ? "" : "s"} for next week.` } }));
+    window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: `Planned ${body.planned} task${body.planned === 1 ? "" : "s"} for next Monday.` } }));
   }
 
   /** The deliberate end of the pass: saves the last step (the one Next never reaches), and only

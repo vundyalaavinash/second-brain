@@ -7,7 +7,7 @@ import { focusSummary } from "@/domain/focus";
 import { goalsWithMeasure } from "@/domain/goals";
 import { countInbox } from "@/domain/items";
 import { type PlanTask } from "@/domain/plan";
-import { getReview, nextStep, reviewAnswers, REVIEW_STEPS } from "@/domain/review";
+import { getReview, nextStep, reviewAnswers, reviewSavedAt, reviewSnapshot, type ReviewSnapshot } from "@/domain/review";
 import { containerProgress, listTasks } from "@/domain/tasks";
 import { localDay } from "./time";
 import { nextWeek, weekDays, weekEnd, weekLabel, weekStart } from "./week";
@@ -96,6 +96,28 @@ function weekProjects(db: DB, done: Task[]): ReviewDTO["back"]["projects"] {
     .sort((a, b) => b.closed - a.closed || a.container.name.localeCompare(b.container.name));
 }
 
+/** The snapshot's projects, resolved back into `ContainerRefDTO`s. The snapshot itself only
+ * freezes `containerId`/`name`/`closed`/`percent` — `slug` and `kind` are read off the container
+ * row as it stands today, since a link needs a real slug to resolve and neither one is a figure
+ * the snapshot is trying to freeze. A container deleted since the snapshot was taken (rare: the
+ * domain refuses to delete one with tasks) falls back to a slug of its own id, so the row still
+ * renders rather than vanishing from a week that genuinely closed work against it. */
+function snapshotProjects(db: DB, snapshot: ReviewSnapshot): ReviewDTO["back"]["projects"] {
+  if (snapshot.projects.length === 0) return [];
+  const ids = snapshot.projects.map((p) => p.containerId);
+  const rows = db
+    .select({ id: containers.id, name: containers.name, slug: containers.slug, kind: containers.kind })
+    .from(containers)
+    .where(inArray(containers.id, ids))
+    .all();
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return snapshot.projects.map((p) => {
+    const row = byId.get(p.containerId);
+    const container: ContainerRefDTO = row ? toContainerRef(row) : { id: p.containerId, name: p.name, slug: String(p.containerId), kind: "project" };
+    return { container, closed: p.closed, percent: p.percent };
+  });
+}
+
 /**
  * The whole review payload for one week: the record it has written so far, and the figures the
  * four panes read. Every figure comes from the domain that already owns it — `countInbox` for
@@ -111,15 +133,26 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
 
   const item = getReview(db, week);
   const answers = item ? reviewAnswers(item) : {};
-  // Null until the first step is actually saved — `openReview` alone (opening the page) stamps
-  // no answer, and a review nothing has been written to has nothing to call "last saved".
-  const savedAt = item && REVIEW_STEPS.some((step) => answers[step] !== undefined) ? item.updatedAt : null;
+  const savedAt = reviewSavedAt(item);
 
   const leftover = weekLeftover(db, days);
-  const doneRows = doneInWeek(db, week, end);
-  const droppedRows = droppedInWeek(db, week, end);
-  const focus = focusSummary(db, window, now);
-  const meetings = listMeetings(db, window).filter(isCountableMeeting);
+
+  // A closed week's own review can carry a frozen snapshot of `back` in its meta (design §5.2)
+  // — written at save time by whichever domain owns each figure. Once the week is no longer the
+  // one in progress, that snapshot is what renders: a live re-query of `slipped` (still-open
+  // tasks) drifts the moment those tasks are closed, and would otherwise silently rewrite what
+  // the saved prose was written about. The current week always reads live, since it has nothing
+  // yet to freeze against.
+  const snapshot = !current && item ? reviewSnapshot(item) : undefined;
+
+  const doneRows = snapshot ? [] : doneInWeek(db, week, end);
+  const droppedRows = snapshot ? [] : droppedInWeek(db, week, end);
+  const focus = snapshot ? { minutes: snapshot.focusMinutes, runs: snapshot.focusRuns } : focusSummary(db, window, now);
+  const meetingCount = snapshot ? snapshot.meetings : listMeetings(db, window).filter(isCountableMeeting).length;
+
+  const back: ReviewDTO["back"] = snapshot
+    ? { done: snapshot.done, dropped: snapshot.dropped, slipped: snapshot.slipped, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: snapshotProjects(db, snapshot), frozen: true }
+    : { done: doneRows.length, dropped: droppedRows.length, slipped: leftover.length, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: weekProjects(db, doneRows), frozen: false };
 
   // A week's movement cannot come from days it hasn't reached yet: a week still in progress is
   // measured as of today, and a week already closed is measured as of its own last day, never
@@ -148,15 +181,7 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
       inbox: countInbox(db),
       leftover: serializePlanTasks(db, leftover, window),
     },
-    back: {
-      done: doneRows.length,
-      dropped: droppedRows.length,
-      slipped: leftover.length,
-      focusMinutes: focus.minutes,
-      focusRuns: focus.runs,
-      meetings: meetings.length,
-      projects: weekProjects(db, doneRows),
-    },
+    back,
     goals: goalsWithMeasure(db, { status: "active" }, measureAsOf).map(serializeGoal),
     ahead: {
       week: ahead,

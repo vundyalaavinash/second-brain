@@ -124,7 +124,7 @@ describe("reviewPayload", () => {
   it("is empty in every figure for a week with nothing in it", () => {
     const payload = reviewPayload(t.db, WEEK, NOW);
     expect(payload.clear).toEqual({ inbox: 0, leftover: [] });
-    expect(payload.back).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [] });
+    expect(payload.back).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], frozen: false });
     expect(payload.goals).toEqual([]);
     expect(payload.ahead.due).toEqual([]);
     expect(payload.ahead.deadlines).toEqual([]);
@@ -239,5 +239,36 @@ describe("reviewPayload", () => {
     const payload = reviewPayload(t.db, WEEK, NOW_MIDWEEK);
     const measure = payload.goals.find((g) => g.id === goal.id)!.measure;
     expect(measure.movement).toBe(1);
+  });
+
+  it("renders a past week's frozen snapshot rather than a live re-query once the underlying tasks have moved on", () => {
+    const PAST_WEEK = "2026-08-03"; // a Monday, well before WEEK
+    const proj = project("Launch");
+    const task = createTask(t.db, { title: "Still open", containerId: proj.id });
+    addToPlan(t.db, PAST_WEEK, task.id);
+
+    // Save against the past week while the task is still open: the snapshot freezes slipped: 1.
+    const before = reviewPayload(t.db, PAST_WEEK, new Date(2026, 7, 5, 9, 0, 0));
+    expect(before.back.slipped).toBe(1);
+    expect(before.back.frozen).toBe(false); // nothing saved yet — still a live read
+    const snapshot = { done: before.back.done, dropped: before.back.dropped, slipped: before.back.slipped, focusMinutes: before.back.focusMinutes, focusRuns: before.back.focusRuns, meetings: before.back.meetings, projects: before.back.projects.map((p) => ({ containerId: p.container.id, name: p.container.name, closed: p.closed, percent: p.percent })) };
+    saveReviewStep(t.db, PAST_WEEK, "back", "Still one thing open.", snapshot);
+
+    // The task closes later — a live query would now say `slipped: 0`.
+    completeTask(t.db, task.id);
+
+    const payload = reviewPayload(t.db, PAST_WEEK, NOW);
+    expect(payload.back.frozen).toBe(true);
+    expect(payload.back.slipped).toBe(1);
+    expect(payload.back.done).toBe(0);
+  });
+
+  it("never freezes the current week's own figures, even once it has a snapshot", () => {
+    openReview(t.db, WEEK);
+    saveReviewStep(t.db, WEEK, "back", "Nothing to report.", { done: 9, dropped: 9, slipped: 9, focusMinutes: 9, focusRuns: 9, meetings: 9, projects: [] });
+    const payload = reviewPayload(t.db, WEEK, NOW);
+    expect(payload.current).toBe(true);
+    expect(payload.back.frozen).toBe(false);
+    expect(payload.back.done).toBe(0);
   });
 });

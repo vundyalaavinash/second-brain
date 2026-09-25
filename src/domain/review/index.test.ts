@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DB } from "@/db/client";
+import { REVIEW_STEP_LABELS } from "@/db/enums";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { createItem, listItems } from "@/domain/items";
+import { createItem, getItemChunks, listItems } from "@/domain/items";
+import { search } from "@/domain/search";
 import {
   REVIEW_STEPS,
   getReview,
@@ -141,6 +143,24 @@ describe("saveReviewStep", () => {
     expect(reviewSnapshot(item)).toEqual(snapshot);
     expect(reviewAnswers(item)).toEqual({ back: "Shipped the API.", ahead: "Start the docs." });
   });
+
+  it("is findable through search, not just through listItems", async () => {
+    openReview(t.db, "2026-09-21");
+    saveReviewStep(t.db, "2026-09-21", "clear", "Inbox down to zero.");
+    const item = getReview(t.db, "2026-09-21")!;
+    expect(getItemChunks(t.db, item.id).length).toBeGreaterThan(0);
+    const results = await search(t.db, null, "Inbox down to zero");
+    expect(results.map((r) => r.item.id)).toContain(item.id);
+  });
+
+  it("re-chunks on every save, not just the first", async () => {
+    openReview(t.db, "2026-09-21");
+    saveReviewStep(t.db, "2026-09-21", "clear", "Nothing about badgers yet.");
+    saveReviewStep(t.db, "2026-09-21", "back", "Badgers dug up the whole garden this week.");
+    const item = getReview(t.db, "2026-09-21")!;
+    const results = await search(t.db, null, "badgers garden");
+    expect(results.map((r) => r.item.id)).toContain(item.id);
+  });
 });
 
 describe("nextStep", () => {
@@ -164,5 +184,12 @@ describe("renderReviewBody", () => {
   it("labels a goal note by id", () => {
     const answers: ReviewAnswers = { goals: { "7": "Slipped a week." } };
     expect(renderReviewBody("2026-09-21", answers)).toContain("Goal 7");
+  });
+
+  it("headings the body with the same names the step nav shows, from the one shared map", () => {
+    const body = renderReviewBody("2026-09-21", {});
+    for (const step of REVIEW_STEPS) {
+      expect(body).toContain(`## ${REVIEW_STEP_LABELS[step]}`);
+    }
   });
 });

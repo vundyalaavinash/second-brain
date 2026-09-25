@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { weekStart, weekEnd, weekDays, nextWeek, weekLabel } from "./week";
+import { weekStart, weekEnd, weekDays, nextWeek, weekLabel, isoWeekday } from "./week";
 
 describe("weekStart", () => {
   it("returns the day itself for a Monday", () => {
@@ -14,6 +14,19 @@ describe("weekStart", () => {
   it("crosses a month and a year boundary", () => {
     expect(weekStart("2026-10-01")).toBe("2026-09-28");
     expect(weekStart("2027-01-01")).toBe("2026-12-28");
+  });
+});
+
+describe("isoWeekday", () => {
+  it("counts Monday through Sunday as 1 through 7", () => {
+    expect(isoWeekday("2026-09-21")).toBe(1); // Monday
+    expect(isoWeekday("2026-09-25")).toBe(5); // Friday
+    expect(isoWeekday("2026-09-27")).toBe(7); // Sunday
+  });
+  it("agrees with weekStart: day 1 of every week is the week's own start", () => {
+    for (const day of weekDays("2026-09-21")) {
+      expect(isoWeekday(day) === 1).toBe(day === weekStart(day));
+    }
   });
 });
 

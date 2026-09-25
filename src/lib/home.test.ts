@@ -246,18 +246,18 @@ describe("homePayload", () => {
   describe("review", () => {
     it("does not ask for a review before Friday", () => {
       const wednesday = new Date(2026, 8, 23, 10, 0, 0);
-      expect(homePayload(t.db, wednesday).review).toEqual({ week: "2026-09-21", due: false, savedAt: null });
+      expect(homePayload(t.db, wednesday).review).toEqual({ due: false });
     });
 
     it("asks from Friday when the week has no review", () => {
       const friday = new Date(2026, 8, 25, 10, 0, 0);
-      expect(homePayload(t.db, friday).review).toEqual({ week: "2026-09-21", due: true, savedAt: null });
+      expect(homePayload(t.db, friday).review).toEqual({ due: true });
     });
 
     it("stops asking once the week has one", () => {
       const friday = new Date(2026, 8, 25, 10, 0, 0);
-      const review = openReview(t.db, "2026-09-21");
-      expect(homePayload(t.db, friday).review).toEqual({ week: "2026-09-21", due: false, savedAt: review.updatedAt });
+      openReview(t.db, "2026-09-21");
+      expect(homePayload(t.db, friday).review).toEqual({ due: false });
     });
   });
 });

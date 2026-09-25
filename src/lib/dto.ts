@@ -330,8 +330,10 @@ export interface HomeDTO {
   focus: { minutes: number; running: FocusRunDTO | null };
   /** Design §5.3: the one quiet nudge toward `/review`. `due` is true only from Friday on, and
    * only while the current week has opened no review yet — it never turns true again once one
-   * exists, and it never turns red or insistent as Sunday nears. */
-  review: { week: string; due: boolean; savedAt: string | null };
+   * exists, and it never turns red or insistent as Sunday nears. The link this badges is a
+   * static `/review`, not `/review?week=…`, so only `due` is read here — the week and the save
+   * time belong to `/review`'s own payload, not to Home's. */
+  review: { due: boolean };
 }
 
 export interface GoalMeasureDTO {
@@ -451,6 +453,13 @@ export interface ReviewDTO {
      * midnight is attributed to the day it starts, once, here as there. */
     meetings: number;
     projects: { container: ContainerRefDTO; closed: number; percent: number }[];
+    /** True when these figures are the snapshot frozen in the item's meta at save time rather
+     * than a live re-query — a past week whose review has one. A live re-query of `slipped`
+     * (still-open tasks) drifts as soon as those tasks are closed, which would otherwise show
+     * "Still open: 0" beside prose written about four open tasks. Design §5.2's snapshot exists
+     * precisely so a review read back long after the fact still says what the week looked like
+     * when it was written. */
+    frozen: boolean;
   };
   /** Active goals, each with its movement measured as of the week's own last day — or as of
    * today when the week under review is the current one, since a week still in progress cannot

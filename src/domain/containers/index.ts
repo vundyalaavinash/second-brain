@@ -207,7 +207,7 @@ export function restoreContainer(db: DB, id: number): Container {
         .run();
       tx.update(tasks)
         .set({ status: "open", droppedAt: null, updatedAt: now })
-        .where(and(eq(tasks.containerId, id), eq(tasks.status, "dropped"), eq(tasks.updatedAt, container.archivedAt)))
+        .where(and(eq(tasks.containerId, id), eq(tasks.status, "dropped"), eq(tasks.droppedAt, container.archivedAt)))
         .run();
     }
     const row = tx

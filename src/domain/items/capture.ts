@@ -26,7 +26,7 @@ export class DuplicateError extends CaptureError {
   }
 }
 
-function queueEmbedding(db: DB, itemId: number): void {
+export function queueEmbedding(db: DB, itemId: number): void {
   rechunkItem(db, itemId);
   enqueueJob(db, "embed", { itemId }, itemId);
 }

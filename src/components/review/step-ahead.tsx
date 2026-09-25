@@ -72,7 +72,7 @@ export function StepAhead({ ahead, value, onChange, onPlan }: Props) {
               </List>
               <div className="flex justify-end pt-2">
                 <Button variant="primary" size="sm" disabled={checked.size === 0 || planning} onClick={() => void plan()}>
-                  Plan these
+                  Plan for Monday
                 </Button>
               </div>
             </section>

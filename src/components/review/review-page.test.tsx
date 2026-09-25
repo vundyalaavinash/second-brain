@@ -24,7 +24,7 @@ function payload(over: Partial<ReviewDTO> = {}): ReviewDTO {
     step: "clear",
     answers: {},
     clear: { inbox: 0, leftover: [] },
-    back: { done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [] },
+    back: { done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], frozen: false },
     goals: [],
     ahead: { week: NEXT_WEEK, due: [], deadlines: [], meetings: [] },
     savedAt: null,
@@ -367,5 +367,26 @@ describe("ReviewPage", () => {
     await waitFor(() => expect(fn.mock.calls.some(([i]) => String(i) === "/api/plan")).toBe(true));
     expect(screen.queryByText("On next week's plan")).toBeNull();
     expect(screen.getByRole("button", { name: "Carry" })).toBeTruthy();
+  });
+
+  it("refreshes the inbox count when InboxProcessor reports the inbox changed, without a click anywhere on the page", async () => {
+    const stale = payload({ clear: { inbox: 3, leftover: [] } });
+    const cleared = payload({ clear: { inbox: 0, leftover: [] } });
+    const fn = vi.fn<Handler>(async (input) => {
+      const url = String(input);
+      if (url.startsWith("/api/inbox")) return Response.json({ count: 0, items: [] });
+      if (url.startsWith("/api/review?week=")) return Response.json(cleared);
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+    render(<ReviewPage initial={stale} />);
+    const heading = () => screen.getByRole("heading", { level: 2, name: /^Inbox/ });
+    expect(heading().textContent).toContain("3");
+
+    fireEvent(window, new Event("sb:inbox-changed"));
+
+    await waitFor(() => expect(fn.mock.calls.some(([i]) => String(i).startsWith("/api/review?week="))).toBe(true));
+    await waitFor(() => expect(heading().textContent).not.toContain("3"));
+    expect(heading().textContent).toContain("0");
   });
 });

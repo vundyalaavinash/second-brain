@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { localDay } from "@/domain/activity";
-import { getReview, nextStep, reviewAnswers, saveReviewStep, type ReviewSnapshot } from "@/domain/review";
+import { getReview, nextStep, reviewAnswers, reviewSavedAt, saveReviewStep, type ReviewSnapshot } from "@/domain/review";
 import { crossSite, errorResponse, forbidden } from "@/lib/api";
 import { reviewPayload } from "@/lib/review";
 import { CalendarDateString, SaveReviewBody } from "@/lib/validation";
@@ -66,7 +66,7 @@ export async function PATCH(req: Request): Promise<Response> {
     saveReviewStep(db, week, body.step, body.value, snapshot);
     const item = getReview(db, week)!;
     const answers = reviewAnswers(item);
-    return NextResponse.json({ ...current, answers, step: nextStep(answers), savedAt: item.updatedAt });
+    return NextResponse.json({ ...current, answers, step: nextStep(answers), savedAt: reviewSavedAt(item) });
   } catch (err) {
     return errorResponse(err);
   }

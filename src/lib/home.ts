@@ -11,7 +11,7 @@ import { getReview } from "@/domain/review";
 import { serializeFocusRun } from "./api";
 import { daysBetween } from "./deadline";
 import { plannerDay } from "./planner";
-import { weekStart } from "./week";
+import { isoWeekday, weekStart } from "./week";
 import type { HomeDTO, HomeItemDTO, ProjectCardDTO, RecentItemDTO } from "./dto";
 
 /** How many project cards the right column holds. */
@@ -30,13 +30,6 @@ const PROMPT_FROM_WEEKDAY = 5;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** 1 through 7, Monday first — the local calendar day `date` falls on, never `Date#getDay`'s own
- * Sunday-first count. */
-function isoWeekday(date: string): number {
-  const [y, m, d] = date.split("-").map(Number);
-  return ((new Date(y, m - 1, d).getDay() + 6) % 7) + 1;
-}
-
 /**
  * The one quiet line Home can carry toward the week's review. `due` holds from Friday morning
  * until the week has a review item, then never again that week — Design §5.3 is explicit that
@@ -46,7 +39,7 @@ function isoWeekday(date: string): number {
 function reviewPrompt(db: DB, date: string): HomeDTO["review"] {
   const week = weekStart(date);
   const review = getReview(db, week);
-  return { week, due: isoWeekday(date) >= PROMPT_FROM_WEEKDAY && !review, savedAt: review?.updatedAt ?? null };
+  return { due: isoWeekday(date) >= PROMPT_FROM_WEEKDAY && !review };
 }
 
 /** A session's end in the same local wall-clock spelling its start uses. */

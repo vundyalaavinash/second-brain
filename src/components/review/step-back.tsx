@@ -19,6 +19,7 @@ export function StepBack({ back, value, onChange }: { back: ReviewDTO["back"]; v
     <div className="flex flex-col gap-6">
       <section>
         <SectionHeading>The week in figures</SectionHeading>
+        {back.frozen && <p className="text-[12px] text-fg-faint mb-1.5">As they were when this review was saved.</p>}
         {empty ? (
           <EmptyState icon={CalendarX} text="Nothing was planned this week." />
         ) : (

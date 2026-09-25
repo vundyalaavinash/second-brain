@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { REVIEW_STEPS, type ReviewStep } from "@/db/enums";
+import { REVIEW_STEP_LABELS, REVIEW_STEPS, type ReviewStep } from "@/db/enums";
 import { items, type Item } from "@/db/schema";
 import { createItem, parseMeta, updateItem } from "@/domain/items";
+import { queueEmbedding } from "@/domain/items/capture";
 import { weekLabel } from "@/lib/week";
 
 export { REVIEW_STEPS, type ReviewStep };
@@ -42,13 +43,6 @@ interface ReviewMeta {
   answers?: ReviewAnswers;
   snapshot?: ReviewSnapshot;
 }
-
-const STEP_HEADINGS: Record<ReviewStep, string> = {
-  clear: "Clear the decks",
-  back: "Look back",
-  goals: "Goals",
-  ahead: "Look ahead",
-};
 
 function reviewMeta(item: Item): ReviewMeta {
   return parseMeta<ReviewMeta>(item);
@@ -95,6 +89,17 @@ export function reviewSnapshot(item: Item): ReviewSnapshot | undefined {
   return reviewMeta(item).snapshot;
 }
 
+/**
+ * When a review was last saved — the one definition every caller shares. Null until the first
+ * *step* is actually saved: `openReview` alone (opening the page, or a get-or-create from any
+ * other caller) stamps an item with no answers at all, and a review nothing has been written to
+ * has nothing to call "last saved", however recent `item.updatedAt` (the row's own creation
+ * timestamp in that case) might be.
+ */
+export function reviewSavedAt(item: Item | undefined): string | null {
+  return item && REVIEW_STEPS.some((step) => reviewAnswers(item)[step] !== undefined) ? item.updatedAt : null;
+}
+
 /** Where a review resumes: the first step with no answer yet, or the last step once every one
  * of them has been. */
 export function nextStep(answers: ReviewAnswers): ReviewStep {
@@ -111,7 +116,7 @@ export function nextStep(answers: ReviewAnswers): ReviewStep {
 export function renderReviewBody(week: string, answers: ReviewAnswers): string {
   const lines: string[] = [`# ${weekLabel(week)}`, ""];
   for (const step of REVIEW_STEPS) {
-    lines.push(`## ${STEP_HEADINGS[step]}`, "");
+    lines.push(`## ${REVIEW_STEP_LABELS[step]}`, "");
     if (step === "goals") {
       const goals = answers.goals ?? {};
       const ids = Object.keys(goals);
@@ -134,6 +139,13 @@ export function renderReviewBody(week: string, answers: ReviewAnswers): string {
  * week at the moment of this save. Left out, whatever snapshot the item already carried survives
  * the write untouched, so an early step's save (with no figures to hand yet) cannot erase a
  * later one's.
+ *
+ * The body is rewritten whole on every save, so the item is re-chunked and re-queued for
+ * embedding whole on every save too — `queueEmbedding` deletes and rebuilds the chunk set rather
+ * than appending, so calling it again on an unchanged body is a no-op, not a duplicate. Without
+ * this a saved review would sit in the `items` table with no rows in `chunks` at all, which is
+ * what `search()` reads: findable by browsing the Library, invisible to keyword and semantic
+ * search alike.
  */
 export function saveReviewStep(db: DB, week: string, step: ReviewStep, value: string | Record<string, string>, snapshot?: ReviewSnapshot): Item {
   const item = openReview(db, week);
@@ -142,5 +154,7 @@ export function saveReviewStep(db: DB, week: string, step: ReviewStep, value: st
   const answers: ReviewAnswers =
     step === "goals" ? { ...current, goals: { ...current.goals, ...(value as Record<string, string>) } } : { ...current, [step]: value as string };
   const nextMeta: ReviewMeta = { answers, snapshot: snapshot ?? meta.snapshot };
-  return updateItem(db, item.id, { meta: nextMeta as unknown as Record<string, unknown>, body: renderReviewBody(week, answers) });
+  const updated = updateItem(db, item.id, { meta: nextMeta as unknown as Record<string, unknown>, body: renderReviewBody(week, answers) });
+  queueEmbedding(db, item.id);
+  return updated;
 }
