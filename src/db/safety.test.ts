@@ -14,15 +14,24 @@ import { verifyDatabaseFile, checkOpenDatabase, pendingMigrations, snapshotBefor
 const FOLDER = path.join(process.cwd(), "drizzle");
 
 /** A real chunk with real text and a real vector, so the damaged-index tests below have an actual
- * index to damage -- an empty `chunks` table short-circuits `virtualTableProblems` entirely (by
- * design: no chunks is the owner's actual state today, and probing an empty index would be a
- * false failure waiting to happen). */
+ * index to damage -- an empty `chunks` table skips both probes entirely (by design: no chunks is
+ * the owner's actual state today, and probing an empty index would be a false failure waiting to
+ * happen). */
 async function seedChunk(t: TestDb): Promise<void> {
   const item = createItem(t.db, { type: "note", title: "T", body: "Tomatoes need full sun and regular water in the garden." });
   rechunkItem(t.db, item.id);
   const embed = createFakeEmbedProvider();
   const handler = createEmbedHandler({ db: t.db, embed });
   await handler(enqueueJob(t.db, "embed", { itemId: item.id }, item.id));
+}
+
+/** A real chunk with real text but never embedded -- the state under `SB_EMBED=off`, after an
+ * embed-provider failure, or simply between ingest and the (asynchronous, separate) embed job
+ * running. `chunks_fts` is populated regardless, by the same trigger that inserts the `chunks`
+ * row; `chunks_vec` is not. */
+function seedChunkWithoutVector(t: TestDb): void {
+  const item = createItem(t.db, { type: "note", title: "T", body: "Tomatoes need full sun and regular water in the garden." });
+  rechunkItem(t.db, item.id);
 }
 
 function journalTags(): string[] {
@@ -137,6 +146,21 @@ describe("verifyDatabaseFile", () => {
   it("verifies a database with real chunks sound when neither index is damaged", async () => {
     t = makeTestDb();
     await seedChunk(t);
+    const r = verifyDatabaseFile(t.db.$client.name);
+    expect(r).toMatchObject({ ok: true, problems: [] });
+  });
+
+  it("NEW-1: verifies ok when the database has chunks but no vectors yet", () => {
+    // The permanent state under SB_EMBED=off, after any embed-provider failure, or simply in the
+    // window between ingesting something and the separate embed job running -- the owner's very
+    // first capture is in this state. A gate keyed on `chunks` alone (rather than `chunks_vec`
+    // itself) would fail every verification here and delete every nightly backup, forever, on a
+    // database with nothing wrong with it. `seedChunk` always embeds, so it cannot catch this;
+    // this uses `seedChunkWithoutVector`, which deliberately does not.
+    t = makeTestDb();
+    seedChunkWithoutVector(t);
+    const vectorCount = (t.db.$client.prepare("SELECT count(*) AS n FROM chunks_vec").get() as { n: number }).n;
+    expect(vectorCount).toBe(0); // confirms the fixture actually reaches the state under test
     const r = verifyDatabaseFile(t.db.$client.name);
     expect(r).toMatchObject({ ok: true, problems: [] });
   });

@@ -19,6 +19,10 @@ export const KEEP_MONTHLY = 6;
 const SNAPSHOT_KEEP_MONTHS = 12;
 /** However old the database is, the newest this many distinct migration tags always survive. */
 const SNAPSHOT_FLOOR = 10;
+/** A `.tmp` has to be at least this old before `pruneSnapshots` will touch it -- a real
+ * `VACUUM INTO` on this database finishes in a fraction of a second, so an hour is a wide margin
+ * against unlinking one another process still has in flight. */
+const SNAPSHOT_TMP_MIN_AGE_MS = 60 * 60 * 1000;
 
 const ATTACHMENTS_KEEP = 7;
 /** Only `brain-*.db` -- never `pre-*.db`. Pre-migration snapshots mark the exact boundary where
@@ -31,15 +35,15 @@ const ATTACHMENTS_NAME_RE = /^attachments-.*$/;
  * half has a fixed, recognizable shape and nothing else in this design produces one. */
 const SNAPSHOT_RE = new RegExp(`^${SNAPSHOT_PREFIX}(.+)-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-\\d{3}Z)\\.db$`);
 /** The larger half of a killed `VACUUM INTO`: a `.tmp` that a crash or kill kept from ever being
- * renamed into a real `pre-*.db`. Always debris, never a recovery point. */
+ * renamed into a real `pre-*.db`. Always debris (once old enough -- see `SNAPSHOT_TMP_MIN_AGE_MS`),
+ * never a recovery point. */
 const SNAPSHOT_TMP_RE = new RegExp(`^${SNAPSHOT_PREFIX}.+\\.db\\.tmp$`);
-/** The only file shapes `sweepSidecars` is permitted to delete a sidecar of: a dated `brain-*.db`
- * backup, or a `pre-*.db` snapshot (including its `.tmp` while a vacuum is mid-flight), followed by
- * one of the three suffixes SQLite itself appends for an interrupted checkpoint or vacuum. Anything
- * else -- `brain-replaced-<stamp>.db-wal` above all, the one file a restore sets aside rather than
- * deletes -- does not match, however its name ends: a database that legitimately carries committed,
- * not-yet-checkpointed rows in a `-wal` is the one file in this directory nobody may touch. */
-const SIDECAR_RE = new RegExp(`^(brain-\\d{4}-\\d{2}-\\d{2}\\.db|${SNAPSHOT_PREFIX}.+\\.db(?:\\.tmp)?)-(wal|shm|journal)$`);
+/** A sidecar's suffix alone, with its base name captured separately so `ownedSidecarBase` can
+ * decide, using the exact same rules `pruneBackups` and `pruneSnapshots` use, whether that base is
+ * a name this job actually owns -- rather than a second pattern that could quietly drift from the
+ * first and, say, agree to sweep `brain-9999-99-99.db-wal` although `dateOf` would never treat
+ * `brain-9999-99-99.db` itself as a real backup. */
+const SIDECAR_SUFFIX_RE = /^(.+)-(wal|shm|journal)$/;
 
 /** UTC stamp used in backup file names -- deliberately not local, so the name it produces and the
  * sort order it implies never depend on the machine's own timezone. */
@@ -66,11 +70,14 @@ function pruneOld(dir: string, keep: number, re: RegExp): void {
   }
 }
 
-/** A regular file only -- never a directory, symlink, or anything else `rmSync({force: true})`
- * would either mishandle or, worse, recurse into without being asked to. */
+/** A regular file only -- never a directory, and never a symlink either way it might resolve.
+ * Uses `lstatSync`, not `statSync`: `statSync` follows a symlink and reports on whatever it points
+ * to, which would call a symlink to a file "a regular file" and let it through -- true of the
+ * link's target, not of the link itself, and this function exists to decide what counts as a
+ * backup or sidecar this job owns, which a symlink never is, whatever it happens to point to. */
 function isRegularFile(p: string): boolean {
   try {
-    return fs.statSync(p).isFile();
+    return fs.lstatSync(p).isFile();
   } catch {
     return false;
   }
@@ -150,7 +157,8 @@ export function pruneBackups(dir: string): void {
   pickNewestPerBucket(afterWeekly, keep, KEEP_MONTHLY, (name) => monthKey(dates.get(name)!));
 
   for (const name of entries) {
-    if (!keep.has(name)) fs.rmSync(path.join(dir, name), { force: true });
+    const p = path.join(dir, name);
+    if (!keep.has(name) && isRegularFile(p)) fs.rmSync(p, { force: true });
   }
 }
 
@@ -174,24 +182,47 @@ function oldestBrainBackupDate(dir: string): Date | null {
   return oldest;
 }
 
+interface SnapshotEntry {
+  name: string;
+  date: Date;
+}
+
+interface TagGroup {
+  tag: string;
+  /** The tag's newest stamp -- what every age-based rule (2-5) keys off, since that is when the
+   * migration this tag names actually took effect. */
+  newestDate: Date;
+  /** At most two names: the oldest and newest stamp for this tag, or one name if there was only
+   * ever one. Kept or dropped together -- see rule 1's doc below. */
+  keepCandidates: Set<string>;
+}
+
 /**
  * Retention for `pre-*.db` migration snapshots, separate from `pruneBackups` because they answer
  * a different question: not "how recent" but "which boundary". Order matters -- each step narrows
  * what the next one has to consider:
  *
- * 1. **One file per migration tag.** A retried or killed migration can leave several
- *    `pre-<tag>-<stamp>.db`; only the newest stamp is the state that migration actually ran
- *    against, so older stamps for the same tag are dropped outright, whatever their age.
- * 2. **Every remaining tag younger than `SNAPSHOT_KEEP_MONTHS` survives outright.**
- * 3. **Beyond that, the newest snapshot per calendar quarter.**
+ * 1. **At most two files per migration tag: the oldest and the newest stamp.** A tag only gets
+ *    snapshotted more than once when a migration was attempted and did not stick -- and in that
+ *    case the *oldest* stamp is the valuable one, the true pre-first-attempt state, while the
+ *    newest may be a half-applied database. An earlier version of this rule kept only the newest,
+ *    which is backwards for exactly the case it exists to handle. Any stamp strictly between the
+ *    two (a second or third retry) is genuinely redundant and is dropped regardless of age.
+ * 2. **Every remaining tag younger than `SNAPSHOT_KEEP_MONTHS` survives outright** (both its files).
+ * 3. **Beyond that, the newest snapshot per calendar quarter** (both its files).
  * 4. **Floor: the newest `SNAPSHOT_FLOOR` tags always survive**, however old, so a machine that
  *    goes quiet for years doesn't lose its most recent boundaries to the age rule above.
  * 5. **Never prune a tag older than the oldest `brain-*.db` `pruneBackups` just left.** Past that
  *    point the snapshot is the only artifact from before that boundary, which is the entire
  *    argument for keeping snapshots at all -- so this overrides 2-4, never the other way around.
  *
- * Also sweeps `pre-*.db.tmp`: a killed `VACUUM INTO` (see `snapshotBeforeMigrate`) leaves one
- * behind, multiple megabytes, and nothing else in this design ever revisits it.
+ * Rule 5 makes 2-4 rarely the deciding factor in practice, which is fine: tens of files at roughly
+ * two megabytes each is not a disk problem.
+ *
+ * Also sweeps `pre-*.db.tmp` older than `SNAPSHOT_TMP_MIN_AGE_MS`: a killed `VACUUM INTO` (see
+ * `snapshotBeforeMigrate`) leaves one behind, multiple megabytes, and nothing else in this design
+ * ever revisits it. The age floor exists because a `.tmp` younger than that might not be debris at
+ * all -- it might be another process's vacuum still in flight.
  *
  * Call this after `pruneBackups` has already run on the same `dir` -- step 5 reads what it left.
  */
@@ -199,70 +230,102 @@ export function pruneSnapshots(dir: string, now: Date = new Date()): void {
   if (!fs.existsSync(dir)) return;
 
   for (const name of fs.readdirSync(dir)) {
-    if (SNAPSHOT_TMP_RE.test(name)) fs.rmSync(path.join(dir, name), { force: true });
+    if (!SNAPSHOT_TMP_RE.test(name)) continue;
+    const p = path.join(dir, name);
+    if (!isRegularFile(p)) continue;
+    let mtimeMs: number;
+    try {
+      mtimeMs = fs.statSync(p).mtimeMs;
+    } catch {
+      continue; // vanished between readdir and stat -- nothing left to sweep
+    }
+    if (now.getTime() - mtimeMs >= SNAPSHOT_TMP_MIN_AGE_MS) fs.rmSync(p, { force: true });
   }
 
-  const namesByTag = new Map<string, string[]>();
-  const newestByTag = new Map<string, { name: string; date: Date }>();
+  const entriesByTag = new Map<string, SnapshotEntry[]>();
   for (const name of fs.readdirSync(dir)) {
     const m = SNAPSHOT_RE.exec(name);
     if (!m) continue;
     const [, tag, stamp] = m;
     const date = parseSnapshotStamp(stamp);
     if (Number.isNaN(date.getTime())) continue; // cannot date it: leave it alone, like `dateOf`
-
-    const names = namesByTag.get(tag) ?? [];
-    names.push(name);
-    namesByTag.set(tag, names);
-
-    const current = newestByTag.get(tag);
-    if (!current || date > current.date) newestByTag.set(tag, { name, date });
+    const list = entriesByTag.get(tag) ?? [];
+    list.push({ name, date });
+    entriesByTag.set(tag, list);
   }
 
-  const byTagNewestFirst = [...newestByTag.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
+  const groups: TagGroup[] = [];
+  for (const [tag, entries] of entriesByTag) {
+    entries.sort((a, b) => a.date.getTime() - b.date.getTime()); // oldest first
+    const oldest = entries[0];
+    const newest = entries[entries.length - 1]; // same element when there is only one
+    groups.push({ tag, newestDate: newest.date, keepCandidates: new Set([oldest.name, newest.name]) }); // 1
+  }
+  const byTagNewestFirst = groups.sort((a, b) => b.newestDate.getTime() - a.newestDate.getTime());
 
+  const keptTags = new Set<string>();
   const keep = new Set<string>();
-  for (const s of byTagNewestFirst.slice(0, SNAPSHOT_FLOOR)) keep.add(s.name); // 4: the floor
+  const keepGroup = (g: TagGroup): void => {
+    if (keptTags.has(g.tag)) return;
+    keptTags.add(g.tag);
+    for (const name of g.keepCandidates) keep.add(name);
+  };
+
+  for (const g of byTagNewestFirst.slice(0, SNAPSHOT_FLOOR)) keepGroup(g); // 4: the floor
 
   const cutoff = new Date(now);
   cutoff.setUTCMonth(cutoff.getUTCMonth() - SNAPSHOT_KEEP_MONTHS);
   const quarterUsed = new Set<string>();
-  for (const s of byTagNewestFirst) {
-    if (keep.has(s.name)) continue;
-    if (s.date >= cutoff) {
-      keep.add(s.name); // 2: within the outright-keep window
+  for (const g of byTagNewestFirst) {
+    if (keptTags.has(g.tag)) continue;
+    if (g.newestDate >= cutoff) {
+      keepGroup(g); // 2: within the outright-keep window
       continue;
     }
-    const q = quarterKey(s.date); // 3: beyond it, one per quarter
+    const q = quarterKey(g.newestDate); // 3: beyond it, one tag per quarter
     if (!quarterUsed.has(q)) {
       quarterUsed.add(q);
-      keep.add(s.name);
+      keepGroup(g);
     }
   }
 
   const oldestBrain = oldestBrainBackupDate(dir);
   if (oldestBrain) {
-    for (const s of byTagNewestFirst) {
-      if (s.date < oldestBrain) keep.add(s.name); // 5: overrides everything above
+    for (const g of byTagNewestFirst) {
+      if (g.newestDate < oldestBrain) keepGroup(g); // 5: overrides everything above
     }
   }
 
-  for (const names of namesByTag.values()) {
-    for (const name of names) {
-      if (!keep.has(name)) fs.rmSync(path.join(dir, name), { force: true });
+  for (const entries of entriesByTag.values()) {
+    for (const { name } of entries) {
+      const p = path.join(dir, name);
+      if (!keep.has(name) && isRegularFile(p)) fs.rmSync(p, { force: true });
     }
   }
 }
 
+/** Whether `base` -- the part of a sidecar's name before its `-wal`/`-shm`/`-journal` suffix -- is
+ * a name this job actually owns. Shares the exact validity rules `pruneBackups` and
+ * `pruneSnapshots` use (`dateOf`, `SNAPSHOT_RE` plus a real stamp, `SNAPSHOT_TMP_RE`) rather than a
+ * second, independently-anchored pattern, so the two cannot quietly drift apart -- an earlier
+ * version's own regex agreed to sweep `brain-9999-99-99.db-wal` although `dateOf` would never treat
+ * `brain-9999-99-99.db` itself as a real backup. */
+function ownedSidecarBase(base: string): boolean {
+  if (dateOf(base) !== null) return true; // brain-<real calendar date>.db
+  if (SNAPSHOT_TMP_RE.test(base)) return true; // pre-<tag>-<stamp>.db.tmp, mid-vacuum
+  const m = SNAPSHOT_RE.exec(base);
+  return m !== null && !Number.isNaN(parseSnapshotStamp(m[2]).getTime()); // pre-<tag>-<real stamp>.db
+}
+
 /**
- * Removes every file in `dir` matching `SIDECAR_RE` -- a `-wal`, `-shm`, or `-journal` beside a
- * `brain-*.db` or `pre-*.db(.tmp)` name this job owns, and nothing else, however its name ends.
- * It is one of only two things in this whole design permitted to delete a file it did not write
- * itself, so it refuses outright when `dir` is the data directory rather than the backups
- * directory -- the one place a live database's own `-wal` could otherwise be reached. Builds the
- * complete list of what to delete, and confirms each one is a plain file (never a directory, which
- * `rmSync({force:true})` would otherwise throw `EISDIR` on), before deleting anything. Returns the
- * count removed.
+ * Removes every file in `dir` whose name is a `-wal`, `-shm`, or `-journal` suffix on a base name
+ * `ownedSidecarBase` recognizes as a `brain-*.db` or `pre-*.db(.tmp)` this job owns, and nothing
+ * else, however its name ends. It is one of only two things in this whole design permitted to
+ * delete a file it did not write itself, so it refuses outright when `dir` is the data directory
+ * rather than the backups directory -- the one place a live database's own `-wal` could otherwise
+ * be reached. Builds the complete list of what to delete, and confirms each one is a plain file
+ * (never a directory, which `rmSync({force:true})` would otherwise throw `EISDIR` on), before
+ * deleting anything. Returns the count removed.
  */
 export function sweepSidecars(dir: string): number {
   if (!fs.existsSync(dir)) return 0;
@@ -272,7 +335,10 @@ export function sweepSidecars(dir: string): number {
   }
   const toDelete = fs
     .readdirSync(dir)
-    .filter((name) => SIDECAR_RE.test(name))
+    .filter((name) => {
+      const m = SIDECAR_SUFFIX_RE.exec(name);
+      return m !== null && ownedSidecarBase(m[1]);
+    })
     .map((name) => path.join(dir, name))
     .filter(isRegularFile);
   for (const p of toDelete) fs.rmSync(p, { force: true });

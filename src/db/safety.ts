@@ -84,48 +84,68 @@ function firstSearchableTerm(sqlite: Database.Database): string | null {
  * hits with the index emptied -- and a `chunks_vec` whose shadow vectors were zeroed still
  * answered `count(*)` while returning null distances and wrong rowids from a real KNN query.
  *
- * There is nothing to search when the database has no chunks at all, which is the owner's actual
- * state today, and a false failure there would be worse than the gap it would create -- so this
- * only probes at all once `chunks` has rows, and an empty result from either probe is a failure
- * only in that case.
+ * The two probes are gated independently, on `chunks` and `chunks_vec` each having rows of their
+ * own -- not on `chunks` alone. `chunks_fts` is populated by the same trigger that inserts the
+ * `chunks` row, so "chunks has rows" and "the FTS index has rows" really do rise together. But
+ * `chunks_vec` is populated later, by the separate, asynchronous embed job -- so a database can
+ * have chunks and zero vectors under `SB_EMBED=off` (an explicitly supported mode), after any
+ * embed-provider failure, or simply during the ordinary window between ingesting something and
+ * that job running. A single `chunks`-only gate made that permanent state fail the vector probe:
+ * every nightly backup would verify unsound, be deleted, forever, on a database with nothing
+ * wrong with it at all -- the owner's first capture would have armed it. There is nothing to
+ * search when a given index has no rows of its own, which is the owner's actual state much of the
+ * time, and a false failure there would be worse than the gap it would create -- so each probe
+ * only runs once its own table has rows, and an empty result from either is a failure only then.
  */
 function virtualTableProblems(sqlite: Database.Database): string[] {
   const problems: string[] = [];
+
   let chunkCount: number;
   try {
     chunkCount = (sqlite.prepare("SELECT count(*) AS n FROM chunks").get() as { n: number }).n;
   } catch (err) {
     problems.push(`chunks unreadable: ${err instanceof Error ? err.message : String(err)}`);
-    return problems; // nothing to probe the indexes against
+    return problems; // nothing to gate either probe on
   }
-  if (chunkCount === 0) return problems;
 
-  try {
-    const term = firstSearchableTerm(sqlite);
-    if (term) {
-      const hit = sqlite.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? LIMIT 1").get(`${term}*`);
-      if (!hit) problems.push(`chunks_fts: MATCH for "${term}" (present in the data) returned nothing`);
+  if (chunkCount > 0) {
+    try {
+      const term = firstSearchableTerm(sqlite);
+      if (term) {
+        const hit = sqlite.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? LIMIT 1").get(`${term}*`);
+        if (!hit) problems.push(`chunks_fts: MATCH for "${term}" (present in the data) returned nothing`);
+      }
+    } catch (err) {
+      problems.push(`chunks_fts unqueryable: ${err instanceof Error ? err.message : String(err)}`);
     }
-  } catch (err) {
-    problems.push(`chunks_fts unqueryable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  let vectorCount: number;
   try {
     sqliteVec.load(sqlite);
-    // A unit vector, not all-zero: this schema's distance metric is cosine, which is undefined
-    // for a zero-magnitude query vector (measured -- a zero vector returns a null distance
-    // against a perfectly healthy index, which would make this probe lie in the other direction).
-    const probe = new Float32Array(EMBEDDING_DIMENSIONS);
-    probe[0] = 1;
-    const probeBlob = Buffer.from(probe.buffer, probe.byteOffset, probe.byteLength);
-    const hit = sqlite.prepare("SELECT rowid, distance FROM chunks_vec WHERE embedding MATCH ? ORDER BY distance LIMIT 1").get(probeBlob) as
-      | { rowid: number; distance: number | null }
-      | undefined;
-    if (!hit || hit.distance === null || hit.distance === undefined) {
-      problems.push("chunks_vec: nearest-neighbour query returned no usable result");
-    }
+    vectorCount = (sqlite.prepare("SELECT count(*) AS n FROM chunks_vec").get() as { n: number }).n;
   } catch (err) {
     problems.push(`chunks_vec unqueryable: ${err instanceof Error ? err.message : String(err)}`);
+    return problems; // the table itself could not even be counted
+  }
+
+  if (vectorCount > 0) {
+    try {
+      // A unit vector, not all-zero: this schema's distance metric is cosine, which is undefined
+      // for a zero-magnitude query vector (measured -- a zero vector returns a null distance
+      // against a perfectly healthy index, which would make this probe lie in the other direction).
+      const probe = new Float32Array(EMBEDDING_DIMENSIONS);
+      probe[0] = 1;
+      const probeBlob = Buffer.from(probe.buffer, probe.byteOffset, probe.byteLength);
+      const hit = sqlite.prepare("SELECT rowid, distance FROM chunks_vec WHERE embedding MATCH ? ORDER BY distance LIMIT 1").get(probeBlob) as
+        | { rowid: number; distance: number | null }
+        | undefined;
+      if (!hit || hit.distance === null || hit.distance === undefined) {
+        problems.push("chunks_vec: nearest-neighbour query returned no usable result");
+      }
+    } catch (err) {
+      problems.push(`chunks_vec unqueryable: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   return problems;

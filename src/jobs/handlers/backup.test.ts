@@ -230,6 +230,18 @@ describe("pruneBackups", () => {
     expect(fs.existsSync(path.join(dir, impossible))).toBe(true);
   });
 
+  it("does not throw on a directory shaped like a backup that would otherwise be pruned, and does not touch it", () => {
+    // 90 real backups guarantee real deletions happen; the directory below has the oldest,
+    // least-protected date, so it is exactly the kind of entry the deletion loop reaches.
+    const start = new Date("2025-01-01T00:00:00.000Z");
+    for (let i = 1; i < 90; i++) seed([new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10)]);
+    const trap = path.join(dir, "brain-2025-01-01.db");
+    fs.mkdirSync(trap);
+
+    expect(() => pruneBackups(dir)).not.toThrow();
+    expect(fs.existsSync(trap)).toBe(true);
+  });
+
   it("does nothing when the directory does not exist", () => {
     expect(() => pruneBackups(path.join(dir, "nope"))).not.toThrow();
   });
@@ -256,14 +268,35 @@ describe("pruneSnapshots", () => {
     return name;
   }
 
-  it("keeps only the newest stamp for a retried or killed migration tag", () => {
-    const older = write("0016_commitments", new Date("2026-09-20T00:00:00.000Z"));
-    const newer = write("0016_commitments", new Date("2026-09-22T00:00:00.000Z"));
+  it("keeps the oldest and newest stamp for a retried or killed migration tag, and drops any stamp between", () => {
+    // The oldest stamp is the true pre-first-attempt state; the newest is whatever the migration
+    // last did (which stuck, if there's only one more). A stamp strictly between the two is a
+    // retry that didn't stick either, and is genuinely redundant.
+    const oldest = write("0016_commitments", new Date("2026-09-18T00:00:00.000Z"));
+    const middle = write("0016_commitments", new Date("2026-09-20T00:00:00.000Z"));
+    const newest = write("0016_commitments", new Date("2026-09-22T00:00:00.000Z"));
 
     pruneSnapshots(dir, NOW);
 
-    expect(fs.existsSync(path.join(dir, newer))).toBe(true);
-    expect(fs.existsSync(path.join(dir, older))).toBe(false);
+    expect(fs.existsSync(path.join(dir, oldest))).toBe(true);
+    expect(fs.existsSync(path.join(dir, newest))).toBe(true);
+    expect(fs.existsSync(path.join(dir, middle))).toBe(false);
+  });
+
+  it("keeps at most two files for a tag no matter how many times it was retried", () => {
+    const names = [0, 1, 2, 3, 4].map((i) => write("0016_commitments", new Date(NOW.getTime() - (10 - i) * 86_400_000)));
+    const [oldest, , , , newest] = names;
+
+    pruneSnapshots(dir, NOW);
+
+    const survivors = names.filter((n) => fs.existsSync(path.join(dir, n)));
+    expect(survivors.sort()).toEqual([oldest, newest].sort());
+  });
+
+  it("keeps a single file for a tag with only one stamp, not two copies of it", () => {
+    const only = write("0016_commitments", new Date("2026-09-20T00:00:00.000Z"));
+    pruneSnapshots(dir, NOW);
+    expect(fs.readdirSync(dir)).toEqual([only]);
   });
 
   it("keeps every remaining tag within the last twelve months, not just the floor of ten", () => {
@@ -334,13 +367,52 @@ describe("pruneSnapshots", () => {
     expect(fs.existsSync(path.join(dir, protectedByRule5))).toBe(true); // via rule 5, which overrides it
   });
 
-  it("sweeps a pre-*.db.tmp left behind by a killed vacuum", () => {
+  it("sweeps a pre-*.db.tmp left behind by a killed vacuum, once it is old enough", () => {
     const tmp = "pre-0016_commitments-2026-09-25T12-00-00-000Z.db.tmp";
-    fs.writeFileSync(path.join(dir, tmp), "partial vacuum output");
+    const p = path.join(dir, tmp);
+    fs.writeFileSync(p, "partial vacuum output");
+    const old = new Date(NOW.getTime() - 2 * 60 * 60 * 1000); // 2 hours before `now`
+    fs.utimesSync(p, old, old);
 
     pruneSnapshots(dir, NOW);
 
-    expect(fs.existsSync(path.join(dir, tmp))).toBe(false);
+    expect(fs.existsSync(p)).toBe(false);
+  });
+
+  it("does not sweep a pre-*.db.tmp younger than the age floor -- it might be a vacuum in flight", () => {
+    const tmp = "pre-0016_commitments-2026-09-25T12-00-00-000Z.db.tmp";
+    const p = path.join(dir, tmp);
+    fs.writeFileSync(p, "partial vacuum output");
+    const recent = new Date(NOW.getTime() - 5 * 60 * 1000); // 5 minutes before `now`
+    fs.utimesSync(p, recent, recent);
+
+    pruneSnapshots(dir, NOW);
+
+    expect(fs.existsSync(p)).toBe(true);
+  });
+
+  it("does not throw on a directory shaped like a pre-*.db.tmp, and does not touch it", () => {
+    const p = path.join(dir, "pre-0016_commitments-2026-09-25T12-00-00-000Z.db.tmp");
+    fs.mkdirSync(p);
+    const old = new Date(NOW.getTime() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(p, old, old);
+
+    expect(() => pruneSnapshots(dir, NOW)).not.toThrow();
+    expect(fs.existsSync(p)).toBe(true);
+  });
+
+  it("does not throw on a directory shaped like a snapshot this job owns, and does not touch it", () => {
+    // Ten recent real snapshots fill the floor and the twelve-month window, and a same-quarter,
+    // newer real snapshot wins that quarter's slot -- so the directory below is protected by
+    // nothing and the deletion loop actually reaches it.
+    for (let i = 1; i <= 10; i++) write(`recent${i}`, new Date(NOW.getTime() - i * 10 * 86_400_000));
+    write("ancient-newer", new Date("2010-02-01T00:00:00.000Z"));
+
+    const p = path.join(dir, snapshotName("ancient-older-trap", new Date("2010-01-01T00:00:00.000Z")));
+    fs.mkdirSync(p);
+
+    expect(() => pruneSnapshots(dir, NOW)).not.toThrow();
+    expect(fs.existsSync(p)).toBe(true);
   });
 
   it("does nothing when the directory does not exist", () => {
@@ -397,6 +469,18 @@ describe("sweepSidecars", () => {
     expect(fs.existsSync(path.join(dir, "notes-wal-mart-receipt.db"))).toBe(true);
   });
 
+  it("NEW-6: leaves a sidecar alone when dateOf would refuse to judge its base name", () => {
+    // brain-9999-99-99.db matches the digits-only NAME_RE pattern but is not a real calendar
+    // date, so dateOf(base) returns null and pruneBackups would never treat brain-9999-99-99.db
+    // itself as an owned backup -- sweepSidecars has to agree, not sweep its sidecar anyway.
+    fs.writeFileSync(path.join(dir, "brain-9999-99-99.db-wal"), "x");
+    fs.writeFileSync(path.join(dir, "brain-2026-09-24.db-wal"), "a real sidecar"); // control: still swept
+
+    expect(sweepSidecars(dir)).toBe(1);
+    expect(fs.existsSync(path.join(dir, "brain-9999-99-99.db-wal"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "brain-2026-09-24.db-wal"))).toBe(false);
+  });
+
   it("refuses to sweep the data directory itself", () => {
     // dir here IS the data directory (no "backups" subdirectory), which is where a live
     // database's own -wal/-shm actually live.
@@ -407,8 +491,10 @@ describe("sweepSidecars", () => {
     expect(fs.existsSync(path.join(liveDir, "brain.db-wal"))).toBe(true);
   });
 
-  it("does not throw on a directory whose name ends in a swept suffix, and does not touch it", () => {
-    const trap = path.join(dir, "attachments-2026-09-25-journal");
+  it("does not throw on a directory whose name is an owned base plus a swept suffix, and does not touch it", () => {
+    // brain-2026-09-24.db-journal is a name the pattern *does* match -- an owned base with a real
+    // date -- so this is the actual EISDIR trap, unlike a name the base check would reject anyway.
+    const trap = path.join(dir, "brain-2026-09-24.db-journal");
     fs.mkdirSync(trap);
     fs.writeFileSync(path.join(trap, "keepme.txt"), "x");
 
