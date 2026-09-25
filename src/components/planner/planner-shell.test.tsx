@@ -73,7 +73,7 @@ afterEach(() => {
 
 const planTask = (id: number, title: string): PlanTaskDTO => ({
   id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
 });
 const dayCalls = (fetchMock: ReturnType<typeof stubRoutes>) =>
   (fetchMock.mock.calls as unknown as FetchCall[]).filter(([input]) => String(input).startsWith("/api/planner/day"));

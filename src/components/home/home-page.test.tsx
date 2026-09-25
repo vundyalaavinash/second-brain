@@ -12,7 +12,7 @@ const DATE = "2026-09-22";
 
 const planTask = (id: number, title: string): PlanTaskDTO => ({
   id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
 });
 
 function payload(over: Partial<HomeDTO> = {}): HomeDTO {

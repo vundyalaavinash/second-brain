@@ -86,6 +86,12 @@ export interface TaskDTO {
   /** Minutes actually run against the task, summed from every run that booked anything — 0
    * with no run landed yet, never a run's own zero (an abandoned run books nothing at all). */
   spentMinutes: number;
+  /** What finished tasks like this one actually took — the median booked minutes of `done`
+   * tasks in the same container whose title shares a meaningful word with this one. Null below
+   * three such matches, or with no container: an honest hint needs real data behind it
+   * (`src/domain/focus/index.ts`'s `likeThisMinutesByTask`), and `EstimateHint` only ever
+   * offers it on an open task with no estimate of its own. */
+  likeThisMinutes: number | null;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;

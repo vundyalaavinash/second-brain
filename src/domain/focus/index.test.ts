@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { focusRuns } from "@/db/schema";
 import { createTask, completeTask } from "@/domain/tasks";
+import { createContainer } from "@/domain/containers";
 import { addBlock } from "@/domain/blocks";
 import { ingestHeartbeat } from "@/domain/activity";
 import {
@@ -14,6 +15,9 @@ import {
   focusWhere,
   getFocusSettings,
   estimateActualPairs,
+  likeThisMinutesByTask,
+  similarActualMinutes,
+  LIKE_THIS_MIN_MATCHES,
   FocusError,
   ABANDON_UNDER,
   STALE_AFTER,
@@ -375,5 +379,109 @@ describe("estimateActualPairs", () => {
       { estimateMinutes: 30, actualMinutes: 30 },
       { estimateMinutes: 20, actualMinutes: 20 },
     ]);
+  });
+});
+
+describe("likeThisMinutesByTask", () => {
+  /** A finished task that booked exactly `minutes`, in `containerId` — one call for the whole
+   * shape `similarActualMinutes` reads as a candidate. */
+  function doneTask(containerId: number, title: string, minutes: number) {
+    const task = createTask(t.db, { title, containerId });
+    const run = startFocus(t.db, { taskId: task.id, minutes }, at("09:00"));
+    finishFocus(t.db, run.id, "completed", new Date(at("09:00").getTime() + minutes * 60_000));
+    completeTask(t.db, task.id);
+    return task;
+  }
+
+  it("is the median actual of done, booked tasks in the same container sharing a meaningful word", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "Draft the quarterly report", 40);
+    doneTask(project.id, "Send the quarterly report", 60);
+    doneTask(project.id, "Review last quarterly numbers", 50);
+    const open = createTask(t.db, { title: "Write the quarterly summary", containerId: project.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBe(50);
+  });
+
+  it("matches after lowercasing both titles", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "DRAFT the Quarterly report", 40);
+    doneTask(project.id, "send the QUARTERLY report", 60);
+    doneTask(project.id, "Review last Quarterly numbers", 50);
+    const open = createTask(t.db, { title: "write the quarterly summary", containerId: project.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBe(50);
+  });
+
+  it("is null with fewer than three matches", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "Draft the quarterly report", 40);
+    doneTask(project.id, "Send the quarterly report", 60);
+    const open = createTask(t.db, { title: "Write the quarterly summary", containerId: project.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBeNull();
+  });
+
+  it("is null with no container to match against", () => {
+    const open = createTask(t.db, { title: "Write the quarterly summary" });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBeNull();
+  });
+
+  it("does not count a shared word under four letters", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    // Every candidate shares only "fix" (three letters) with the open task's title — too short
+    // to mean two tasks are alike, so none of these count as a match.
+    doneTask(project.id, "Fix the bug in the nav", 30);
+    doneTask(project.id, "Fix the css for the nav", 20);
+    doneTask(project.id, "Fix the log for the run", 10);
+    const open = createTask(t.db, { title: "Fix one more thing", containerId: project.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBeNull();
+  });
+
+  it("does not count a done task in a different container, even sharing a word", () => {
+    const a = createContainer(t.db, { kind: "project", name: "A" });
+    const b = createContainer(t.db, { kind: "project", name: "B" });
+    doneTask(a.id, "Draft the quarterly report", 40);
+    doneTask(a.id, "Send the quarterly report", 60);
+    doneTask(a.id, "Review the quarterly numbers", 50);
+    const open = createTask(t.db, { title: "Write the quarterly summary", containerId: b.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBeNull();
+  });
+
+  it("does not count a still-open task or one with only an abandoned run", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "Draft the quarterly report", 40);
+    doneTask(project.id, "Send the quarterly report", 60);
+    // Still open: not finished at all.
+    createTask(t.db, { title: "Review the quarterly numbers", containerId: project.id });
+    // Only an abandoned run: booked nothing, so "done with booked minutes" still fails it.
+    const abandoned = createTask(t.db, { title: "Close the quarterly books", containerId: project.id });
+    finishFocus(t.db, startFocus(t.db, { taskId: abandoned.id, minutes: 5 }, at("09:00")).id, "abandoned", at("09:01"));
+    completeTask(t.db, abandoned.id);
+    const open = createTask(t.db, { title: "Write the quarterly summary", containerId: project.id });
+    expect(likeThisMinutesByTask(t.db, [open]).get(open.id)).toBeNull();
+  });
+
+  it("costs one query for the whole list, never one per row", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "Draft the quarterly report", 40);
+    doneTask(project.id, "Send the quarterly report", 60);
+    doneTask(project.id, "Review last quarterly numbers", 50);
+    const list = Array.from({ length: 20 }, (_, i) => createTask(t.db, { title: `Write quarterly summary ${i}`, containerId: project.id }));
+    const spy = vi.spyOn(t.db, "select");
+    const out = likeThisMinutesByTask(t.db, list);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(out.get(list[0].id)).toBe(50);
+    expect(out.get(list[19].id)).toBe(50);
+  });
+
+  it("similarActualMinutes reads the same figure for a single task", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Website" });
+    doneTask(project.id, "Draft the quarterly report", 40);
+    doneTask(project.id, "Send the quarterly report", 60);
+    doneTask(project.id, "Review last quarterly numbers", 50);
+    const open = createTask(t.db, { title: "Write the quarterly summary", containerId: project.id });
+    expect(similarActualMinutes(t.db, open)).toBe(50);
+  });
+
+  it("the match floor is three", () => {
+    expect(LIKE_THIS_MIN_MATCHES).toBe(3);
   });
 });

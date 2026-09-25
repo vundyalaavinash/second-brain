@@ -46,6 +46,7 @@ const planTask = (id: number, title: string): PlanTaskDTO => ({
   blocks: [],
   goals: [],
   spentMinutes: 0,
+  likeThisMinutes: null,
   completedAt: null,
   sortOrder: 0,
   createdAt: "",

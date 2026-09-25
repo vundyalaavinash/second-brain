@@ -11,7 +11,7 @@ const FOCUS_SETTINGS: FocusSettingsDTO = { defaultMinutes: 25, shortBreak: 5, lo
 
 const planTask = (over: Partial<PlanTaskDTO> = {}): PlanTaskDTO => ({
   id: 7, title: "Write the brief", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: 1,
   ...over,
 });
 

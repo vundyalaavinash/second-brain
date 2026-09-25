@@ -13,6 +13,7 @@ import { blocksOn } from "../planner/block-math";
 import { addDaysLocal, formatClock, WEEKDAYS } from "../activity/format";
 import { Button, Chip, IconButton, Input } from "../ui";
 import { EstimateChip } from "./estimate-chip";
+import { EstimateHint, hasEstimateHint } from "./estimate-hint";
 import { FocusButton } from "../focus/focus-button";
 import { SpentLine } from "../focus/spent-line";
 
@@ -647,6 +648,14 @@ export function TaskRow({
   const spentLine = task.spentMinutes > 0 && (
     <SpentLine taskId={task.id} estimateMinutes={task.estimateMinutes} spentMinutes={task.spentMinutes} />
   );
+  // What finished work like this one actually took, offered only where there is no guess yet
+  // and enough of that work to trust one — nothing without a place to save it to, and nothing
+  // where `hasEstimateHint` says there is nothing to show, so an ordinary row's layout never
+  // shifts to make room for an empty wrapper (the case that breaks silently).
+  const estimateHint = onEstimate && hasEstimateHint(task) && (
+    <EstimateHint status={task.status} estimateMinutes={task.estimateMinutes} likeThisMinutes={task.likeThisMinutes} onEstimate={onEstimate} />
+  );
+  const extraLine = spentLine || estimateHint;
 
   // A column of the week is a seventh of the page: the compact row stacks the due date under
   // a two-line title and drops the grip and the priority chip, so the menu still has its place.
@@ -665,6 +674,7 @@ export function TaskRow({
             </span>
           )}
           {spentLine}
+          {estimateHint}
         </span>
         {actions}
       </Row>
@@ -674,7 +684,7 @@ export function TaskRow({
   return (
     <Row
       {...rowProps}
-      className={`hairline-row group flex flex-col gap-1 px-3 ${spentLine ? "py-2" : "h-11 justify-center"} hover:bg-layer-2 transition-colors ${className}`}
+      className={`hairline-row group flex flex-col gap-1 px-3 ${extraLine ? "py-2" : "h-11 justify-center"} hover:bg-layer-2 transition-colors ${className}`}
     >
       <div className="flex items-center gap-3">
         <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
@@ -698,7 +708,12 @@ export function TaskRow({
         {blockNode}
         {actions}
       </div>
-      {spentLine && <div className="pl-9">{spentLine}</div>}
+      {extraLine && (
+        <div className="pl-9 flex flex-col gap-1">
+          {spentLine}
+          {estimateHint}
+        </div>
+      )}
     </Row>
   );
 }
