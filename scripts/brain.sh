@@ -481,9 +481,10 @@ cmd_verify() {
 }
 
 # Resolves $1 (a bare filename or an absolute path) against the backups directory and refuses
-# anything that would land outside it -- an absolute path elsewhere, or a `../` escape. Nothing
-# has been touched by the time this returns; it only decides what "the file" in `restore <file>`
-# actually names.
+# anything that would land outside it -- an absolute path elsewhere, a `../` escape, or a symlink
+# that points outside (realpath resolves it before the prefix check, so a link inside the
+# directory cannot be used to read anything beyond it). Nothing has been touched by the time this
+# returns; it only decides what "the file" in `restore <file>` actually names.
 resolve_backup_file() {
   local name="$1" dir="$2" dir_real candidate resolved
   [ -d "$dir" ] || fail "no backups directory at $dir"
@@ -501,10 +502,70 @@ resolve_backup_file() {
   printf '%s\n' "$resolved"
 }
 
+# Moves $1 (a database file) and any -wal/-shm beside it to $2, as a full set, unconditionally --
+# never gated on whether the base file itself exists. A crash can leave sidecars with no base (the
+# exact state that sends someone to `restore` in the first place); a version of this that only
+# moved the sidecars when the base was also present left a foreign -wal sitting beside whatever
+# was copied in next. Refuses outright if anything already sits at $2 or its sidecars, rather than
+# silently overwriting a previous replaced database -- two restores landing in the same instant
+# must not collide. Echoes 1 if anything was moved, 0 if there was nothing at $1 to move.
+move_db_aside() {
+  local src="$1" dest="$2" suffix moved=0
+  for suffix in "" "-wal" "-shm"; do
+    [ -e "$dest$suffix" ] && fail "refusing: $dest$suffix already exists; wait a moment and try again"
+  done
+  for suffix in "" "-wal" "-shm"; do
+    if [ -f "$src$suffix" ]; then
+      mv "$src$suffix" "$dest$suffix"
+      moved=1
+    fi
+  done
+  echo "$moved"
+}
+
+# Copies $1 (a database file) and any -wal/-shm beside it to $2, as a set, never the base alone --
+# a base copied without its -wal can silently drop rows that are still only in the log (design
+# §1's own trap, and exactly what `brain-replaced-*.db` looks like right after step 4 makes one:
+# `verifyDatabaseFile` at step 2 already verifies it together with its -wal, so installing the
+# base alone here would put back something different from what was just pronounced sound). Clears
+# $2's own -wal/-shm first, so a stale sidecar left over from whatever previously occupied $2 can
+# never survive beside a $1 that has none of its own.
+copy_db_set() {
+  local src="$1" dest="$2"
+  rm -f "$dest-wal" "$dest-shm"
+  cp "$src" "$dest"
+  [ -f "$src-wal" ] && cp "$src-wal" "$dest-wal"
+  [ -f "$src-shm" ] && cp "$src-shm" "$dest-shm"
+  return 0
+}
+
+# Restores $2/attachments-$1 over $3/attachments when that dated backup exists -- moving any
+# current attachments aside first, to $2/attachments-replaced-$4, never deleting them (the rule
+# for this whole procedure is move, never delete, and it applies here exactly as it applies to the
+# database). Does nothing at all, silently, when $1 is empty or there is no matching dated backup
+# -- the caller reports that. Echoes the path attachments were moved to, or nothing if there were
+# none to move.
+restore_attachments_for_date() {
+  local date_part="$1" backups_dir="$2" data_dir="$3" stamp="$4" src dest_replaced
+  [ -z "$date_part" ] && return 0
+  src="$backups_dir/attachments-$date_part"
+  [ -d "$src" ] || return 0
+  if [ -d "$data_dir/attachments" ]; then
+    dest_replaced="$backups_dir/attachments-replaced-$stamp"
+    [ -e "$dest_replaced" ] && fail "refusing: $dest_replaced already exists; wait a moment and try again"
+    mv "$data_dir/attachments" "$dest_replaced"
+    echo "$dest_replaced"
+  fi
+  cp -R "$src" "$data_dir/attachments"
+}
+
 # restore                 lists what is available, sound or not, and stops -- it never guesses.
 # restore <file>          the full procedure, each step announced as it happens. Steps 1-3 are
 #                          reversible (nothing on disk has changed yet); a typed "restore"
-#                          confirmation is required before step 4, which is not.
+#                          confirmation is required before step 4, which is not -- and from that
+#                          point on, any failure rolls back to the original database (and
+#                          attachments, if they were touched) and restarts the server, rather than
+#                          leaving the app down with half a restore on disk.
 cmd_restore() {
   require_node
   cd "$ROOT"
@@ -517,6 +578,11 @@ cmd_restore() {
     return 0
   fi
 
+  # Must come before anything is stopped: `read` at EOF (a non-interactive invocation, a closed
+  # stdin over ssh) returns non-zero under `set -e` and would otherwise abort mid-procedure with
+  # the server already down and nothing printed.
+  [ -t 0 ] || fail "restore needs an interactive terminal to type the confirmation; refusing to run unattended"
+
   say "1/8 resolving $arg"
   local target
   target="$(resolve_backup_file "$arg" "$BACKUPS_DIR")"
@@ -526,6 +592,45 @@ cmd_restore() {
   SB_DATA_DIR="$DATA_DIR" npx tsx src/scripts/verify-backups.ts "$(basename "$target")" \
     || fail "backup failed verification; refusing to restore. Nothing has changed."
   ok "backup verified sound"
+
+  # One restore at a time: a stale lock (a previous run that crashed instead of cleaning up after
+  # itself) has to be removed by hand, deliberately -- this never removes one on its own.
+  local lock_dir="$DATA_DIR/.restore.lock"
+  mkdir "$lock_dir" 2>/dev/null || fail "another restore appears to be in progress ($lock_dir exists); remove it by hand once you are sure that is not true"
+
+  # From here on, any failure rolls back rather than leaving the app down with half a restore on
+  # disk -- this is the whole point of the command. `replaced`/`attachments_replaced` are declared
+  # here, before the trap, so the handler can see them (bash's dynamic scoping means a trap fired
+  # by `set -e` aborting out of this function still sees its locals) however far the procedure got.
+  local replaced="" attachments_replaced=""
+  restore_failed() {
+    local ec=$?
+    set +e
+    rmdir "$lock_dir" 2>/dev/null
+    [ "$ec" -eq 0 ] && return 0
+    if [ -f "$replaced" ] || [ -f "$replaced-wal" ] || [ -f "$replaced-shm" ]; then
+      echo
+      say "restore failed partway through; putting the original database back"
+      rm -f "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"
+      [ -f "$replaced" ] && mv "$replaced" "$DB_FILE"
+      [ -f "$replaced-wal" ] && mv "$replaced-wal" "$DB_FILE-wal"
+      [ -f "$replaced-shm" ] && mv "$replaced-shm" "$DB_FILE-shm"
+      say "database restored to $DB_FILE"
+    fi
+    if [ -n "$attachments_replaced" ] && [ -d "$attachments_replaced" ]; then
+      rm -rf "$DATA_DIR/attachments"
+      mv "$attachments_replaced" "$DATA_DIR/attachments"
+      say "attachments restored to $DATA_DIR/attachments"
+    fi
+    say "restarting the server"
+    cmd_start --no-open || say "the server did not come back up either; run: scripts/brain.sh start"
+    if [ -f "$DB_FILE" ]; then
+      fail "restore failed and was rolled back; the original database is back at $DB_FILE"
+    else
+      fail "restore failed before anything was moved; nothing on disk has changed"
+    fi
+  }
+  trap restore_failed EXIT
 
   say "3/8 stopping the server"
   cmd_stop
@@ -540,28 +645,27 @@ cmd_restore() {
   read -r confirm
   if [ "$confirm" != "restore" ]; then
     say "confirmation not given; restarting the server, nothing else changed"
+    trap - EXIT
+    rmdir "$lock_dir" 2>/dev/null || true
     cmd_start --no-open
     fail "restore cancelled"
   fi
 
   say "4/8 moving the current database aside"
   mkdir -p "$BACKUPS_DIR"
-  local stamp replaced
-  stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+  local stamp moved_db
+  stamp="$(node -e 'process.stdout.write(new Date().toISOString().replace(/[:.]/g, "-"))')"
   replaced="$BACKUPS_DIR/brain-replaced-$stamp.db"
-  if [ -f "$DB_FILE" ]; then
-    mv "$DB_FILE" "$replaced"
-    [ -f "$DB_FILE-wal" ] && mv "$DB_FILE-wal" "$replaced-wal"
-    [ -f "$DB_FILE-shm" ] && mv "$DB_FILE-shm" "$replaced-shm"
-    ok "current database moved to $replaced"
+  moved_db="$(move_db_aside "$DB_FILE" "$replaced")"
+  if [ "$moved_db" = 1 ]; then
+    ok "current database (and any sidecars) moved to $replaced"
   else
-    say "no current database at $DB_FILE; nothing to move aside"
-    replaced=""
+    say "no current database or sidecars at $DB_FILE; nothing to move aside"
   fi
 
   say "5/8 copying the backup into place"
-  cp "$target" "$DB_FILE"
-  ok "backup copied to $DB_FILE"
+  copy_db_set "$target" "$DB_FILE"
+  ok "backup (and any sidecars) copied to $DB_FILE"
 
   say "6/8 restoring attachments for that date"
   local base date_part
@@ -571,25 +675,32 @@ cmd_restore() {
     date_part="${BASH_REMATCH[1]}"
   fi
   if [ -n "$date_part" ] && [ -d "$BACKUPS_DIR/attachments-$date_part" ]; then
-    rm -rf "$DATA_DIR/attachments"
-    cp -R "$BACKUPS_DIR/attachments-$date_part" "$DATA_DIR/attachments"
-    ok "attachments restored from attachments-$date_part"
+    attachments_replaced="$(restore_attachments_for_date "$date_part" "$BACKUPS_DIR" "$DATA_DIR" "$stamp")"
+    if [ -n "$attachments_replaced" ]; then
+      ok "attachments restored from attachments-$date_part; the previous ones are at $attachments_replaced"
+    else
+      ok "attachments restored from attachments-$date_part (there were none before)"
+    fi
   else
     say "no attachments backup for that date; current attachments left as they are, unchanged"
   fi
 
   say "7/8 starting the server"
+  local log_offset=0
+  [ -f "$LOG_FILE" ] && log_offset="$(wc -l < "$LOG_FILE" | tr -d ' ')"
   cmd_start --no-open
-  local boot_line
-  boot_line="$(grep "database integrity check" "$LOG_FILE" 2>/dev/null | tail -1 || true)"
+  local boot_line=""
+  [ -f "$LOG_FILE" ] && boot_line="$(tail -n "+$((log_offset + 1))" "$LOG_FILE" | grep "database integrity check" | tail -1 || true)"
   if [ -n "$boot_line" ]; then
     say "boot check: $boot_line"
   else
-    say "boot check: no result found yet in $LOG_FILE"
+    say "boot check: no result yet from this restart in $LOG_FILE"
   fi
 
   say "8/8 done"
-  if [ -n "$replaced" ]; then
+  trap - EXIT
+  rmdir "$lock_dir" 2>/dev/null || true
+  if [ -f "$replaced" ] || [ -f "$replaced-wal" ] || [ -f "$replaced-shm" ]; then
     ok "the replaced database is at: $replaced"
   else
     ok "restore complete (there was no previous database to keep)"
