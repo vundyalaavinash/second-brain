@@ -178,7 +178,9 @@ function activityToday(db: DB, date: string): HomeDTO["activity"] {
  */
 export function homePayload(db: DB, now: Date): HomeDTO {
   const date = localDay(now.toISOString());
-  const day = plannerDay(db, date);
+  // `now` goes through: without it the day's capacity reads the wall clock while `generatedAt`
+  // and every other figure here read the argument, so one payload would describe two moments.
+  const day = plannerDay(db, date, now);
   const { now: current, next } = nowAndNext(timedItems(db, day, date), now.getTime());
   // Reconciled here so `focus.running` is never stale, but which of a live run, a session or a
   // meeting wins the "Now" slot is decided once, client-side, in now-next.tsx — not repeated

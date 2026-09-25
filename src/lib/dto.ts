@@ -86,6 +86,12 @@ export interface TaskDTO {
   /** Minutes actually run against the task, summed from every run that booked anything — 0
    * with no run landed yet, never a run's own zero (an abandoned run books nothing at all). */
   spentMinutes: number;
+  /** What finished tasks like this one actually took — the median booked minutes of `done`
+   * tasks in the same container whose title shares a meaningful word with this one. Null below
+   * three such matches, or with no container: an honest hint needs real data behind it
+   * (`src/domain/focus/index.ts`'s `likeThisMinutesByTask`), and `EstimateHint` only ever
+   * offers it on an open task with no estimate of its own. */
+  likeThisMinutes: number | null;
   completedAt: string | null;
   sortOrder: number;
   createdAt: string;
@@ -144,8 +150,24 @@ export interface CapacityDTO {
   plannedMinutes: number;
   unestimated: number;
   workHours: string;
+  /** ISO weekday numbers (Monday 1 through Sunday 7) the plan is measured against — the same
+   * list `isWorkingDay` gates the week on (`src/lib/work-hours.ts`), read back here so the
+   * working-hours chip has a working-days one to sit beside rather than a write path with no
+   * control (honest-forecast review F4). */
+  workingDays: number[];
   blockedMinutes: number;
   unplacedMinutes: number;
+  /** The person's own actual-over-estimate multiplier, from their last `DRIFT_WINDOW` finished
+   * tasks — null below `DRIFT_MIN_PAIRS`, honestly, rather than a figure built from too little
+   * to mean anything (`src/lib/drift.ts`). */
+  drift: number | null;
+  /** `plannedMinutes` scaled by `drift`; null exactly when `drift` is. */
+  forecastMinutes: number | null;
+  /** Free minutes left in the working day, as of `now`: the remainder of today once part of it
+   * has passed, 0 once today's window is over, and — for a date other than today — the whole
+   * window, the same figure `freeMinutes` reports with no `now` at all. Only genuinely reads as
+   * "time left" when the day in question is today. */
+  leftTodayMinutes: number;
 }
 
 export interface PersonDTO {
@@ -245,13 +267,32 @@ export interface PlannerDayDTO {
 
 export interface PlannerWeekDayDTO {
   date: string;
+  /** Whether this day is one of the saved working days; a non-working day's capacity is
+   * reported as zero across the board rather than the whole window it would otherwise show. */
+  working: boolean;
   meetings: ActivityMeetingDTO[];
   due: TaskDTO[];
-  capacity: { freeMinutes: number; plannedMinutes: number; blockedMinutes: number };
+  capacity: {
+    freeMinutes: number;
+    plannedMinutes: number;
+    blockedMinutes: number;
+    /** `plannedMinutes` scaled by the week's own `drift` (`PlannerWeekDTO.drift`, one figure
+     * for the whole week, not measured per day); null exactly when that drift is. */
+    forecastMinutes: number | null;
+    /** The same figure `CapacityDTO.leftTodayMinutes` reports, for this day: 0 once the day is
+     * over, the remainder of today once part of it has passed, and the whole window for a day
+     * still ahead. Only genuinely reads as "time left" when this day is today. */
+    leftTodayMinutes: number;
+  };
 }
 
 export interface PlannerWeekDTO {
   start: string;
+  /** The person's own actual-over-estimate multiplier, read once for the whole week — never
+   * once per day — and null below `DRIFT_MIN_PAIRS`, the same honesty rule `CapacityDTO.drift`
+   * follows. Each day's `capacity.forecastMinutes` is this same figure applied to that day's
+   * own planned minutes. */
+  drift: number | null;
   days: PlannerWeekDayDTO[];
 }
 

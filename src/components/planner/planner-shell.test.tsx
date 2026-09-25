@@ -18,7 +18,7 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR, over: Partial<Plann
     meetings: [],
     calendar,
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }
@@ -73,12 +73,10 @@ afterEach(() => {
 
 const planTask = (id: number, title: string): PlanTaskDTO => ({
   id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
 });
 const dayCalls = (fetchMock: ReturnType<typeof stubRoutes>) =>
   (fetchMock.mock.calls as unknown as FetchCall[]).filter(([input]) => String(input).startsWith("/api/planner/day"));
-/** How many tasks the header says are planned — the only place the loaded day shows itself. */
-const plannedCount = () => screen.getByRole("status").textContent?.split(" ")[0];
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("PlannerShell", () => {
@@ -93,7 +91,7 @@ describe("PlannerShell", () => {
   });
 
   it("moves the selection with the route", () => {
-    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-09-21", days: [] }} />);
+    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-09-21", drift: null, days: [] }} />);
     expect(tabs().map((t) => t.selected)).toEqual(["false", "true", "false"]);
   });
 
@@ -127,7 +125,7 @@ describe("PlannerShell", () => {
   it("says the hours are the day's own and hands a new pair to the settings route", async () => {
     const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workHours: "08:00-16:00" }) });
     render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
-    expect(screen.getByRole("status").textContent).toBe("0 planned · 0m of 9h free · 0 meetings");
+    expect(screen.getByRole("status").textContent).toBe("0m planned · 9h left todayNot enough finished work yet to know how your estimates run.");
     fireEvent.click(screen.getByRole("button", { name: "Hours 09:00-18:00" }));
     const field = screen.getByRole("textbox", { name: "Working hours" });
     fireEvent.change(field, { target: { value: "08:00-16:00" } });
@@ -159,6 +157,43 @@ describe("PlannerShell", () => {
       await waitFor(() => expect(toasts).toEqual(["Could not save the hours"]));
       // Nothing was read back, so the chip still names the hours the day was built with.
       expect(screen.getByRole("button", { name: "Hours 09:00-18:00" })).toBeTruthy();
+      expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeUndefined();
+    } finally {
+      window.removeEventListener("sb:toast", onToast);
+    }
+  });
+
+  it("says the days are the day's own and hands a new set to the settings route (F4)", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workingDays: [1, 2, 3, 4] }) });
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Days Mon-Fri" }));
+    fireEvent.click(screen.getByRole("button", { name: "Friday" }));
+    fireEvent.mouseDown(document.body);
+
+    const saved = await waitFor(() => {
+      const call = callTo(fetchMock, "/api/settings/planner");
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(saved[1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(saved[1]?.body))).toEqual({ workingDays: [1, 2, 3, 4] });
+    // The capacity is reckoned server-side, so the day is read back rather than patched here.
+    await waitFor(() => expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeTruthy());
+  });
+
+  it("keeps the old days and says so when the save is refused", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => new Response(null, { status: 400 }) });
+    const toasts: string[] = [];
+    const onToast = (e: Event) => toasts.push((e as CustomEvent<{ text: string }>).detail.text);
+    window.addEventListener("sb:toast", onToast);
+    try {
+      render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Days Mon-Fri" }));
+      fireEvent.click(screen.getByRole("button", { name: "Friday" }));
+      fireEvent.mouseDown(document.body);
+
+      await waitFor(() => expect(toasts).toEqual(["Could not save the working days"]));
+      expect(screen.getByRole("button", { name: "Days Mon-Fri" })).toBeTruthy();
       expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeUndefined();
     } finally {
       window.removeEventListener("sb:toast", onToast);
@@ -198,17 +233,18 @@ describe("PlannerShell", () => {
 
     // The newer day lands first; the older one, held up on the wire, arrives behind it.
     gates[1]();
-    await waitFor(() => expect(plannedCount()).toBe("2"));
+    await waitFor(() => expect(screen.getByText("Two")).toBeTruthy());
     gates[0]();
     await settle(20);
-    expect(plannedCount()).toBe("2");
+    // The stale, slower response landing after does not put the plan back to just "One".
+    expect(screen.getByText("Two")).toBeTruthy();
   });
 
   it("plans a prompt-bar task on today while the week on screen holds it, else on its first day", () => {
-    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-09-21", days: [] }} />);
+    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-09-21", drift: null, days: [] }} />);
     expect(readPlanDate()).toBe("2026-09-22");
     cleanup();
-    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-10-05", days: [] }} />);
+    render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-10-05", drift: null, days: [] }} />);
     expect(readPlanDate()).toBe("2026-10-05");
   });
 });

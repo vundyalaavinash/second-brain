@@ -11,7 +11,7 @@ afterEach(cleanup);
 
 const task: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 5, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z",
 };
 
 interface ExtraProps {
@@ -273,6 +273,94 @@ describe("TaskRow spent", () => {
   it("shows the same line in the compact row", () => {
     renderRow({ compact: true }, { ...task, estimateMinutes: 45, spentMinutes: 80 });
     expect(screen.getByText("Estimated 45m, spent 1h 20m")).toBeTruthy();
+  });
+
+  // Concern A: SpentLine and EstimateHint both write `estimateMinutes`. Only one offer may
+  // stand on a row, and it is the outside view's (the hint's), never the partial inside figure —
+  // see the three states below.
+  it("lets the outside-view hint's offer win over the spent line's own, but keeps the spent fact", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null, spentMinutes: 20, likeThisMinutes: 50 });
+    expect(screen.getByText("Spent 20m")).toBeTruthy();
+    expect(screen.getByText("Tasks like this have taken about 50m")).toBeTruthy();
+    const offers = screen.getAllByRole("button", { name: /as the estimate/ });
+    expect(offers).toHaveLength(1);
+    expect(offers[0].textContent).toBe("Use 50m as the estimate");
+  });
+
+  it("keeps the spent line's own offer when there is no outside-view hint to replace it", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null, spentMinutes: 20, likeThisMinutes: null });
+    expect(screen.getByText("Spent 20m")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use 20m as the estimate" })).toBeTruthy();
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+});
+
+describe("TaskRow estimate hint", () => {
+  it("says nothing on an open task that already has an estimate", () => {
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, likeThisMinutes: 50 });
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+
+  it("says nothing on a done task", () => {
+    renderRow({ onEstimate: vi.fn() }, { ...task, status: "done", estimateMinutes: null, likeThisMinutes: 50 });
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+
+  it("says nothing with fewer than three matches to hint from", () => {
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: null, likeThisMinutes: null });
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+
+  it("says nothing on a task with no container", () => {
+    renderRow({ onEstimate: vi.fn() }, { ...task, containerId: null, estimateMinutes: null, likeThisMinutes: null });
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+
+  it("says nothing without a way to save the estimate, even with a real figure to offer", () => {
+    renderRow({}, { ...task, estimateMinutes: null, likeThisMinutes: 50 });
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
+
+  it("offers the figure and sets it on click, on an open task with no estimate and enough matches", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null, likeThisMinutes: 50 });
+    expect(screen.getByText("Tasks like this have taken about 50m")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use 50m as the estimate" }));
+    expect(onEstimate).toHaveBeenCalledWith(50);
+  });
+
+  it("shows the same hint in the compact row", () => {
+    renderRow({ compact: true, onEstimate: vi.fn() }, { ...task, estimateMinutes: null, likeThisMinutes: 50 });
+    expect(screen.getByText("Tasks like this have taken about 50m")).toBeTruthy();
+  });
+
+  it("leaves the row byte-identical whether or not there is a figure to withhold", () => {
+    // An estimated task with spent minutes already booked — the hint has nothing to say about
+    // it regardless of what `likeThisMinutes` carries, so the row's own markup must not move a
+    // pixel for it: no empty wrapper, no spacing change, whatever the field holds.
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, spentMinutes: 80, likeThisMinutes: null });
+    const before = screen.getByRole("list").innerHTML;
+    cleanup();
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, spentMinutes: 80, likeThisMinutes: 200 });
+    expect(screen.getByRole("list").innerHTML).toBe(before);
+  });
+
+  it("adds no empty wrapper on an estimated task with nothing spent, even with a way to save an estimate (F3)", () => {
+    // Neither line has anything to show: the task is already estimated (so the hint is gated
+    // off by `hasEstimateHint`, regardless of `likeThisMinutes`) and nothing has been spent yet
+    // (so `SpentLine` renders null). A mutant that drops the `hasEstimateHint` gate still leaves
+    // `EstimateHint` itself rendering null internally, but the row's own `estimateHint` variable
+    // becomes a truthy element anyway — which flips `extraLine` truthy and adds an empty `pl-9`
+    // wrapper div plus a spacing change, exactly the regression this row's comment above claims
+    // is prevented. `spentMinutes: 0` is what makes that difference visible: with spent minutes
+    // present (as the test above still carries), the wrapper is not empty either way.
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, spentMinutes: 0, likeThisMinutes: 200 });
+    const list = screen.getByRole("list");
+    expect(list.querySelector(".pl-9")).toBeNull();
+    expect(list.querySelector(".hairline-row")?.className).toContain("h-11 justify-center");
+    expect(list.querySelector(".hairline-row")?.className).not.toContain("py-2");
   });
 });
 

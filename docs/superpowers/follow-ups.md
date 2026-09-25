@@ -67,3 +67,19 @@ payload, so a container renamed since is written into the frozen record under
 its new name. Harmless today: the render path prefers the live row wherever the
 container still exists, and the frozen name is only ever a fallback for one that
 was deleted. Recorded so it is a known consequence rather than a surprise.
+
+## The planner scrolls sideways below about 500px
+
+Confirmed pre-existing, not introduced by the forecast work: the same overflow
+appears on `master` at 420px. The date header's "Today" control, the plan pane's
+right edge, the add-a-task field and the calendar setup card are all clipped, and
+the document's scroll width exceeds the viewport.
+
+The capacity line itself wraps correctly, so the cause is elsewhere in the day
+view or the shell. It does not affect use on a laptop at full width, which is why
+it was recorded rather than chased mid-slice. Worth a pass of its own, measuring
+which element actually forces the width rather than guessing.
+
+A lead, from the Task 2 review: `src/components/planner/calendar-feed.tsx`'s
+`min-w-[240px]` is the most likely culprit. Measure before believing it — the
+point of this note is that the element was guessed at rather than found.

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { createTask, listTasks, projectProgress } from "@/domain/tasks";
 import { goalRefsByContainer } from "@/domain/goals";
+import { similarActualMinutes } from "@/domain/focus";
 import { errorResponse, parseContainerParam, serializeTask, serializeTasks } from "@/lib/api";
 import { TaskBody } from "@/lib/validation";
 import { CaptureError } from "@/domain/items/capture";
@@ -32,7 +33,8 @@ export async function POST(req: Request): Promise<Response> {
     // it inherits them the instant it lands in a linked container, so the create response reads
     // them same as any other task in the list rather than answering `goals: []` for one request.
     const goals = task.containerId !== null ? (goalRefsByContainer(db, [task.containerId]).get(task.containerId) ?? []) : [];
-    return NextResponse.json(serializeTask(task, [], goals), { status: 201 });
+    const likeThisMinutes = similarActualMinutes(db, task);
+    return NextResponse.json(serializeTask(task, [], goals, 0, likeThisMinutes), { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

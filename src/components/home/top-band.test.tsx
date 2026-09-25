@@ -14,7 +14,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 120, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 60, unplacedMinutes: 30 },
+    capacity: { freeMinutes: 540, plannedMinutes: 120, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 60, unplacedMinutes: 30, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }
@@ -22,7 +22,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
 const NOT_DUE: HomeDTO["review"] = { due: false };
 
 function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }, review: HomeDTO["review"] = NOT_DUE) {
-  render(<TopBand day={day()} counts={counts} focus={focus} review={review} onHours={() => {}} />);
+  render(<TopBand day={day()} counts={counts} focus={focus} review={review} onHours={() => {}} onWorkingDays={() => {}} />);
 }
 
 /** Every figure as it reads, paired with where it leads. */
@@ -41,9 +41,9 @@ describe("TopBand", () => {
 
   it("says the capacity in the Planner's own line, with the hours chip", () => {
     band({ planned: 3, meetings: 2, inbox: 4 });
-    // The figure link under the band says "3 planned" too; the free time names the capacity line.
-    expect(screen.getByText(/of 9h free/).textContent).toBe("3 planned · 2h of 9h free · 1h blocked · 30m unplaced · 2 meetings");
+    expect(screen.getByText(/left today/).textContent).toBe("2h planned · 9h left today · 1h blocked · 30m unplaced · 2 meetings");
     expect(screen.getByRole("button", { name: "Hours 09:00-18:00" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Days Mon-Fri" })).toBeTruthy();
   });
 
   it("leaves the one region that speaks up to Now", () => {

@@ -27,6 +27,7 @@ interface Props {
   focus: HomeDTO["focus"];
   review: HomeDTO["review"];
   onHours: (workHours: string) => void;
+  onWorkingDays: (workingDays: number[]) => void;
 }
 
 /**
@@ -39,13 +40,15 @@ interface Props {
  * week has a review it renders nothing at all, not even a tick, because this is a nudge and the
  * research behind it is explicit that the nagging version is the one people turn off.
  */
-export function TopBand({ day, counts, focus, review, onHours }: Props) {
+export function TopBand({ day, counts, focus, review, onHours, onWorkingDays }: Props) {
   return (
     <header className="flex flex-col gap-3">
       <DateHeader
         date={day.date}
         unit="day"
-        summary={<CapacityLine capacity={day.capacity} planned={counts.planned} meetings={counts.meetings} onHours={onHours} quiet />}
+        summary={
+          <CapacityLine capacity={day.capacity} meetings={counts.meetings} onHours={onHours} onWorkingDays={onWorkingDays} quiet />
+        }
       />
       <ul className="list-none m-0 p-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-fg-muted">
         {figures(counts).map((f) => (

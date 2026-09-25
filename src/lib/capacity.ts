@@ -1,3 +1,5 @@
+import { localDay } from "@/lib/time";
+
 /** The pieces of a meeting capacity needs; both MeetingListDTO and CalendarEvent satisfy it. */
 export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; status: string };
 
@@ -19,27 +21,44 @@ function minutesInto(date: string, iso: string): number {
   return (new Date(iso).getTime() - new Date(`${date}T00:00:00`).getTime()) / 60_000;
 }
 
+/** Minutes from local midnight to `d`'s own wall-clock time. */
+function minutesOfDay(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 /**
  * Working minutes not taken by timed meetings. Overlapping meetings are merged first so a
  * double booking is not subtracted twice; a meeting spilling past the hours only costs the
  * part inside them.
+ *
+ * `opts.now`, when given, makes the window honest about the time: a day already gone holds
+ * nothing, and the part of today that has already passed is not free time either — the
+ * scheduler has always known this (`notBefore`); this figure never did. Every existing caller
+ * passes no `opts`, so nothing changes under them — the window stays the whole working day.
  */
-export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date: string): number {
+export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date: string, opts: { now?: Date } = {}): number {
   const hours = parseWorkHours(workHours);
   if (!hours) return 0;
+  let start = hours.start;
+  if (opts.now) {
+    const today = localDay(opts.now.toISOString());
+    if (date < today) return 0;
+    if (date === today) start = Math.max(start, minutesOfDay(opts.now));
+    if (start >= hours.end) return 0;
+  }
   const busy = meetings
     .filter((m) => !m.allDay && m.status !== "declined")
-    .map((m) => ({ start: Math.max(hours.start, minutesInto(date, m.startsAt)), end: Math.min(hours.end, minutesInto(date, m.endsAt)) }))
+    .map((m) => ({ start: Math.max(start, minutesInto(date, m.startsAt)), end: Math.min(hours.end, minutesInto(date, m.endsAt)) }))
     .filter((b) => b.end > b.start)
     .sort((a, b) => a.start - b.start);
   let taken = 0;
   let cursor = -Infinity;
   for (const b of busy) {
-    const start = Math.max(b.start, cursor);
-    if (b.end > start) taken += b.end - start;
+    const busyStart = Math.max(b.start, cursor);
+    if (b.end > busyStart) taken += b.end - busyStart;
     cursor = Math.max(cursor, b.end);
   }
-  return hours.end - hours.start - taken;
+  return hours.end - start - taken;
 }
 
 /** Open tasks' estimates added up, and how many open tasks carry none. */
@@ -94,4 +113,19 @@ export function capacityTone(planned: number, free: number): CapacityTone {
   if (planned <= free) return "ok";
   if (free === 0) return "danger";
   return planned > free * 1.25 ? "danger" : "warn";
+}
+
+/** The pieces of a day's forecast an over-commitment judgement needs; both `CapacityDTO` and
+ * `PlannerWeekDayDTO`'s capacity satisfy it. */
+export type CapacityForecast = { plannedMinutes: number; forecastMinutes: number | null; drift: number | null };
+
+/**
+ * The figure to judge a day's plan against: the forecast when there is one (spec §4.2 — once a
+ * forecast exists it is the figure that counts), the plan itself when there is not (drift below
+ * `DRIFT_MIN_PAIRS` still deserves an honest comparison, not silence — see the capacity line's
+ * overrun sentence). Shared by every place that judges overcommitment, so a bar and a sentence
+ * reading the same day can never disagree about which number is being judged.
+ */
+export function overBasis(capacity: CapacityForecast): number {
+  return capacity.drift !== null && capacity.forecastMinutes !== null ? capacity.forecastMinutes : capacity.plannedMinutes;
 }

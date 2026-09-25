@@ -18,7 +18,7 @@ const TODAY = "2026-09-23";
 let id = 1;
 const task = (title: string, dueDate: string | null = null): TaskDTO => ({
   id: id++, title, notes: "", status: "open", priority: "normal", dueDate, containerId: null, sourceItemId: null, completedAt: null,
-  sortOrder: 0, estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z",
+  sortOrder: 0, estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, createdAt: "2026-09-22T09:00:00.000Z", updatedAt: "2026-09-22T09:00:00.000Z",
 });
 const late = task("Late", "2026-09-20");
 const due = task("Due", TODAY);
@@ -31,7 +31,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     date: TODAY, plan: [], unfinishedYesterday: [left], meetings: [],
     calendar: { calendarsSeen: 1, permission: true },
     sources: { inbox: [], due: { overdue: [late], today: [due] }, projects: [PROJECT], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }

@@ -5,11 +5,13 @@ import { addDays, getHelperState, listMeetings, localDay } from "@/domain/activi
 import { listContainers } from "@/domain/containers";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
+import { estimateActualPairs } from "@/domain/focus";
 import { parseMeta } from "@/domain/items";
+import { driftFactor, forecastMinutes } from "@/lib/drift";
 import { serializeMeeting, serializePlanTasks, serializeTasks } from "./api";
 import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
-import { getWorkHours } from "./work-hours";
+import { getWorkHours, getWorkingDays, isWorkingDay } from "./work-hours";
 import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
@@ -48,16 +50,24 @@ export function plannerSources(db: DB, date: string, plannedIds: Set<number>, wi
  * One day of the Planner: the day's plan, what yesterday left open, the day's meetings, the
  * calendar's state, and every open task by where it lives for the picker to draw on. What is
  * due reaches the day through `sources.due`; the day itself lists none of it.
+ *
+ * `now` defaults to the real clock for every caller that doesn't care, and is threaded to
+ * `freeMinutes` rather than read inline, so a test (or a future caller in another timezone) can
+ * pin it instead of depending on the machine's own wall clock.
  */
-export function plannerDay(db: DB, date: string): PlannerDayDTO {
+export function plannerDay(db: DB, date: string, now: Date = new Date()): PlannerDayDTO {
   // Every task in the payload carries the day's own sessions and no others: this screen draws
   // one column, and a task's hours on any other day are another day's business.
   const window = dayWindow(date);
   const plan = serializePlanTasks(db, listPlan(db, date), window);
   const plannedIds = new Set(plan.map((t) => t.id));
   const workHours = getWorkHours(db);
+  const workingDays = getWorkingDays(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
   const { planned, unestimated } = plannedMinutes(plan);
+  // One query for the whole request, never one per day — see `plannerWeek`'s own single
+  // `driftFactor` call below, hoisted out of its per-day loop the same way.
+  const drift = driftFactor(estimateActualPairs(db));
   return {
     date,
     plan,
@@ -71,8 +81,15 @@ export function plannerDay(db: DB, date: string): PlannerDayDTO {
       plannedMinutes: planned,
       unestimated,
       workHours,
+      workingDays,
       blockedMinutes: blockedMinutes(plan, date),
       unplacedMinutes: unplacedMinutes(plan, date),
+      drift,
+      forecastMinutes: forecastMinutes(planned, drift),
+      // What is left between now and the end of the working day — distinct from `freeMinutes`
+      // above, which is the whole day's window and is what every existing reader of this field
+      // still gets.
+      leftTodayMinutes: freeMinutes(meetings, workHours, date, { now }),
     },
   };
 }
@@ -82,8 +99,14 @@ function dayWindow(date: string): { from: string; to: string } {
   return { from: date, to: addDays(date, 1) };
 }
 
-/** Seven days from `start`, each with its meetings and the tasks due on it. */
-export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
+/**
+ * Seven days from `start`, each with its meetings and the tasks due on it.
+ *
+ * `now` defaults to the real clock, the same as `plannerDay`, and is threaded to each working
+ * day's `leftTodayMinutes` the same way: a day already gone holds nothing, today holds what is
+ * left of it, and a day still ahead holds its whole window.
+ */
+export function plannerWeek(db: DB, start: string, now: Date = new Date()): PlannerWeekDTO {
   const end = addDays(start, 7);
   // The week's own seven days: a column can show nothing outside them.
   const window = { from: start, to: end };
@@ -97,16 +120,36 @@ export function plannerWeek(db: DB, start: string): PlannerWeekDTO {
   // The week's last day is the latest one a column can hold; anything later is not shown.
   const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }), window);
   const workHours = getWorkHours(db);
+  const workingDays = getWorkingDays(db);
+  // Drift is one scalar per person per request, never per day: one call here, beside the other
+  // once-per-week reads above, and every day below reads the same value rather than each
+  // re-measuring it.
+  const drift = driftFactor(estimateActualPairs(db));
   return {
     start,
+    drift,
     days: Array.from({ length: 7 }, (_, i) => addDays(start, i)).map((date) => {
       const meetings = byDay.get(date) ?? [];
-      const dayPlan = serializePlanTasks(db, listPlan(db, date), window);
+      const working = isWorkingDay(workingDays, date);
+      // A Saturday is not nine hours: a non-working day's capacity is reported as zero rather
+      // than the whole window it would otherwise claim, and the plan it would need to read to
+      // say so truthfully is never even fetched.
+      const dayPlan = working ? serializePlanTasks(db, listPlan(db, date), window) : [];
+      const planned = working ? plannedMinutes(dayPlan).planned : 0;
       return {
         date,
+        working,
         meetings,
         due: open.filter((t) => t.dueDate === date),
-        capacity: { freeMinutes: freeMinutes(meetings, workHours, date), plannedMinutes: plannedMinutes(dayPlan).planned, blockedMinutes: blockedMinutes(dayPlan, date) },
+        capacity: {
+          freeMinutes: working ? freeMinutes(meetings, workHours, date) : 0,
+          plannedMinutes: planned,
+          blockedMinutes: working ? blockedMinutes(dayPlan, date) : 0,
+          forecastMinutes: forecastMinutes(planned, drift),
+          // Same figure `plannerDay`'s `leftTodayMinutes` reports, honest about the clock: a
+          // day already gone is 0, today is what remains of it, a day ahead is the whole window.
+          leftTodayMinutes: working ? freeMinutes(meetings, workHours, date, { now }) : 0,
+        },
       };
     }),
   };

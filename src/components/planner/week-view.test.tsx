@@ -14,17 +14,32 @@ const TODAY = "2026-09-22";
 
 const task: TaskDTO = {
   id: 4, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: START, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 
 function week(): PlannerWeekDTO {
   return {
     start: START,
+    drift: null,
     days: Array.from({ length: 7 }, (_, i) => {
       const date = `2026-09-${String(21 + i).padStart(2, "0")}`;
       // Monday sits inside its hours; Tuesday is overbooked, so the two tones are both on screen.
       const plannedMinutes = date === START ? 75 : date === "2026-09-22" ? 600 : 0;
-      return { date, meetings: [], due: date === START ? [task] : [], capacity: { freeMinutes: 540, plannedMinutes, blockedMinutes: 0 } };
+      // 2026-09-21 is a Monday, so the first five days (Mon-Fri) are working days and the last
+      // two (Sat, Sun) are not — the payload zeroes a non-working day's capacity across the
+      // board, the same way the server does, but `WeekView` reads `working` directly rather
+      // than infer it from zeros.
+      const working = i < 5;
+      return {
+        date,
+        working,
+        meetings: [],
+        due: date === START ? [task] : [],
+        // `leftTodayMinutes` is what the column actually reads; it matches `freeMinutes` here
+        // because none of these fixtures is testing the clock — the case where they differ has
+        // its own test below.
+        capacity: { freeMinutes: working ? 540 : 0, plannedMinutes, blockedMinutes: 0, forecastMinutes: null, leftTodayMinutes: working ? 540 : 0 },
+      };
     }),
   };
 }
@@ -97,6 +112,83 @@ describe("WeekView", () => {
     mount();
     expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
     expect(within(column("Tue")).getByText("10h / 9h").className).toContain("text-warn");
+  });
+
+  // F1: the Day view's line and meter both judge a day by `overBasis` — the forecast when one
+  // exists, never the bare plan — and the Week was still colouring by the bare plan alone, so
+  // the same day could read calm here and overrun there. `capacityTone` reads whichever figure
+  // is truly bigger, so a low `plannedMinutes` with a `forecastMinutes` scaled past the window
+  // must colour by the forecast, not slip through as "fg-muted" on the strength of the plan.
+  it("colours a column by the forecast, not the bare plan, once the week has one (F1)", () => {
+    const w = week();
+    w.drift = 2;
+    // Monday: 75 planned (inside its 9h window) but a forecast of 700 (75 * drift-ish figure,
+    // set directly here) blows well past it — the bare plan alone would read calm.
+    w.days[0].capacity.forecastMinutes = 700;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    const mon = within(column("Mon")).getByText("1h 15m / 9h");
+    expect(mon.className).not.toContain("text-fg-muted");
+    expect(mon.className).toContain("text-danger");
+  });
+
+  it("still colours by the bare plan when the week has no drift to forecast with", () => {
+    const w = week();
+    w.drift = null;
+    w.days[0].capacity.forecastMinutes = 700; // never read: null drift means no forecast at all
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
+  });
+
+  it("shows a non-working day as a quiet gap: the date, and nothing about capacity", () => {
+    mount();
+    const sat = column("Sat");
+    // The date and weekday are still there.
+    expect(within(sat).getByText("26")).toBeTruthy();
+    expect(within(sat).getByText("Sat")).toBeTruthy();
+    // Nothing about capacity: not a figure, not "0h", not a blocked dot.
+    expect(within(sat).queryByText(/\/ /)).toBeNull();
+    expect(within(sat).queryByText(/0h/)).toBeNull();
+    expect(within(sat).queryByRole("img", { name: /blocked/ })).toBeNull();
+    // F6: a non-working day with nothing on it is a quiet gap, not a card that still finds
+    // something to say — "Nothing yet" belongs to a working day nobody has planned.
+    expect(within(sat).queryByText("Nothing yet")).toBeNull();
+  });
+
+  it("says nothing yet on a working day with no meetings and nothing due", () => {
+    mount();
+    // Wednesday: working, no meetings, no due tasks.
+    expect(within(column("Wed")).getByText("Nothing yet")).toBeTruthy();
+  });
+
+  it("keeps the blocked dot off a non-working day even when it has blocked minutes", () => {
+    const w = week();
+    w.days[5].capacity.blockedMinutes = 80;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Sat")).queryByRole("img", { name: /blocked/ })).toBeNull();
+  });
+
+  it("reads today's own leftTodayMinutes, not the whole-window freeMinutes", () => {
+    // Tuesday (today) has a nine-hour window, but only 2h of it is left — the figure the
+    // column shows is the one that knows what time it is, not the one that never asks.
+    const w = week();
+    w.days[1].capacity.leftTodayMinutes = 120;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Tue")).getByText("10h / 2h")).toBeTruthy();
+    expect(within(column("Tue")).queryByText(/9h/)).toBeNull();
+  });
+
+  it("reads a past day's whole window, not its zeroed-out leftTodayMinutes (N2)", () => {
+    // Monday is before today (Tuesday): the server reports its leftTodayMinutes as 0, since
+    // "time left" is a live figure about now and Monday's now is long gone. A past week column
+    // is a different question — what was planned against what the day had — and Monday
+    // genuinely had nine hours, so the column reads `freeMinutes`, not a zero that would paint
+    // every past working day red.
+    const w = week();
+    w.days[0].capacity.leftTodayMinutes = 0;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Mon")).getByText("1h 15m / 9h")).toBeTruthy();
+    expect(within(column("Mon")).queryByText(/0m/)).toBeNull();
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).not.toContain("text-danger");
   });
 
   it("plans from the week on screen rather than from today", () => {

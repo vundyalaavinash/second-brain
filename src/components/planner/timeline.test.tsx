@@ -45,6 +45,7 @@ const blocked: PlanTaskDTO = {
   blocks: [{ id: 1, taskId: 12, startsAt: `${DATE}T10:30:00`, minutes: 45 }],
   goals: [],
   spentMinutes: 0,
+  likeThisMinutes: null,
   completedAt: null,
   sortOrder: 0,
   createdAt: "",

@@ -13,7 +13,7 @@ const TODAY = "2026-09-22";
 
 const base: TaskDTO = {
   id: 1, title: "Draft email", notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+  estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
 };
 const planned: PlanTaskDTO = { ...base, id: 2, title: "Write the brief", planId: 9, sortOrder: 0 };
 const a: TaskDTO = { ...base, id: 3, title: "First thing" };
@@ -28,7 +28,7 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
     meetings: [],
     calendar: { calendarsSeen: 2, permission: true },
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [{ container: { id: 10, name: "Launch", slug: "launch", kind: "project" }, tasks: [c] }], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }
@@ -136,11 +136,32 @@ describe("PlanPane", () => {
   it("fills the capacity bar and turns it red well past the free time", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     const { container } = render(
-      <PlanPane day={day({ capacity: { freeMinutes: 540, plannedMinutes: 700, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0 } })} today={TODAY} onRefresh={vi.fn()} />,
+      <PlanPane day={day({ capacity: { freeMinutes: 540, plannedMinutes: 700, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 } })} today={TODAY} onRefresh={vi.fn()} />,
     );
     const fill = container.querySelector(".bg-danger") as HTMLElement;
     expect(fill).toBeTruthy();
     // Past the free time the bar stops at full rather than running off the track.
+    expect(fill.style.width).toBe("100%");
+  });
+
+  it("fills the bar against the same figure the capacity line judges the day by, not the bare plan", () => {
+    // Drift 2 turns 100 planned minutes into a 200-minute forecast; 120 minutes are left today.
+    // The bar has to read that as over — the forecast is what the line's own sentence fires on
+    // — not as calm because the *plan* alone (100) still fits inside 120.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const { container } = render(
+      <PlanPane
+        day={day({
+          capacity: { freeMinutes: 540, plannedMinutes: 100, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: 2, forecastMinutes: 200, leftTodayMinutes: 120 },
+        })}
+        today={TODAY}
+        onRefresh={vi.fn()}
+      />,
+    );
+    const fill = container.querySelector(".bg-danger") as HTMLElement;
+    expect(fill).toBeTruthy();
+    // 200 of 120 runs off the track; the bar stops at full rather than reading 83% (the plan's
+    // own share of 120) or 18.5% (the old bug's share of the whole 540-minute window).
     expect(fill.style.width).toBe("100%");
   });
 
@@ -149,7 +170,7 @@ describe("PlanPane", () => {
     // Three blocks nobody estimated: 75 minutes of a 300-minute day, and not one of them
     // counted in `plannedMinutes`, which is what the segment used to be measured against.
     const { container } = render(
-      <PlanPane day={day({ capacity: { freeMinutes: 300, plannedMinutes: 0, unestimated: 3, workHours: "09:00-14:00", blockedMinutes: 75, unplacedMinutes: 0 } })} today={TODAY} onRefresh={vi.fn()} />,
+      <PlanPane day={day({ capacity: { freeMinutes: 300, plannedMinutes: 0, unestimated: 3, workHours: "09:00-14:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 75, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 300 } })} today={TODAY} onRefresh={vi.fn()} />,
     );
     const blocked = container.querySelector(".bg-violet-bright") as HTMLElement;
     expect(blocked).toBeTruthy();

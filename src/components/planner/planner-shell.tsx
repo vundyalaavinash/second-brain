@@ -154,6 +154,21 @@ export function PlannerShell(props: Props) {
     [refreshDay],
   );
 
+  // Same round trip as `saveHours`, for the days the hours apply to — a Week refresh too, since
+  // toggling a day off (or back on) changes which columns the Week gates to a quiet gap.
+  const saveWorkingDays = useCallback(
+    (workingDays: number[]) => {
+      void (async () => {
+        const res = await fetch("/api/settings/planner", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ workingDays }) });
+        if (res.ok) {
+          refreshDay();
+          refreshWeek();
+        } else window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: "Could not save the working days" } }));
+      })();
+    },
+    [refreshDay, refreshWeek],
+  );
+
   const calendar: PlannerCalendarDTO | null = day?.calendar ?? meetings?.calendar ?? null;
   // Meetings is not navigated by date, so it keeps the header's numeral and drops the arrows.
   const meetingCounts = meetings && {
@@ -171,13 +186,12 @@ export function PlannerShell(props: Props) {
           unit="day"
           summary={
             // The figures `homePayload` reckons, so `/` and `/planner` never read different
-            // numbers for the same day: a finished row is no longer planned, and a declined or
-            // all-day meeting takes none of the hours.
+            // numbers for the same day: a declined or all-day meeting takes none of the hours.
             <CapacityLine
               capacity={day.capacity}
-              planned={day.plan.filter((t) => t.status === "open").length}
               meetings={day.meetings.filter((m) => !m.allDay && m.status !== "declined").length}
               onHours={saveHours}
+              onWorkingDays={saveWorkingDays}
             />
           }
           prevHref={`/planner?date=${addDaysLocal(day.date, -1)}`}

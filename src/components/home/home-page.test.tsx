@@ -12,7 +12,7 @@ const DATE = "2026-09-22";
 
 const planTask = (id: number, title: string): PlanTaskDTO => ({
   id, title, notes: "", status: "open", priority: "normal", dueDate: null, containerId: null, sourceItemId: null,
-  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
+  estimateMinutes: 60, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0, likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "", planId: id,
 });
 
 function payload(over: Partial<HomeDTO> = {}): HomeDTO {
@@ -27,7 +27,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
       meetings: [],
       calendar: { calendarsSeen: 2, permission: true },
       sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
-      capacity: { freeMinutes: 540, plannedMinutes: 60, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 60 },
+      capacity: { freeMinutes: 540, plannedMinutes: 60, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 60, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     },
     counts: { planned: 1, meetings: 0, inbox: 2 },
     now: null,

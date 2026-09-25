@@ -31,6 +31,38 @@ describe("capacity", () => {
     expect(freeMinutes([{ ...m("10:00", "11:00"), startsAt: "2026-09-24T10:00:00", endsAt: "2026-09-24T11:00:00" }], "09:00-18:00", DAY)).toBe(540);
   });
 
+  it("with no `now`, answers the whole window — every existing caller keeps today's behaviour", () => {
+    expect(freeMinutes([m("10:00", "10:30")], "09:00-18:00", DAY)).toBe(510);
+    expect(freeMinutes([m("10:00", "10:30")], "09:00-18:00", DAY, {})).toBe(510);
+  });
+
+  it("with `now`, a day already gone holds nothing", () => {
+    const tomorrow = new Date(2026, 8, 24, 10, 0); // local 10:00 the day after DAY
+    expect(freeMinutes([], "09:00-18:00", DAY, { now: tomorrow })).toBe(0);
+  });
+
+  it("with `now`, a future day is the whole window", () => {
+    const now = new Date(2026, 8, 23, 10, 0); // local 10:00 on DAY itself
+    expect(freeMinutes([], "09:00-18:00", "2026-09-24", { now })).toBe(540);
+  });
+
+  it("with `now`, today's window starts at the later of the hours' start and the current minute", () => {
+    const midMorning = new Date(2026, 8, 23, 10, 30);
+    expect(freeMinutes([], "09:00-18:00", DAY, { now: midMorning })).toBe(450); // 10:30 to 18:00
+    const beforeHoursStart = new Date(2026, 8, 23, 7, 0);
+    expect(freeMinutes([], "09:00-18:00", DAY, { now: beforeHoursStart })).toBe(540); // hours' own start wins
+  });
+
+  it("with `now`, a meeting still costs only the part after the current minute", () => {
+    const midMorning = new Date(2026, 8, 23, 10, 30);
+    expect(freeMinutes([m("10:00", "11:00")], "09:00-18:00", DAY, { now: midMorning })).toBe(420); // 10:30-11:00 taken, then to 18:00
+  });
+
+  it("with `now`, after the working day ends is zero", () => {
+    const afterHours = new Date(2026, 8, 23, 19, 0);
+    expect(freeMinutes([], "09:00-18:00", DAY, { now: afterHours })).toBe(0);
+  });
+
   it("sums open estimates and counts the unestimated", () => {
     expect(
       plannedMinutes([

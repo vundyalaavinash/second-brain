@@ -260,4 +260,27 @@ describe("homePayload", () => {
       expect(homePayload(t.db, friday).review).toEqual({ due: false });
     });
   });
+
+  describe("the payload describes one moment", () => {
+    it("measures the day's remaining time against the clock it was given, not the wall clock", () => {
+      // The whole payload is a picture of `now`. `plannerDay` has its own `now` defaulting to
+      // the real clock, so leaving it out shipped a `generatedAt` from the argument beside a
+      // capacity from whenever the request happened to run.
+      const morning = new Date(2026, 8, 22, 10, 30, 0);
+      const evening = new Date(2026, 8, 22, 17, 30, 0);
+      const hours = homePayload(t.db, morning).day.capacity.leftTodayMinutes;
+      const later = homePayload(t.db, evening).day.capacity.leftTodayMinutes;
+      // 09:00-18:00 by default: seven and a half hours left at half past ten, half an hour at
+      // half past five. The point is that the two differ and both follow the argument.
+      expect(hours).toBe(450);
+      expect(later).toBe(30);
+    });
+
+    it("reads a future day as the whole working window whatever time it is now", () => {
+      const lateTonight = new Date(2026, 8, 22, 23, 0, 0);
+      const home = homePayload(t.db, lateTonight);
+      // Today is over, so today's own figure is nothing left.
+      expect(home.day.capacity.leftTodayMinutes).toBe(0);
+    });
+  });
 });

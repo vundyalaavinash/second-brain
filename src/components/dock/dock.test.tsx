@@ -143,7 +143,10 @@ describe("Dock", () => {
     fireEvent.change(field, { target: { value: "buy mil" } });
     fireEvent.keyDown(field, { key: "Escape" });
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy());
-    expect(document.activeElement).toBe(capture());
+    // The nav coming back and focus landing on the capture button are two different ticks, so
+    // this waits rather than asserting straight after the one above: under load the nav wins
+    // that race and the focus assertion fails for a reason that has nothing to do with the dock.
+    await waitFor(() => expect(document.activeElement).toBe(capture()));
     act(() => {
       window.dispatchEvent(new Event("sb:prompt-focus"));
     });
@@ -157,7 +160,8 @@ describe("Dock", () => {
     fireEvent.change(field, { target: { value: "Buy milk" } });
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy());
-    expect(document.activeElement).toBe(capture());
+    // Same two-tick race as above: the capture also has to land before the draft is spent.
+    await waitFor(() => expect(document.activeElement).toBe(capture()));
     const reopened = await openBar();
     expect(reopened.value).toBe("");
   });

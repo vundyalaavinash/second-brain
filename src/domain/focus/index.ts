@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { focusRuns, tasks, type FocusRun, type TaskBlock } from "@/db/schema";
 import type { FocusOutcome } from "@/db/enums";
@@ -7,6 +7,7 @@ import { getBlock } from "@/domain/blocks";
 import { getSetting, setSetting } from "@/domain/settings";
 import { addDays, dayBounds, localDay } from "@/domain/activity";
 import { getDay, topApps } from "@/domain/activity/report";
+import { DRIFT_WINDOW, type Pair } from "@/lib/drift";
 
 export class FocusError extends Error {
   constructor(
@@ -226,6 +227,145 @@ export function focusMinutesByTask(db: DB, taskIds: number[]): Map<number, numbe
     .all();
   for (const row of rows) out.set(row.taskId, (out.get(row.taskId) ?? 0) + (row.minutes ?? 0));
   return out;
+}
+
+/**
+ * Estimate against actual, one pair per finished task, for `driftFactor` to read the person's
+ * own history from — the outside view design §4.1 wants instead of the imagined multiple. Only
+ * a `done` task with an estimate on it and at least one run that booked minutes counts; its
+ * actual is the sum of every run's booked minutes, never just the last one, so a task worked in
+ * several sessions is not read as finished faster than it was. One grouped query, newest
+ * completion first, so a caller wanting the most recent `limit` pairs never has to query per
+ * task to get them.
+ */
+export function estimateActualPairs(db: DB, limit = DRIFT_WINDOW): Pair[] {
+  const rows = db
+    .select({ estimateMinutes: tasks.estimateMinutes, actualMinutes: sql<number>`sum(${focusRuns.actualMinutes})` })
+    .from(tasks)
+    .innerJoin(focusRuns, eq(focusRuns.taskId, tasks.id))
+    .where(
+      and(
+        eq(tasks.status, "done"),
+        isNotNull(tasks.estimateMinutes),
+        gt(tasks.estimateMinutes, 0),
+        isNotNull(focusRuns.actualMinutes),
+        gt(focusRuns.actualMinutes, 0),
+        ne(focusRuns.outcome, "abandoned"),
+      ),
+    )
+    .groupBy(tasks.id)
+    .orderBy(desc(tasks.completedAt))
+    .limit(limit)
+    .all();
+  return rows.map((row) => ({ estimateMinutes: row.estimateMinutes!, actualMinutes: Number(row.actualMinutes) }));
+}
+
+/** How many word-sharing, done-and-booked tasks a "like this" figure needs before it is shown —
+ * below this a match is a coincidence, not a pattern, and a wrong hint in front of an
+ * unestimated task is worse than none (design's own words). */
+export const LIKE_THIS_MIN_MATCHES = 3;
+/** How many of a container's newest matches feed the median — recent work says more about what
+ * a task takes now than one finished a year ago. */
+const LIKE_THIS_LIMIT = 20;
+/** A title word shorter than this — "the", "fix", "for" — is too common to mean two tasks are
+ * alike; matching on it would turn nearly every pair in a container into a "similar" one. */
+const LIKE_THIS_MIN_WORD_LENGTH = 4;
+
+/** A title's words, lowercased and long enough to matter, deduplicated — the set two titles are
+ * compared through. */
+function significantWords(title: string): Set<string> {
+  const words = title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return new Set(words.filter((w) => w.length >= LIKE_THIS_MIN_WORD_LENGTH));
+}
+
+function shareWord(a: Set<string>, b: Set<string>): boolean {
+  for (const w of a) if (b.has(w)) return true;
+  return false;
+}
+
+/** The middle of a sorted list of minutes — one runaway session says something about that task,
+ * not about the next one shaped like it. */
+function median(sorted: number[]): number {
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Per task id, what finished work like it actually took: the median booked minutes of every
+ * `done` task in the same container whose title shares a meaningful word (four letters or more,
+ * lowercased) with this one — newest completion first, each task's own matches capped at
+ * `limit`. Null below `LIKE_THIS_MIN_MATCHES` matches, or with no container to match against at
+ * all: deliberately dull matching, because anything cleverer is a guess dressed as an insight
+ * (spec).
+ *
+ * One query for every candidate in every container the whole list touches — the same shape
+ * `focusMinutesByTask` and `goalRefsByContainer` already batch — with the per-task matching, the
+ * word-sharing filter and the `limit` slice, done in memory afterward, so a fifty-task list
+ * costs this one query, never one per row. The query itself carries no `.limit()` and is not
+ * capped — it reads every finished, booked task across every container the list touches, because
+ * which twenty are newest differs per task, so the cap has to be applied per task in memory
+ * rather than on the row set the query returns (honest-forecast review F7).
+ */
+export function likeThisMinutesByTask(
+  db: DB,
+  list: { id: number; title: string; containerId: number | null }[],
+  limit = LIKE_THIS_LIMIT,
+): Map<number, number | null> {
+  const out = new Map<number, number | null>(list.map((t) => [t.id, null]));
+  const containerIds = [...new Set(list.map((t) => t.containerId).filter((id): id is number => id !== null))];
+  if (containerIds.length === 0) return out;
+
+  const rows = db
+    .select({ taskId: tasks.id, containerId: tasks.containerId, title: tasks.title, actualMinutes: sql<number>`sum(${focusRuns.actualMinutes})` })
+    .from(tasks)
+    .innerJoin(focusRuns, eq(focusRuns.taskId, tasks.id))
+    .where(
+      and(
+        inArray(tasks.containerId, containerIds),
+        eq(tasks.status, "done"),
+        isNotNull(focusRuns.actualMinutes),
+        gt(focusRuns.actualMinutes, 0),
+        ne(focusRuns.outcome, "abandoned"),
+      ),
+    )
+    .groupBy(tasks.id)
+    .orderBy(desc(tasks.completedAt))
+    .all();
+
+  const byContainer = new Map<number, { taskId: number; title: string; actualMinutes: number }[]>();
+  for (const row of rows) {
+    const containerId = row.containerId!;
+    const entry = { taskId: row.taskId, title: row.title, actualMinutes: Number(row.actualMinutes) };
+    const bucket = byContainer.get(containerId);
+    if (bucket) bucket.push(entry);
+    else byContainer.set(containerId, [entry]);
+  }
+
+  for (const t of list) {
+    if (t.containerId === null) continue;
+    const candidates = byContainer.get(t.containerId);
+    if (!candidates) continue;
+    const words = significantWords(t.title);
+    if (words.size === 0) continue;
+    const matches = candidates
+      .filter((c) => c.taskId !== t.id && shareWord(words, significantWords(c.title)))
+      .slice(0, limit)
+      .map((c) => c.actualMinutes)
+      .sort((a, b) => a - b);
+    if (matches.length < LIKE_THIS_MIN_MATCHES) continue;
+    out.set(t.id, Math.round(median(matches)));
+  }
+  return out;
+}
+
+/**
+ * The single-task read `likeThisMinutesByTask` batches — a convenience for a caller holding one
+ * task, such as a test or a one-off lookup. Never call this from a loop over a list: that would
+ * turn the one query above back into one per row, exactly the shape three reviews on this
+ * branch have flagged.
+ */
+export function similarActualMinutes(db: DB, task: { id: number; title: string; containerId: number | null }, limit = LIKE_THIS_LIMIT): number | null {
+  return likeThisMinutesByTask(db, [task], limit).get(task.id) ?? null;
 }
 
 export interface FocusSummary {
