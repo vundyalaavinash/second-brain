@@ -1,12 +1,22 @@
 /**
  * Covers the bash functions `cmd_restore` (`scripts/brain.sh`) is built from -- the highest
- * consequence code in this slice, and the one the review found had no automated coverage at all.
- * `cmd_restore` itself can't be driven here (it calls `cmd_stop`/`cmd_start`, which talk to the
- * real, fixed launchd label regardless of `SB_DATA_DIR`), but its actual file-moving logic is
+ * consequence code in this slice, and the one the first review found had no automated coverage at
+ * all. `cmd_restore` itself can't be driven here (it calls `cmd_stop`/`cmd_start`, which talk to
+ * the real, fixed launchd label regardless of `SB_DATA_DIR`), but its actual file-moving logic is
  * extracted into standalone functions -- `resolve_backup_file`, `move_db_aside`, `copy_db_set`,
- * `restore_attachments_for_date` -- exactly so a test can source `brain.sh` and call each one
+ * `restore_attachments_for_date`, and (added for the re-review's N1) `rollback_db_if_moved` /
+ * `rollback_attachments_if_moved` -- exactly so a test can source `brain.sh` and call each one
  * directly against a real temporary directory, real bash (not this repo's default zsh, whose
  * `set -e`/`[[ =~ ]]` semantics differ), with only real file operations to observe.
+ *
+ * The `rollback_*_if_moved` describe blocks below are the direct regression coverage for N1: the
+ * re-review found that the rollback used to decide what to undo by asking `[ -f "$replaced" ]`,
+ * so a file merely *sitting* at that path -- exactly what a stamp collision leaves behind, the
+ * very thing `move_db_aside`'s own refusal is supposed to guard against -- was indistinguishable
+ * from "this run moved something there", and the old handler would delete the live database and
+ * install the stranger in its place. These functions now take the recorded outcome (`moved`) as
+ * an explicit argument rather than inferring it, so the planted-collision case below is the test
+ * that would have caught N1 directly.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -145,7 +155,10 @@ describe("restore_attachments_for_date", () => {
 
     expect(status).toBe(0);
     const replacedAt = stdout.trim();
-    expect(replacedAt).toBe(path.join(dir, "backups/attachments-replaced-STAMP1"));
+    // N2: the replaced directory lands in the *data* directory, not the backups directory -- the
+    // nightly job's own attachments prune owns every `attachments-*` name in the backups
+    // directory (see backup.ts's ATTACHMENTS_NAME_RE and the N2 regression test in backup.test.ts).
+    expect(replacedAt).toBe(path.join(dir, "data/attachments-replaced-STAMP1"));
     // Nothing was deleted: the previous attachments exist, in full, at the printed path.
     expect(fs.readFileSync(path.join(replacedAt, "current-only.txt"), "utf8")).toBe("current, about to be moved aside");
     // The new attachments are the dated backup's.
@@ -217,5 +230,104 @@ describe("resolve_backup_file", () => {
     const { status, stderr } = runBash(`resolve_backup_file "brain-2099-01-01.db" "${dir}"`);
     expect(status).not.toBe(0);
     expect(stderr).toContain("no such backup");
+  });
+});
+
+describe("rollback_db_if_moved", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-rollback-db-"));
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("N1: does not touch the live database when moved is 0, even though a file sits at the replaced path", () => {
+    // This is the exact shape of N1: a file exists at $replaced_path -- planted here the same way
+    // a stamp collision leaves one behind after move_db_aside refuses and moves nothing -- but
+    // `moved` (the *recorded* outcome, not a filesystem check) says this run never put it there.
+    const liveDb = path.join(dir, "brain.db");
+    fs.writeFileSync(liveDb, "LIVE-ORIGINAL, never touched by this run");
+    fs.writeFileSync(`${liveDb}-wal`, "live wal, never touched");
+    const replacedPath = path.join(dir, "brain-replaced-COLLISION.db");
+    fs.writeFileSync(replacedPath, "A STRANGER, unrelated to this run");
+
+    const { status, stdout } = runBash(`rollback_db_if_moved "${liveDb}" "${replacedPath}" "0"`);
+
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe("ok");
+    // The live database is exactly as it was -- not deleted, not overwritten by the stranger.
+    expect(fs.readFileSync(liveDb, "utf8")).toBe("LIVE-ORIGINAL, never touched by this run");
+    expect(fs.readFileSync(`${liveDb}-wal`, "utf8")).toBe("live wal, never touched");
+    // The stranger at the collision path is untouched too -- nothing here is destructive.
+    expect(fs.readFileSync(replacedPath, "utf8")).toBe("A STRANGER, unrelated to this run");
+  });
+
+  it("puts the database (and its sidecars) back when moved is 1", () => {
+    const liveDb = path.join(dir, "brain.db");
+    fs.writeFileSync(liveDb, "half-restored, about to be replaced");
+    const replacedPath = path.join(dir, "brain-replaced-STAMP.db");
+    fs.writeFileSync(replacedPath, "ORIGINAL");
+    fs.writeFileSync(`${replacedPath}-wal`, "ORIGINAL-WAL");
+
+    const { status, stdout } = runBash(`rollback_db_if_moved "${liveDb}" "${replacedPath}" "1"`);
+
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe("ok");
+    expect(fs.readFileSync(liveDb, "utf8")).toBe("ORIGINAL");
+    expect(fs.readFileSync(`${liveDb}-wal`, "utf8")).toBe("ORIGINAL-WAL");
+    expect(fs.existsSync(replacedPath)).toBe(false);
+  });
+
+  it("N3: reports failed, rather than asserting success, when the move-back itself cannot complete", () => {
+    const liveDbDir = path.join(dir, "readonly-dest");
+    fs.mkdirSync(liveDbDir);
+    const liveDb = path.join(liveDbDir, "brain.db");
+    const replacedPath = path.join(dir, "brain-replaced-STAMP.db");
+    fs.writeFileSync(replacedPath, "ORIGINAL");
+    fs.chmodSync(liveDbDir, 0o555); // no write permission: mv into this directory must fail
+
+    try {
+      const { status, stdout } = runBash(`rollback_db_if_moved "${liveDb}" "${replacedPath}" "1"`);
+      expect(status).toBe(0); // the function itself does not fail the script -- it reports
+      expect(stdout.trim()).toBe("failed");
+      // The source is left exactly where it was: a failed rollback must not lose the one copy
+      // being moved by also destroying it mid-move.
+      expect(fs.readFileSync(replacedPath, "utf8")).toBe("ORIGINAL");
+    } finally {
+      fs.chmodSync(liveDbDir, 0o755); // restore, so afterEach's rmSync can clean up
+    }
+  });
+});
+
+describe("rollback_attachments_if_moved", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-rollback-attach-"));
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("does nothing and reports ok when there is no recorded replaced path", () => {
+    fs.mkdirSync(path.join(dir, "attachments"));
+    fs.writeFileSync(path.join(dir, "attachments/current.txt"), "current, not moved by this run");
+
+    const { status, stdout } = runBash(`rollback_attachments_if_moved "${dir}" ""`);
+
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe("ok");
+    expect(fs.readFileSync(path.join(dir, "attachments/current.txt"), "utf8")).toBe("current, not moved by this run");
+  });
+
+  it("puts the original attachments back when a replaced path is recorded", () => {
+    fs.mkdirSync(path.join(dir, "attachments"));
+    fs.writeFileSync(path.join(dir, "attachments/new-from-backup.txt"), "installed by this run");
+    const replacedPath = path.join(dir, "attachments-replaced-STAMP");
+    fs.mkdirSync(replacedPath);
+    fs.writeFileSync(path.join(replacedPath, "original.txt"), "the real, pre-restore attachments");
+
+    const { status, stdout } = runBash(`rollback_attachments_if_moved "${dir}" "${replacedPath}"`);
+
+    expect(status).toBe(0);
+    expect(stdout.trim()).toBe("ok");
+    expect(fs.readFileSync(path.join(dir, "attachments/original.txt"), "utf8")).toBe("the real, pre-restore attachments");
+    expect(fs.existsSync(path.join(dir, "attachments/new-from-backup.txt"))).toBe(false);
   });
 });

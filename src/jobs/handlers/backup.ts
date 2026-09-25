@@ -29,7 +29,18 @@ const ATTACHMENTS_KEEP = 7;
  * the shape of the data changed, which a dated backup cannot reconstruct, so they get their own,
  * longer-lived retention (`pruneSnapshots`) and this prune must not be able to see them at all. */
 const NAME_RE = /^brain-(\d{4}-\d{2}-\d{2})\.db$/;
-const ATTACHMENTS_NAME_RE = /^attachments-.*$/;
+/** Anchored to exactly `attachments-<date>` -- the shape `attachmentsBackupPath` writes -- not
+ * `^attachments-.*$`, which also matched `attachments-replaced-<stamp>` (what Task 3's restore
+ * moves the live attachments aside to before installing a dated backup). That name sorts *above*
+ * every real dated name (`r` > any digit), so the old, loose pattern treated every replaced
+ * directory as the newest attachments backup and pruned every genuine one out from under it --
+ * reproduced: eight replaced directories and three genuine ones in, seven of the eight replaced
+ * ones survived and all three genuine ones, including the one this same run had just written,
+ * were deleted. Restore now writes replaced attachments under the data directory, not here, so
+ * this alone already closes that path -- this anchor is the second, independent half: whatever
+ * name a future writer invents for something that is not a dated backup, this can't mistake it
+ * for one just because it starts with "attachments-". */
+const ATTACHMENTS_NAME_RE = /^attachments-\d{4}-\d{2}-\d{2}$/;
 /** `pre-<tag>-<stamp>.db`, where `<stamp>` is `snapshotStamp` in `db/safety.ts` (the ISO instant
  * with `:` and `.` replaced by `-`). Anchored so a tag containing a hyphen still parses: the stamp
  * half has a fixed, recognizable shape and nothing else in this design produces one. */

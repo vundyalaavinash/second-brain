@@ -57,12 +57,24 @@ Lists what is available and stops — it never guesses. Find yesterday's `brain-
 Run this from a real terminal, not over a script or a closed ssh session — it asks for a typed
 `restore` before it does anything and refuses to run without a way to type it. In order: verifies
 the file, stops the server, asks for that confirmation, moves the current database aside to
-`brain-replaced-<timestamp>.db` and the current attachments to `attachments-replaced-<timestamp>`
-(neither is ever deleted), copies the chosen backup and that date's attachments into place if
-there are any, and starts the server back up. If anything goes wrong partway through, it puts the
-original database and attachments straight back and restarts the server itself, rather than
-leaving the app down with half a restore on disk. It prints the replaced database's path last, in
-a form you can paste back if this was the wrong file.
+`backups/brain-replaced-<timestamp>.db` and the current attachments to
+`attachments-replaced-<timestamp>` beside the live `attachments/` folder (neither is ever
+deleted), copies the chosen backup and that date's attachments into place if there are any, and
+starts the server back up. If anything goes wrong partway through — even a Ctrl-C at the
+confirmation prompt — it puts back only what it recorded actually moving, restarts the server, and
+says so; it never guesses from what it finds lying around. It prints the replaced database's path
+last, in a form you can paste back if this was the wrong file.
+
+While one is running it holds a lock at `$SB_DATA_DIR/.restore.lock`, so a second `restore` refuses
+rather than racing the first — that refusal happens before anything is touched, so it is always
+safe to just try again once the first one has finished. If a restore is killed outright (the
+terminal closed, the machine lost power) the lock can be left behind and a later `restore` will
+refuse, naming the path; remove it by hand once you're sure nothing is still running:
+
+    rmdir "$SB_DATA_DIR/.restore.lock"
+
+A stale lock only ever blocks a *new* restore from starting — it has no bearing on the database or
+attachments themselves, so there is nothing else to recover before removing it.
 
 ## How do I check my backups are real?
 
@@ -90,9 +102,10 @@ Prints the data directory on its `data:` line. Inside it:
 | `backups/pre-<tag>-<stamp>.db` | A snapshot taken just before each migration |
 | `backups/attachments-<date>` | The attachments directory as of that night's backup |
 | `backups/brain-replaced-<timestamp>.db` | A database a restore moved aside, kept, never deleted |
-| `backups/attachments-replaced-<timestamp>` | Attachments a restore moved aside, kept, never deleted |
 | `attachments/` | The live attachments |
+| `attachments-replaced-<timestamp>` | Attachments a restore moved aside, kept, never deleted — beside `attachments/`, not inside `backups/`, so the nightly prune can never see or delete it |
 | `files/` | Uploaded files and meeting recordings — **not backed up**; nothing here is copied by the nightly job or touched by a restore |
+| `.restore.lock` | Held only while a restore is running; see "I want to go back to yesterday" above if one is left behind |
 | `logs/app.log` | The server log |
 
 Every one of those is on this machine. There is no copy anywhere else: a disk failure, a lost

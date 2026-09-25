@@ -126,6 +126,47 @@ describe("backup handler", () => {
     const attachmentsBackups = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^attachments-/.test(f)) : [];
     expect(attachmentsBackups).toEqual([]);
   });
+
+  it("N2: a stray attachments-replaced-* directory in the backups directory survives a real nightly run, and never crowds out a genuine dated backup", async () => {
+    // N2 from the re-review: `^attachments-.*$` also matched `attachments-replaced-<stamp>` --
+    // what restore moves the live attachments aside to -- and because "r" sorts above every digit,
+    // pruneOld's newest-N-by-name-sort treated every replaced directory as newer than any real
+    // dated one, so a real run deleted the genuine backups (including the one it had just written)
+    // and kept the replaced ones. Restore itself no longer writes into the backups directory (it
+    // writes under the data directory now), but this proves the handler is safe regardless of
+    // where such a name might come from -- eight replaced-shaped directories plus enough genuine
+    // dated ones to force real deletions, run through the real, unmocked handler.
+    const dir = backupsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    for (let n = 0; n < 8; n++) {
+      const replaced = path.join(dir, `attachments-replaced-2026-09-${String(10 + n).padStart(2, "0")}T00-00-00-000Z`);
+      fs.mkdirSync(replaced);
+      fs.writeFileSync(path.join(replaced, "marker.txt"), `replaced ${n}`);
+    }
+    for (let n = 1; n <= 10; n++) {
+      const dated = path.join(dir, `attachments-2026-08-${String(n).padStart(2, "0")}`);
+      fs.mkdirSync(dated);
+      fs.writeFileSync(path.join(dated, "marker.txt"), `dated ${n}`);
+    }
+
+    const item = createItem(t.db, { type: "note", title: "n" });
+    const bytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    saveAttachment(t.db, { itemId: item.id, filename: "shot.png", mime: "image/png", bytes });
+
+    const job = enqueueJob(t.db, "backup", {});
+    await createBackupHandler({ db: t.db })(job);
+
+    const after = fs.readdirSync(dir);
+    const survivingReplaced = after.filter((f) => f.startsWith("attachments-replaced-"));
+    const survivingDated = after.filter((f) => /^attachments-\d{4}-\d{2}-\d{2}$/.test(f));
+
+    // All eight replaced directories survive -- pruneOld can no longer see them at all.
+    expect(survivingReplaced).toHaveLength(8);
+    // Newest ATTACHMENTS_KEEP (7) dated directories survive by date, today's (just written) among them.
+    expect(survivingDated).toHaveLength(7);
+    expect(survivingDated).toContain(`attachments-${backupDateStamp()}`);
+    expect(survivingDated).not.toContain("attachments-2026-08-01"); // the oldest, correctly pruned
+  });
 });
 
 describe("pruneBackups", () => {
