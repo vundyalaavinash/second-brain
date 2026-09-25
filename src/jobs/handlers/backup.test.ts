@@ -8,8 +8,19 @@ import { activitySessions } from "@/db/schema";
 import { ingestHeartbeat } from "@/domain/activity";
 import { createItem } from "@/domain/items";
 import { saveAttachment, attachmentPath } from "@/domain/attachments";
-import * as safety from "@/db/safety";
-import { createBackupHandler, backupsDir, backupFilePath, backupDateStamp, pruneBackups, sweepSidecars, KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY } from "./backup";
+import { getLastDbCheck } from "@/db/safety";
+import {
+  createBackupHandler,
+  backupsDir,
+  backupFilePath,
+  backupDateStamp,
+  pruneBackups,
+  pruneSnapshots,
+  sweepSidecars,
+  KEEP_DAILY,
+  KEEP_WEEKLY,
+  KEEP_MONTHLY,
+} from "./backup";
 
 describe("backup handler", () => {
   let t: TestDb;
@@ -34,9 +45,10 @@ describe("backup handler", () => {
     } finally {
       backup.close();
     }
+    expect(getLastDbCheck()).toMatchObject({ ok: true, source: "backup" });
   });
 
-  it("deletes what it wrote when the file will not open, and says so", async () => {
+  it("deletes what it wrote when the file will not open, and says so, but still backs up attachments", async () => {
     const dir = backupsDir();
     fs.mkdirSync(dir, { recursive: true });
     // Twenty pre-existing daily backups: enough that if a prune ran despite the failure, the
@@ -45,8 +57,17 @@ describe("backup handler", () => {
     for (let n = 1; n <= 20; n++) {
       fs.writeFileSync(path.join(dir, `brain-2020-02-${String(n).padStart(2, "0")}.db`), "not a real db");
     }
+    const item = createItem(t.db, { type: "note", title: "n" });
+    const bytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const a = saveAttachment(t.db, { itemId: item.id, filename: "shot.png", mime: "image/png", bytes });
 
-    const verifySpy = vi.spyOn(safety, "verifyDatabaseFile").mockReturnValue({ ok: false, problems: ["simulated corruption"] });
+    // Make the write itself produce a corrupt file -- not a stub of verifyDatabaseFile, so this
+    // proves the real corruption-detection path, not just that the handler reacts to whatever a
+    // mock hands it.
+    const backupSpy = vi.spyOn(t.db.$client, "backup").mockImplementation(async (destination: string) => {
+      fs.writeFileSync(destination, "garbage bytes, not a real database");
+      return undefined as never;
+    });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const job = enqueueJob(t.db, "backup", {});
@@ -59,7 +80,13 @@ describe("backup handler", () => {
     const remaining = fs.readdirSync(dir).filter((f) => /^brain-.*\.db$/.test(f));
     expect(remaining).toHaveLength(20); // untouched -- no prune ran
 
-    verifySpy.mockRestore();
+    expect(getLastDbCheck()).toMatchObject({ ok: false, source: "backup" });
+
+    // A bad database copy is not a reason to also lose a night of attachments.
+    const copied = path.join(backupsDir(), `attachments-${backupDateStamp()}`, String(item.id), path.basename(attachmentPath(a)));
+    expect(fs.existsSync(copied)).toBe(true);
+
+    backupSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
@@ -102,11 +129,14 @@ describe("backup handler", () => {
 });
 
 describe("pruneBackups", () => {
+  let root: string;
   let dir: string;
   beforeEach(() => {
-    dir = makeTempDataDir();
+    root = makeTempDataDir();
+    dir = path.join(root, "backups");
+    fs.mkdirSync(dir, { recursive: true });
   });
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
   function seed(dates: string[]): void {
     for (const d of dates) fs.writeFileSync(path.join(dir, `brain-${d}.db`), "not a real db");
@@ -174,9 +204,10 @@ describe("pruneBackups", () => {
   it("never touches pre-*.db snapshots, no matter how old", () => {
     fs.writeFileSync(path.join(dir, "pre-0001_init-2019-01-01T00-00-00-000Z.db"), "a snapshot");
 
-    // Ninety consecutive days of brain-*.db: far more than any tier keeps, so pruning is
-    // guaranteed to delete some of them -- the exact scenario in which an over-broad pattern
-    // could reach a pre-*.db snapshot too, if one existed.
+    // Ninety consecutive days of brain-*.db, spanning three calendar months: enough that pruning
+    // is guaranteed to delete some of them (7 daily + 4 weekly + at most 3 monthly = 14 of 90
+    // survive) -- the exact scenario in which an over-broad pattern could reach a pre-*.db
+    // snapshot too, if one existed.
     const start = new Date("2025-01-01T00:00:00.000Z");
     const dates: string[] = [];
     for (let i = 0; i < 90; i++) dates.push(new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10));
@@ -185,8 +216,18 @@ describe("pruneBackups", () => {
     pruneBackups(dir);
 
     const remainingBrain = fs.readdirSync(dir).filter((f) => /^brain-.*\.db$/.test(f));
-    expect(remainingBrain.length).toBeLessThan(90); // proves deletions actually happened
+    expect(remainingBrain).toHaveLength(KEEP_DAILY + KEEP_WEEKLY + 3);
     expect(fs.existsSync(path.join(dir, "pre-0001_init-2019-01-01T00-00-00-000Z.db"))).toBe(true);
+  });
+
+  it("does not throw on a name that matches the pattern but is not a real calendar date, and never deletes it", () => {
+    const impossible = "brain-2026-99-99.db";
+    fs.writeFileSync(path.join(dir, impossible), "x");
+    // Ten real, older backups: enough that a real prune has something to do around the bad name.
+    for (let n = 1; n <= 10; n++) fs.writeFileSync(path.join(dir, `brain-2020-01-${String(n).padStart(2, "0")}.db`), "x");
+
+    expect(() => pruneBackups(dir)).not.toThrow();
+    expect(fs.existsSync(path.join(dir, impossible))).toBe(true);
   });
 
   it("does nothing when the directory does not exist", () => {
@@ -194,14 +235,130 @@ describe("pruneBackups", () => {
   });
 });
 
+describe("pruneSnapshots", () => {
+  let root: string;
+  let dir: string;
+  const NOW = new Date("2026-09-25T00:00:00.000Z");
+
+  beforeEach(() => {
+    root = makeTempDataDir();
+    dir = path.join(root, "backups");
+    fs.mkdirSync(dir, { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  function snapshotName(tag: string, date: Date): string {
+    return `pre-${tag}-${date.toISOString().replace(/[:.]/g, "-")}.db`;
+  }
+  function write(tag: string, date: Date): string {
+    const name = snapshotName(tag, date);
+    fs.writeFileSync(path.join(dir, name), "x");
+    return name;
+  }
+
+  it("keeps only the newest stamp for a retried or killed migration tag", () => {
+    const older = write("0016_commitments", new Date("2026-09-20T00:00:00.000Z"));
+    const newer = write("0016_commitments", new Date("2026-09-22T00:00:00.000Z"));
+
+    pruneSnapshots(dir, NOW);
+
+    expect(fs.existsSync(path.join(dir, newer))).toBe(true);
+    expect(fs.existsSync(path.join(dir, older))).toBe(false);
+  });
+
+  it("keeps every remaining tag within the last twelve months, not just the floor of ten", () => {
+    const names: string[] = [];
+    for (let i = 1; i <= 12; i++) {
+      names.push(write(`tag${i}`, new Date(NOW.getTime() - i * 20 * 86_400_000))); // up to ~240 days back
+    }
+
+    pruneSnapshots(dir, NOW);
+
+    for (const name of names) expect(fs.existsSync(path.join(dir, name))).toBe(true);
+  });
+
+  it("keeps only the newest snapshot per quarter once a tag is older than twelve months", () => {
+    // Ten recent tags fill the floor, so nothing below is rescued by it.
+    const recentNames: string[] = [];
+    for (let i = 1; i <= 10; i++) recentNames.push(write(`recent${i}`, new Date(NOW.getTime() - i * 10 * 86_400_000)));
+
+    // Two old tags in the same calendar quarter, well beyond both the floor and the twelve-month window.
+    const quarterNewer = write("old-newer", new Date("2020-02-01T00:00:00.000Z")); // Q1 2020
+    const quarterOlder = write("old-older", new Date("2020-01-01T00:00:00.000Z")); // Q1 2020
+
+    pruneSnapshots(dir, NOW);
+
+    for (const name of recentNames) expect(fs.existsSync(path.join(dir, name))).toBe(true);
+    expect(fs.existsSync(path.join(dir, quarterNewer))).toBe(true);
+    expect(fs.existsSync(path.join(dir, quarterOlder))).toBe(false);
+  });
+
+  it("floors at the newest ten tags even when the quarterly tier alone would have kept fewer", () => {
+    // Ten tags across three calendar quarters -- the quarterly tier alone would reduce these to
+    // three (one per quarter), but they are also literally the ten newest tags that exist, so the
+    // floor keeps all ten regardless.
+    const names: string[] = [
+      write("q1a", new Date("2015-01-05T00:00:00.000Z")),
+      write("q1b", new Date("2015-01-15T00:00:00.000Z")),
+      write("q1c", new Date("2015-02-05T00:00:00.000Z")),
+      write("q1d", new Date("2015-03-05T00:00:00.000Z")),
+      write("q2a", new Date("2015-04-05T00:00:00.000Z")),
+      write("q2b", new Date("2015-05-05T00:00:00.000Z")),
+      write("q2c", new Date("2015-06-05T00:00:00.000Z")),
+      write("q3a", new Date("2015-07-05T00:00:00.000Z")),
+      write("q3b", new Date("2015-08-05T00:00:00.000Z")),
+      write("q3c", new Date("2015-09-05T00:00:00.000Z")),
+    ];
+
+    pruneSnapshots(dir, NOW);
+
+    for (const name of names) expect(fs.existsSync(path.join(dir, name))).toBe(true);
+  });
+
+  it("never prunes a tag older than the oldest brain-*.db still held, even past the quarterly tier", () => {
+    // Ten recent tags fill the floor, so the pair below is unprotected by anything but rule 5.
+    for (let i = 1; i <= 10; i++) write(`recent${i}`, new Date(NOW.getTime() - i * 10 * 86_400_000));
+
+    // Same quarter, so without rule 5 the quarterly tier alone would keep only the newer of the
+    // two and drop the older one.
+    const protectedByRule5 = write("ancient-older", new Date("2010-01-01T00:00:00.000Z"));
+    const quarterWinner = write("ancient-newer", new Date("2010-02-01T00:00:00.000Z"));
+
+    // The oldest brain-*.db still held is newer than both ancient tags, so the older tag is the
+    // only artifact from before that boundary -- rule 5 must keep it regardless of the quarterly tier.
+    fs.writeFileSync(path.join(dir, "brain-2015-06-01.db"), "x");
+
+    pruneSnapshots(dir, NOW);
+
+    expect(fs.existsSync(path.join(dir, quarterWinner))).toBe(true); // via the quarterly tier
+    expect(fs.existsSync(path.join(dir, protectedByRule5))).toBe(true); // via rule 5, which overrides it
+  });
+
+  it("sweeps a pre-*.db.tmp left behind by a killed vacuum", () => {
+    const tmp = "pre-0016_commitments-2026-09-25T12-00-00-000Z.db.tmp";
+    fs.writeFileSync(path.join(dir, tmp), "partial vacuum output");
+
+    pruneSnapshots(dir, NOW);
+
+    expect(fs.existsSync(path.join(dir, tmp))).toBe(false);
+  });
+
+  it("does nothing when the directory does not exist", () => {
+    expect(() => pruneSnapshots(path.join(dir, "nope"), NOW)).not.toThrow();
+  });
+});
+
 describe("sweepSidecars", () => {
+  let root: string;
   let dir: string;
   beforeEach(() => {
-    dir = makeTempDataDir();
+    root = makeTempDataDir();
+    dir = path.join(root, "backups");
+    fs.mkdirSync(dir, { recursive: true });
   });
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  it("sweeps the -wal, -shm, and -journal files the old pattern could not see", () => {
+  it("sweeps the -wal, -shm, and -journal files of backups this job owns", () => {
     fs.writeFileSync(path.join(dir, "brain-2026-09-24.db"), "a real backup");
     fs.writeFileSync(path.join(dir, "brain-2026-09-24.db-wal"), "wal debris");
     fs.writeFileSync(path.join(dir, "brain-2026-09-24.db-shm"), "shm debris");
@@ -214,6 +371,49 @@ describe("sweepSidecars", () => {
     expect(fs.existsSync(path.join(dir, "brain-2026-09-24.db-shm"))).toBe(false);
     expect(fs.existsSync(path.join(dir, "pre-0001_init-stamp.db.tmp-journal"))).toBe(false);
     expect(fs.existsSync(path.join(dir, "brain-2026-09-24.db"))).toBe(true); // a legitimate .db is not touched
+  });
+
+  it("leaves a database a restore set aside alone, sidecars included", () => {
+    // brain-replaced-<stamp>.db is what Task 3's restore moves the current database aside to --
+    // it can legitimately carry committed, not-yet-checkpointed rows in its own -wal, and it is
+    // not a name this job wrote, so it must never match.
+    fs.writeFileSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db"), "a database a restore set aside");
+    fs.writeFileSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-wal"), "rows not yet checkpointed");
+    fs.writeFileSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-shm"), "shm");
+
+    expect(sweepSidecars(dir)).toBe(0);
+    expect(fs.existsSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-wal"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "brain-replaced-2026-09-25T00-00-00-000Z.db-shm"))).toBe(true);
+  });
+
+  it("leaves ordinary files alone even when their name happens to end in a swept suffix", () => {
+    fs.writeFileSync(path.join(dir, "meeting-2026-09-01-journal"), "somebody's notes");
+    fs.writeFileSync(path.join(dir, "my-shm"), "not a sidecar");
+    fs.writeFileSync(path.join(dir, "notes-wal-mart-receipt.db"), "merely contains the string wal");
+
+    expect(sweepSidecars(dir)).toBe(0);
+    expect(fs.existsSync(path.join(dir, "meeting-2026-09-01-journal"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "my-shm"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "notes-wal-mart-receipt.db"))).toBe(true);
+  });
+
+  it("refuses to sweep the data directory itself", () => {
+    // dir here IS the data directory (no "backups" subdirectory), which is where a live
+    // database's own -wal/-shm actually live.
+    const liveDir = root;
+    fs.writeFileSync(path.join(liveDir, "brain.db-wal"), "rows a live writer has not checkpointed yet");
+
+    expect(sweepSidecars(liveDir)).toBe(0);
+    expect(fs.existsSync(path.join(liveDir, "brain.db-wal"))).toBe(true);
+  });
+
+  it("does not throw on a directory whose name ends in a swept suffix, and does not touch it", () => {
+    const trap = path.join(dir, "attachments-2026-09-25-journal");
+    fs.mkdirSync(trap);
+    fs.writeFileSync(path.join(trap, "keepme.txt"), "x");
+
+    expect(() => sweepSidecars(dir)).not.toThrow();
+    expect(fs.existsSync(trap)).toBe(true);
   });
 
   it("touches nothing when there is nothing to sweep", () => {

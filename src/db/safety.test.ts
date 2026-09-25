@@ -5,9 +5,25 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { makeTestDb, makeTempDataDir, type TestDb } from "@/test/db";
 import { openDatabase } from "@/db/client";
 import { backupsDir } from "@/lib/paths";
+import { createItem, rechunkItem } from "@/domain/items";
+import { createFakeEmbedProvider } from "@/providers/embed/fake";
+import { createEmbedHandler } from "@/jobs/handlers/embed";
+import { enqueueJob } from "@/jobs/queue";
 import { verifyDatabaseFile, checkOpenDatabase, pendingMigrations, snapshotBeforeMigrate, SNAPSHOT_PREFIX } from "./safety";
 
 const FOLDER = path.join(process.cwd(), "drizzle");
+
+/** A real chunk with real text and a real vector, so the damaged-index tests below have an actual
+ * index to damage -- an empty `chunks` table short-circuits `virtualTableProblems` entirely (by
+ * design: no chunks is the owner's actual state today, and probing an empty index would be a
+ * false failure waiting to happen). */
+async function seedChunk(t: TestDb): Promise<void> {
+  const item = createItem(t.db, { type: "note", title: "T", body: "Tomatoes need full sun and regular water in the garden." });
+  rechunkItem(t.db, item.id);
+  const embed = createFakeEmbedProvider();
+  const handler = createEmbedHandler({ db: t.db, embed });
+  await handler(enqueueJob(t.db, "embed", { itemId: item.id }, item.id));
+}
 
 function journalTags(): string[] {
   const journal = JSON.parse(fs.readFileSync(path.join(FOLDER, "meta", "_journal.json"), "utf8")) as {
@@ -78,26 +94,51 @@ describe("verifyDatabaseFile", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("N5: fails a database whose vector index is damaged, even though the pages are intact", () => {
+  it("N5: fails a database whose vector index is damaged, even though row counts and integrity_check stay clean", async () => {
     // A plain integrity_check never walks vec0's shadow tables, and the old version of this
     // function opened its copy without sqlite-vec loaded at all, so a broken chunks_vec would
-    // report "sound" right up until someone actually tried to search. Drop the table itself --
-    // the most unambiguous way to make it stop being queryable -- and prove verify now notices.
+    // report "sound" right up until someone actually tried to search. Zero the shadow table's
+    // vector blobs in place -- destroys nearest-neighbour search (null distances, wrong rowids)
+    // without changing any row count or failing integrity_check -- and prove verify now notices.
     t = makeTestDb();
+    await seedChunk(t);
     const file = t.db.$client.name;
-    t.db.$client.exec("DROP TABLE chunks_vec");
+    const rows = t.db.$client.prepare("SELECT rowid, length(vectors) AS len FROM chunks_vec_vector_chunks00").all() as {
+      rowid: number;
+      len: number;
+    }[];
+    expect(rows.length).toBeGreaterThan(0);
+    const zero = t.db.$client.prepare("UPDATE chunks_vec_vector_chunks00 SET vectors = zeroblob(?) WHERE rowid = ?");
+    for (const row of rows) zero.run(row.len, row.rowid);
+
     const r = verifyDatabaseFile(file);
     expect(r.ok).toBe(false);
     expect(r.problems.join(" ")).toMatch(/chunks_vec/);
   });
 
-  it("N5: fails a database whose full-text index is damaged, even though the pages are intact", () => {
+  it("N5: fails a database whose full-text index is empty even though the content table is not", async () => {
+    // chunks_fts is an external-content table (content='chunks'), so a plain count(*) on it reads
+    // the content table, not the index -- a real gap this measures: emptying only the index via
+    // the same 'delete' command the app's own chunks_ad trigger uses, leaving `chunks` itself
+    // fully populated, so the two really can disagree.
     t = makeTestDb();
+    await seedChunk(t);
     const file = t.db.$client.name;
-    t.db.$client.exec("DROP TABLE chunks_fts");
+    const rows = t.db.$client.prepare("SELECT id, text FROM chunks").all() as { id: number; text: string }[];
+    expect(rows.length).toBeGreaterThan(0);
+    const del = t.db.$client.prepare("INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', ?, ?)");
+    for (const row of rows) del.run(row.id, row.text);
+
     const r = verifyDatabaseFile(file);
     expect(r.ok).toBe(false);
     expect(r.problems.join(" ")).toMatch(/chunks_fts/);
+  });
+
+  it("verifies a database with real chunks sound when neither index is damaged", async () => {
+    t = makeTestDb();
+    await seedChunk(t);
+    const r = verifyDatabaseFile(t.db.$client.name);
+    expect(r).toMatchObject({ ok: true, problems: [] });
   });
 });
 

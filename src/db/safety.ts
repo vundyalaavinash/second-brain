@@ -4,6 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { backupsDir } from "@/lib/paths";
+import { EMBEDDING_DIMENSIONS } from "@/providers/embed/types";
 import type { DB } from "./client";
 
 export interface CheckResult {
@@ -13,6 +14,37 @@ export interface CheckResult {
 
 /** Every pre-migration snapshot's file name starts with this; the three-tier prune must never match it. */
 export const SNAPSHOT_PREFIX = "pre-";
+
+export interface DbCheckStatus extends CheckResult {
+  checkedAt: string;
+  /** Which check produced this: boot's own periodic check, or the nightly backup's post-write
+   * verification. Both write through `recordDbCheck`, so whichever ran most recently is what the
+   * status surface shows -- the two can never disagree about the same database, because there is
+   * only ever one recorded result. */
+  source: "boot" | "backup";
+}
+
+const statusGlobal = globalThis as unknown as { __sbDbCheck?: DbCheckStatus };
+
+/**
+ * Records the most recent integrity/search check for design §7's status surface. A verification
+ * failure that is only a `console.error` is invisible to anything but a log nobody reads -- and a
+ * boot check that never learns what the backup job just found can report "passed" the same night
+ * every backup silently fails and is deleted, which is worse than either failure alone. Both
+ * `checkDatabaseOnBoot` and the backup handler call this, through the same function, so there is
+ * one shared answer to "is this database sound" rather than two that can drift apart.
+ */
+export function recordDbCheck(check: CheckResult, source: DbCheckStatus["source"], now: Date = new Date()): DbCheckStatus {
+  const status: DbCheckStatus = { ...check, checkedAt: now.toISOString(), source };
+  statusGlobal.__sbDbCheck = status;
+  return status;
+}
+
+/** The most recently recorded check, from either boot or the backup job. `undefined` before either
+ * has run in this process. */
+export function getLastDbCheck(): DbCheckStatus | undefined {
+  return statusGlobal.__sbDbCheck;
+}
 
 /** `integrity_check` and `foreign_key_check` against an already-open connection, in one place so
  * `verifyDatabaseFile` and `checkOpenDatabase` can't drift apart on what "sound" means. */
@@ -28,29 +60,74 @@ function pragmaProblems(sqlite: Database.Database): string[] {
   return problems;
 }
 
+/** A real, tokenizable term pulled from actual chunk text, so the FTS probe below proves the
+ * index returns results for what this database genuinely contains rather than for a fixed guess
+ * that might not appear in it at all. `null` when nothing tokenizable was found in the rows
+ * looked at, which is not itself treated as a failure -- see `virtualTableProblems`. */
+function firstSearchableTerm(sqlite: Database.Database): string | null {
+  const rows = sqlite.prepare("SELECT text FROM chunks LIMIT 50").all() as { text: string }[];
+  for (const row of rows) {
+    const m = /[\p{L}\p{N}]{2,}/u.exec(row.text ?? "");
+    if (m) return m[0].toLowerCase();
+  }
+  return null;
+}
+
 /**
  * Confirms `chunks_fts` and `chunks_vec` -- the FTS5 and vec0 virtual tables search runs against
- * -- are not just named in the schema but actually queryable on `sqlite`. `pragmaProblems` proves
- * the pages are intact; it opens its connection without sqlite-vec loaded, so it cannot see a
- * damaged vec0 shadow table, and `integrity_check` does not walk FTS5's shadow tables either. This
- * is the difference between "the file is not corrupt" and "the file still searches" -- loads
- * sqlite-vec onto `sqlite` itself (safe here because `verifyDatabaseFile`'s copy is never opened
- * with the extension already loaded) and runs a real query against each table, so a shadow table
- * SQLite's own module can no longer parse throws here instead of passing silently.
+ * -- do not merely exist but actually answer the queries search runs. `pragmaProblems` proves the
+ * pages are intact; it opens its connection without sqlite-vec loaded, so it cannot see a damaged
+ * vec0 shadow table, and `integrity_check` does not walk FTS5's shadow tables either. A first
+ * version of this function stopped at `count(*)` on each table, which does not detect a damaged
+ * index at all: `chunks_fts` is an external-content table (`content='chunks'`), so `count(*)`
+ * reads the content table `chunks`, not the index -- measured, 7 rows against 0 real `MATCH`
+ * hits with the index emptied -- and a `chunks_vec` whose shadow vectors were zeroed still
+ * answered `count(*)` while returning null distances and wrong rowids from a real KNN query.
+ *
+ * There is nothing to search when the database has no chunks at all, which is the owner's actual
+ * state today, and a false failure there would be worse than the gap it would create -- so this
+ * only probes at all once `chunks` has rows, and an empty result from either probe is a failure
+ * only in that case.
  */
 function virtualTableProblems(sqlite: Database.Database): string[] {
   const problems: string[] = [];
+  let chunkCount: number;
   try {
-    sqlite.prepare("SELECT count(*) AS n FROM chunks_fts").get();
+    chunkCount = (sqlite.prepare("SELECT count(*) AS n FROM chunks").get() as { n: number }).n;
+  } catch (err) {
+    problems.push(`chunks unreadable: ${err instanceof Error ? err.message : String(err)}`);
+    return problems; // nothing to probe the indexes against
+  }
+  if (chunkCount === 0) return problems;
+
+  try {
+    const term = firstSearchableTerm(sqlite);
+    if (term) {
+      const hit = sqlite.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? LIMIT 1").get(`${term}*`);
+      if (!hit) problems.push(`chunks_fts: MATCH for "${term}" (present in the data) returned nothing`);
+    }
   } catch (err) {
     problems.push(`chunks_fts unqueryable: ${err instanceof Error ? err.message : String(err)}`);
   }
+
   try {
     sqliteVec.load(sqlite);
-    sqlite.prepare("SELECT count(*) AS n FROM chunks_vec").get();
+    // A unit vector, not all-zero: this schema's distance metric is cosine, which is undefined
+    // for a zero-magnitude query vector (measured -- a zero vector returns a null distance
+    // against a perfectly healthy index, which would make this probe lie in the other direction).
+    const probe = new Float32Array(EMBEDDING_DIMENSIONS);
+    probe[0] = 1;
+    const probeBlob = Buffer.from(probe.buffer, probe.byteOffset, probe.byteLength);
+    const hit = sqlite.prepare("SELECT rowid, distance FROM chunks_vec WHERE embedding MATCH ? ORDER BY distance LIMIT 1").get(probeBlob) as
+      | { rowid: number; distance: number | null }
+      | undefined;
+    if (!hit || hit.distance === null || hit.distance === undefined) {
+      problems.push("chunks_vec: nearest-neighbour query returned no usable result");
+    }
   } catch (err) {
     problems.push(`chunks_vec unqueryable: ${err instanceof Error ? err.message : String(err)}`);
   }
+
   return problems;
 }
 
@@ -110,10 +187,14 @@ export function verifyDatabaseFile(file: string): CheckResult {
   }
 }
 
-/** The same two pragmas, against a connection that is already open. */
+/** The same pragmas and virtual-table probes `verifyDatabaseFile` runs, against a connection that
+ * is already open, so boot's own check covers exactly what the backup job's does and the two
+ * cannot disagree about the same database. Loading sqlite-vec again here is safe: `openDatabase`
+ * already loaded it once for this connection, and a second `sqliteVec.load` on the same connection
+ * is a no-op (measured; does not throw). */
 export function checkOpenDatabase(db: DB): CheckResult {
   try {
-    const problems = pragmaProblems(db.$client);
+    const problems = [...pragmaProblems(db.$client), ...virtualTableProblems(db.$client)];
     return { ok: problems.length === 0, problems };
   } catch (err) {
     return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
