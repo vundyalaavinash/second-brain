@@ -1,9 +1,27 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
+import * as safety from "@/db/safety";
 
 describe("openDatabase", () => {
   let t: TestDb;
   afterEach(() => t?.cleanup());
+
+  // The test suite opens hundreds of :memory: databases; a snapshot check per open would be
+  // both slow and pointless, since there is no file for a migration to endanger.
+  it("takes no snapshot and reads no migration state for :memory:", async () => {
+    const pendingSpy = vi.spyOn(safety, "pendingMigrations");
+    const snapshotSpy = vi.spyOn(safety, "snapshotBeforeMigrate");
+    const { openDatabase } = await import("@/db/client");
+    const db = openDatabase(":memory:");
+    try {
+      expect(pendingSpy).not.toHaveBeenCalled();
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      db.$client.close();
+      pendingSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
 
   it("creates regular tables, virtual tables, and loads sqlite-vec", () => {
     t = makeTestDb();
