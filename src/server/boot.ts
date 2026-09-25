@@ -10,7 +10,12 @@ import { autoStartTick } from "@/domain/meetings/auto-start";
 import { reconcileRecordings, stopForShutdown } from "@/domain/meetings/reconcile";
 import { hasChatKey } from "@/providers/chat";
 import { syncCalendarFeed } from "@/domain/activity";
+import { checkOpenDatabase, type CheckResult } from "@/db/safety";
 import { getEmbedProvider } from "./providers";
+
+export interface DbCheckStatus extends CheckResult {
+  checkedAt: string;
+}
 
 const g = globalThis as unknown as {
   __sbWorker?: JobWorker;
@@ -18,6 +23,7 @@ const g = globalThis as unknown as {
   __sbAutoStartInterval?: NodeJS.Timeout;
   __sbFeedInterval?: NodeJS.Timeout;
   __sbShutdownHooked?: boolean;
+  __sbDbCheck?: DbCheckStatus;
 };
 
 /** Outlook republishes a calendar every few minutes; polling faster only re-reads the same file. */
@@ -58,9 +64,42 @@ function hookShutdown(): void {
   }
 }
 
+/**
+ * `integrity_check` and `foreign_key_check` against the database we are about to open the app
+ * on. Silence means checked and sound, not unchecked -- so this always runs, logs its result
+ * either way, and records it for the status surface. On failure it does nothing else: no
+ * auto-restore, no repair. A database that fails a foreign-key check is still one you want to be
+ * able to open and read, and a program that tries to fix its own corruption unattended is how a
+ * recoverable problem becomes an unrecoverable one. `checkOpenDatabase` itself never throws, but
+ * this is wrapped anyway, in keeping with every other boot step here: nothing this function does
+ * is allowed to be the reason the worker never starts.
+ */
+function checkDatabaseOnBoot(db: DB): void {
+  try {
+    const check = checkOpenDatabase(db);
+    g.__sbDbCheck = { ...check, checkedAt: new Date().toISOString() };
+    if (check.ok) {
+      console.log("[boot] database integrity check passed");
+    } else {
+      console.error(`[boot] database integrity check FAILED: ${check.problems.join("; ")}`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[boot] database integrity check could not run: ${message}`);
+    g.__sbDbCheck = { ok: false, problems: [message], checkedAt: new Date().toISOString() };
+  }
+}
+
+/** The most recent boot-time integrity check, for the status surface. `undefined` before the
+ * first `boot()` call in this process. */
+export function getLastDbCheck(): DbCheckStatus | undefined {
+  return g.__sbDbCheck;
+}
+
 export function boot(): JobWorker {
   if (g.__sbWorker) return g.__sbWorker;
   const db = getDb();
+  checkDatabaseOnBoot(db);
   const reset = resetRunningJobs(db);
   if (reset > 0) console.log(`[boot] requeued ${reset} interrupted job(s)`);
   try {

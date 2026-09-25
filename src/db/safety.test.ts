@@ -77,6 +77,28 @@ describe("verifyDatabaseFile", () => {
     expect(fs.readdirSync(dir).sort()).toEqual(before);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("N5: fails a database whose vector index is damaged, even though the pages are intact", () => {
+    // A plain integrity_check never walks vec0's shadow tables, and the old version of this
+    // function opened its copy without sqlite-vec loaded at all, so a broken chunks_vec would
+    // report "sound" right up until someone actually tried to search. Drop the table itself --
+    // the most unambiguous way to make it stop being queryable -- and prove verify now notices.
+    t = makeTestDb();
+    const file = t.db.$client.name;
+    t.db.$client.exec("DROP TABLE chunks_vec");
+    const r = verifyDatabaseFile(file);
+    expect(r.ok).toBe(false);
+    expect(r.problems.join(" ")).toMatch(/chunks_vec/);
+  });
+
+  it("N5: fails a database whose full-text index is damaged, even though the pages are intact", () => {
+    t = makeTestDb();
+    const file = t.db.$client.name;
+    t.db.$client.exec("DROP TABLE chunks_fts");
+    const r = verifyDatabaseFile(file);
+    expect(r.ok).toBe(false);
+    expect(r.problems.join(" ")).toMatch(/chunks_fts/);
+  });
 });
 
 describe("checkOpenDatabase", () => {

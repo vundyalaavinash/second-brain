@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
 import { backupsDir } from "@/lib/paths";
 import type { DB } from "./client";
 
@@ -28,6 +29,32 @@ function pragmaProblems(sqlite: Database.Database): string[] {
 }
 
 /**
+ * Confirms `chunks_fts` and `chunks_vec` -- the FTS5 and vec0 virtual tables search runs against
+ * -- are not just named in the schema but actually queryable on `sqlite`. `pragmaProblems` proves
+ * the pages are intact; it opens its connection without sqlite-vec loaded, so it cannot see a
+ * damaged vec0 shadow table, and `integrity_check` does not walk FTS5's shadow tables either. This
+ * is the difference between "the file is not corrupt" and "the file still searches" -- loads
+ * sqlite-vec onto `sqlite` itself (safe here because `verifyDatabaseFile`'s copy is never opened
+ * with the extension already loaded) and runs a real query against each table, so a shadow table
+ * SQLite's own module can no longer parse throws here instead of passing silently.
+ */
+function virtualTableProblems(sqlite: Database.Database): string[] {
+  const problems: string[] = [];
+  try {
+    sqlite.prepare("SELECT count(*) AS n FROM chunks_fts").get();
+  } catch (err) {
+    problems.push(`chunks_fts unqueryable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    sqliteVec.load(sqlite);
+    sqlite.prepare("SELECT count(*) AS n FROM chunks_vec").get();
+  } catch (err) {
+    problems.push(`chunks_vec unqueryable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return problems;
+}
+
+/**
  * Checks `file` -- a backup you have not opened is a rumour, so this is what proves one is real.
  * It never reads `file` in place: it copies it, and any -wal beside it, into a throwaway
  * `mkdtemp` directory and checks the copy there. That is the only way to answer honestly, because
@@ -48,6 +75,11 @@ function pragmaProblems(sqlite: Database.Database): string[] {
  * a false failure, never a real one, since nothing here is ever written back to `file`. Measured
  * across repeated verifies of a large database under continuous concurrent writes with no -shm
  * copy: no false failures.
+ *
+ * "Sound" means the search still works, not merely that the pages are intact: the copy is opened
+ * with sqlite-vec loaded and `chunks_fts`/`chunks_vec` are queried directly (see
+ * `virtualTableProblems`), because `integrity_check` alone cannot speak for a vector index it
+ * never walks, and an unextended connection cannot even query a vec0 table to find out.
  */
 export function verifyDatabaseFile(file: string): CheckResult {
   let tmp: string | undefined;
@@ -60,7 +92,7 @@ export function verifyDatabaseFile(file: string): CheckResult {
 
     const sqlite = new Database(copy, { readonly: true, fileMustExist: true });
     try {
-      const problems = pragmaProblems(sqlite);
+      const problems = [...pragmaProblems(sqlite), ...virtualTableProblems(sqlite)];
       sqlite.prepare("SELECT count(*) AS n FROM items").get();
       return { ok: problems.length === 0, problems };
     } finally {
