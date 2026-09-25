@@ -140,6 +140,7 @@ describe("plannerDay", () => {
       plannedMinutes: 105,
       unestimated: 0,
       workHours: "09:00-18:00",
+      workingDays: [1, 2, 3, 4, 5],
       blockedMinutes: 60,
       unplacedMinutes: 45,
       drift: null,

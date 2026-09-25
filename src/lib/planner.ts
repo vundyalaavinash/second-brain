@@ -62,6 +62,7 @@ export function plannerDay(db: DB, date: string, now: Date = new Date()): Planne
   const plan = serializePlanTasks(db, listPlan(db, date), window);
   const plannedIds = new Set(plan.map((t) => t.id));
   const workHours = getWorkHours(db);
+  const workingDays = getWorkingDays(db);
   const meetings = plannerMeetings(db, { from: date, to: addDays(date, 1) });
   const { planned, unestimated } = plannedMinutes(plan);
   // One query for the whole request, never one per day — see `plannerWeek`'s own single
@@ -80,6 +81,7 @@ export function plannerDay(db: DB, date: string, now: Date = new Date()): Planne
       plannedMinutes: planned,
       unestimated,
       workHours,
+      workingDays,
       blockedMinutes: blockedMinutes(plan, date),
       unplacedMinutes: unplacedMinutes(plan, date),
       drift,

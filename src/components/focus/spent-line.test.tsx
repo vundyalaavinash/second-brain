@@ -41,6 +41,22 @@ describe("SpentLine", () => {
     expect(screen.getByRole("button", { name: "Use 1h 20m as the estimate" })).toBeTruthy();
   });
 
+  // Concern A: `TaskRow` sets this false when `EstimateHint` is already offering the same field
+  // from the outside view — this line still owes the reader the fact, just not a second,
+  // conflicting offer to set it.
+  it("keeps the spent fact but drops its own offer when told a better one is already on the row", () => {
+    stubFetch();
+    render(<SpentLine taskId={1} estimateMinutes={null} spentMinutes={80} offerEstimate={false} />);
+    expect(screen.getByText("Spent 1h 20m")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("offers its own correction by default, with no `offerEstimate` passed at all", () => {
+    stubFetch();
+    render(<SpentLine taskId={1} estimateMinutes={null} spentMinutes={80} />);
+    expect(screen.getByRole("button", { name: "Use 1h 20m as the estimate" })).toBeTruthy();
+  });
+
   it("says nothing about correcting the estimate once it already agrees with the actual", () => {
     stubFetch();
     render(<SpentLine taskId={1} estimateMinutes={45} spentMinutes={47} />);

@@ -4,7 +4,7 @@ import { useEffect, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { PlannerWeekDTO, PlannerWeekDayDTO, TaskDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
-import { CAPACITY_TONE_CLASS, capacityTone, formatMinutes } from "@/lib/capacity";
+import { CAPACITY_TONE_CLASS, capacityTone, formatMinutes, overBasis } from "@/lib/capacity";
 import { formatClock } from "../activity/format";
 import { List } from "../ui";
 import { TaskRow } from "../tasks/task-row";
@@ -94,8 +94,15 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           // window — zero as a denominator would read as "100% over" on a day that is simply
           // over. So a past day reads `freeMinutes`, the window itself, instead (N2).
           const denom = day.date < today ? day.capacity.freeMinutes : day.capacity.leftTodayMinutes;
+          // The tone, not the printed figure, reads `overBasis`: the Day view's line and its
+          // meter both judge a day by the forecast when one exists (`capacity-line.tsx`,
+          // `plan-pane.tsx`), so a column here must not read the same day as calm on the strength
+          // of the bare plan alone (F1) — `week.drift` is the one multiplier for the whole week,
+          // applied to this day's own planned minutes, same as `capacity.forecastMinutes` was
+          // built from it (`src/lib/planner.ts`).
+          const tone = capacityTone(overBasis({ ...day.capacity, drift: week.drift }), denom);
           return (
-            <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[capacityTone(day.capacity.plannedMinutes, denom)]}`}>
+            <span className={`font-mono text-[11px] ${CAPACITY_TONE_CLASS[tone]}`}>
               {formatMinutes(day.capacity.plannedMinutes)} / {formatMinutes(denom)}
               {/* A column is too narrow for the figure: the dot says the day has blocks, the title how many. */}
               {day.capacity.blockedMinutes > 0 && (
@@ -152,7 +159,9 @@ export function WeekView({ week, today, onRefresh }: { week: PlannerWeekDTO; tod
           </List>
         )}
 
-        {day.meetings.length === 0 && day.due.length === 0 && <p className="text-[12px] text-fg-faint m-0">Nothing yet</p>}
+        {/* Inside the working gate with the capacity span above: a non-working day is a quiet
+          * gap, not a card that still finds something to say (F6) — see the comment at :86. */}
+        {day.working && day.meetings.length === 0 && day.due.length === 0 && <p className="text-[12px] text-fg-faint m-0">Nothing yet</p>}
       </div>
     );
   }

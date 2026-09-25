@@ -114,6 +114,31 @@ describe("WeekView", () => {
     expect(within(column("Tue")).getByText("10h / 9h").className).toContain("text-warn");
   });
 
+  // F1: the Day view's line and meter both judge a day by `overBasis` — the forecast when one
+  // exists, never the bare plan — and the Week was still colouring by the bare plan alone, so
+  // the same day could read calm here and overrun there. `capacityTone` reads whichever figure
+  // is truly bigger, so a low `plannedMinutes` with a `forecastMinutes` scaled past the window
+  // must colour by the forecast, not slip through as "fg-muted" on the strength of the plan.
+  it("colours a column by the forecast, not the bare plan, once the week has one (F1)", () => {
+    const w = week();
+    w.drift = 2;
+    // Monday: 75 planned (inside its 9h window) but a forecast of 700 (75 * drift-ish figure,
+    // set directly here) blows well past it — the bare plan alone would read calm.
+    w.days[0].capacity.forecastMinutes = 700;
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    const mon = within(column("Mon")).getByText("1h 15m / 9h");
+    expect(mon.className).not.toContain("text-fg-muted");
+    expect(mon.className).toContain("text-danger");
+  });
+
+  it("still colours by the bare plan when the week has no drift to forecast with", () => {
+    const w = week();
+    w.drift = null;
+    w.days[0].capacity.forecastMinutes = 700; // never read: null drift means no forecast at all
+    render(<WeekView week={w} today={TODAY} onRefresh={vi.fn()} />);
+    expect(within(column("Mon")).getByText("1h 15m / 9h").className).toContain("text-fg-muted");
+  });
+
   it("shows a non-working day as a quiet gap: the date, and nothing about capacity", () => {
     mount();
     const sat = column("Sat");
@@ -124,6 +149,15 @@ describe("WeekView", () => {
     expect(within(sat).queryByText(/\/ /)).toBeNull();
     expect(within(sat).queryByText(/0h/)).toBeNull();
     expect(within(sat).queryByRole("img", { name: /blocked/ })).toBeNull();
+    // F6: a non-working day with nothing on it is a quiet gap, not a card that still finds
+    // something to say — "Nothing yet" belongs to a working day nobody has planned.
+    expect(within(sat).queryByText("Nothing yet")).toBeNull();
+  });
+
+  it("says nothing yet on a working day with no meetings and nothing due", () => {
+    mount();
+    // Wednesday: working, no meetings, no due tasks.
+    expect(within(column("Wed")).getByText("Nothing yet")).toBeTruthy();
   });
 
   it("keeps the blocked dot off a non-working day even when it has blocked minutes", () => {

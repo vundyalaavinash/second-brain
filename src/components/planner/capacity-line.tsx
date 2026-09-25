@@ -9,6 +9,7 @@ interface Props {
   capacity: CapacityDTO;
   meetings: number;
   onHours: (workHours: string) => void;
+  onWorkingDays: (workingDays: number[]) => void;
   /** Spec §5: one page, one region that speaks up. Home's Now owns that role, so the line it
    * sits above reads as plain text there rather than announcing the day twice. */
   quiet?: boolean;
@@ -36,7 +37,7 @@ function roughHours(n: number): string {
  * forecast, because "planned vs. what is left" is arithmetic on two numbers already in hand, not
  * a guess: overcommitment has to be visible before drift exists to measure it (spec §2).
  */
-export function CapacityLine({ capacity, meetings, onHours, quiet = false }: Props) {
+export function CapacityLine({ capacity, meetings, onHours, onWorkingDays, quiet = false }: Props) {
   const { plannedMinutes, forecastMinutes, leftTodayMinutes, drift, unestimated, blockedMinutes, unplacedMinutes } = capacity;
   // The two guards share one condition, so a slipped invariant can never drop both the figure
   // and its explanation, or show neither (F9): with a forecast, the forecast is the real cost;
@@ -69,7 +70,10 @@ export function CapacityLine({ capacity, meetings, onHours, quiet = false }: Pro
          * line that explains why the middle figure just went missing. */}
         {!hasForecast && <span className="text-[11px] text-fg-faint">Not enough finished work yet to know how your estimates run.</span>}
       </span>
-      <HoursChip workHours={capacity.workHours} onChange={onHours} />
+      <span className="flex items-center gap-1">
+        <HoursChip workHours={capacity.workHours} onChange={onHours} />
+        <WorkingDaysChip workingDays={capacity.workingDays} onChange={onWorkingDays} />
+      </span>
     </span>
   );
 }
@@ -169,6 +173,115 @@ export function HoursChip({ workHours, onChange }: { workHours: string; onChange
             className={`focus-ring font-mono text-[12px] h-7 px-2 rounded-sm bg-layer-2 border ${bad ? "border-danger" : "border-hairline"} text-fg`}
           />
           {bad && <span className="text-[11.5px] text-danger">Use HH:MM-HH:MM, start before end</span>}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** ISO weekday numbers (Monday 1 through Sunday 7), one letter each, in week order. */
+const WEEKDAYS: { day: number; letter: string; name: string }[] = [
+  { day: 1, letter: "M", name: "Monday" },
+  { day: 2, letter: "T", name: "Tuesday" },
+  { day: 3, letter: "W", name: "Wednesday" },
+  { day: 4, letter: "T", name: "Thursday" },
+  { day: 5, letter: "F", name: "Friday" },
+  { day: 6, letter: "S", name: "Saturday" },
+  { day: 7, letter: "S", name: "Sunday" },
+];
+
+/** "Mon-Fri" for the default, "Every day" for all seven, otherwise the letters themselves — a
+ * chip label stays short even for an odd set the two named cases don't cover. */
+function formatWorkingDays(days: number[]): string {
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 7) return "Every day";
+  if (sorted.join(",") === "1,2,3,4,5") return "Mon-Fri";
+  return sorted.map((d) => WEEKDAYS[d - 1].letter).join("");
+}
+
+const sameDays = (a: number[], b: number[]) => [...a].sort().join(",") === [...b].sort().join(",");
+
+/**
+ * The working-hours chip's sibling: which days the plan is measured against at all, backed by
+ * `setWorkingDays` (`src/lib/work-hours.ts`) — a write path that existed with no control on
+ * screen until this (honest-forecast review F4). A day toggled off here is the same "quiet gap"
+ * a non-working day already renders in the Week (`week-view.tsx`); this is only what decides it.
+ */
+export function WorkingDaysChip({ workingDays, onChange }: { workingDays: number[]; onChange: (days: number[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<number[]>(workingDays);
+  const [bad, setBad] = useState(false);
+  const button = useRef<HTMLButtonElement | null>(null);
+  const panel = useRef<HTMLDivElement | null>(null);
+
+  function close() {
+    setOpen(false);
+    setBad(false);
+  }
+
+  /** Leaving the panel saves a non-empty change and drops anything else, same as the hours chip. */
+  function dismiss() {
+    if (draft.length > 0 && !sameDays(draft, workingDays)) onChange(draft);
+    close();
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (panel.current?.contains(e.target as Node) || button.current?.contains(e.target as Node)) return;
+      dismiss();
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  });
+
+  /** A day can be turned off, but the last one cannot — an empty week is not a working schedule. */
+  function toggle(day: number) {
+    setDraft((prev) => {
+      const next = prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b);
+      setBad(next.length === 0);
+      return next;
+    });
+  }
+
+  return (
+    <span className="relative">
+      <button
+        ref={button}
+        type="button"
+        aria-label={`Days ${formatWorkingDays(workingDays)}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="focus-ring font-mono text-[11px] text-fg-faint hover:text-fg-muted rounded-sm px-1"
+        onClick={() => {
+          setDraft(workingDays);
+          setBad(false);
+          setOpen((v) => !v);
+        }}
+      >
+        {formatWorkingDays(workingDays)}
+      </button>
+      {open && (
+        <div ref={panel} role="dialog" aria-label="Working days" className="panel absolute right-0 top-full mt-1 rounded-md p-2 flex flex-col gap-1 z-50 w-48">
+          <span className="text-[11.5px] text-fg-muted">Working days</span>
+          <span className="flex items-center gap-1">
+            {WEEKDAYS.map(({ day, letter, name }) => {
+              const on = draft.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  aria-pressed={on}
+                  aria-label={name}
+                  onClick={() => toggle(day)}
+                  className={`focus-ring w-6 h-6 rounded-sm text-[11px] font-mono border ${on ? "bg-violet-dim border-violet text-fg" : "border-hairline text-fg-faint hover:text-fg-muted"}`}
+                >
+                  {letter}
+                </button>
+              );
+            })}
+          </span>
+          {bad && <span className="text-[11.5px] text-danger">Pick at least one working day</span>}
         </div>
       )}
     </span>

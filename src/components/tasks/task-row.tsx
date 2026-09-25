@@ -644,16 +644,23 @@ export function TaskRow({
     onKeyDown: onRowKeyDown,
   };
 
+  // Whether the outside-view hint has something to offer on this row — computed once, so the
+  // spent line and the hint can never disagree about which of them gets to offer the estimate
+  // (Concern A: two adjacent buttons writing the same field from two different numbers is a
+  // coin-flip presented as advice, and the hint's outside view is the one that should win).
+  const showEstimateHint = !!onEstimate && hasEstimateHint(task);
   // What the task actually cost, once a run has landed against it — nothing while one has not.
+  // Its own offer to correct the estimate is withheld while the hint below is making a better
+  // one; the fact of what was spent still renders either way.
   const spentLine = task.spentMinutes > 0 && (
-    <SpentLine taskId={task.id} estimateMinutes={task.estimateMinutes} spentMinutes={task.spentMinutes} />
+    <SpentLine taskId={task.id} estimateMinutes={task.estimateMinutes} spentMinutes={task.spentMinutes} offerEstimate={!showEstimateHint} />
   );
   // What finished work like this one actually took, offered only where there is no guess yet
   // and enough of that work to trust one — nothing without a place to save it to, and nothing
   // where `hasEstimateHint` says there is nothing to show, so an ordinary row's layout never
   // shifts to make room for an empty wrapper (the case that breaks silently).
-  const estimateHint = onEstimate && hasEstimateHint(task) && (
-    <EstimateHint status={task.status} estimateMinutes={task.estimateMinutes} likeThisMinutes={task.likeThisMinutes} onEstimate={onEstimate} />
+  const estimateHint = showEstimateHint && (
+    <EstimateHint status={task.status} estimateMinutes={task.estimateMinutes} likeThisMinutes={task.likeThisMinutes} onEstimate={onEstimate!} />
   );
   const extraLine = spentLine || estimateHint;
 

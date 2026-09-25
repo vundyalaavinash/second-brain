@@ -274,6 +274,27 @@ describe("TaskRow spent", () => {
     renderRow({ compact: true }, { ...task, estimateMinutes: 45, spentMinutes: 80 });
     expect(screen.getByText("Estimated 45m, spent 1h 20m")).toBeTruthy();
   });
+
+  // Concern A: SpentLine and EstimateHint both write `estimateMinutes`. Only one offer may
+  // stand on a row, and it is the outside view's (the hint's), never the partial inside figure —
+  // see the three states below.
+  it("lets the outside-view hint's offer win over the spent line's own, but keeps the spent fact", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null, spentMinutes: 20, likeThisMinutes: 50 });
+    expect(screen.getByText("Spent 20m")).toBeTruthy();
+    expect(screen.getByText("Tasks like this have taken about 50m")).toBeTruthy();
+    const offers = screen.getAllByRole("button", { name: /as the estimate/ });
+    expect(offers).toHaveLength(1);
+    expect(offers[0].textContent).toBe("Use 50m as the estimate");
+  });
+
+  it("keeps the spent line's own offer when there is no outside-view hint to replace it", () => {
+    const onEstimate = vi.fn();
+    renderRow({ onEstimate }, { ...task, estimateMinutes: null, spentMinutes: 20, likeThisMinutes: null });
+    expect(screen.getByText("Spent 20m")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use 20m as the estimate" })).toBeTruthy();
+    expect(screen.queryByText(/Tasks like this/)).toBeNull();
+  });
 });
 
 describe("TaskRow estimate hint", () => {
@@ -324,6 +345,22 @@ describe("TaskRow estimate hint", () => {
     cleanup();
     renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, spentMinutes: 80, likeThisMinutes: 200 });
     expect(screen.getByRole("list").innerHTML).toBe(before);
+  });
+
+  it("adds no empty wrapper on an estimated task with nothing spent, even with a way to save an estimate (F3)", () => {
+    // Neither line has anything to show: the task is already estimated (so the hint is gated
+    // off by `hasEstimateHint`, regardless of `likeThisMinutes`) and nothing has been spent yet
+    // (so `SpentLine` renders null). A mutant that drops the `hasEstimateHint` gate still leaves
+    // `EstimateHint` itself rendering null internally, but the row's own `estimateHint` variable
+    // becomes a truthy element anyway — which flips `extraLine` truthy and adds an empty `pl-9`
+    // wrapper div plus a spacing change, exactly the regression this row's comment above claims
+    // is prevented. `spentMinutes: 0` is what makes that difference visible: with spent minutes
+    // present (as the test above still carries), the wrapper is not empty either way.
+    renderRow({ onEstimate: vi.fn() }, { ...task, estimateMinutes: 45, spentMinutes: 0, likeThisMinutes: 200 });
+    const list = screen.getByRole("list");
+    expect(list.querySelector(".pl-9")).toBeNull();
+    expect(list.querySelector(".hairline-row")?.className).toContain("h-11 justify-center");
+    expect(list.querySelector(".hairline-row")?.className).not.toContain("py-2");
   });
 });
 

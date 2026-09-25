@@ -293,13 +293,18 @@ function median(sorted: number[]): number {
 /**
  * Per task id, what finished work like it actually took: the median booked minutes of every
  * `done` task in the same container whose title shares a meaningful word (four letters or more,
- * lowercased) with this one — newest completion first, capped at `limit`. Null below
- * `LIKE_THIS_MIN_MATCHES` matches, or with no container to match against at all: deliberately
- * dull matching, because anything cleverer is a guess dressed as an insight (spec).
+ * lowercased) with this one — newest completion first, each task's own matches capped at
+ * `limit`. Null below `LIKE_THIS_MIN_MATCHES` matches, or with no container to match against at
+ * all: deliberately dull matching, because anything cleverer is a guess dressed as an insight
+ * (spec).
  *
  * One query for every candidate in every container the whole list touches — the same shape
- * `focusMinutesByTask` and `goalRefsByContainer` already batch — with the per-task matching done
- * in memory afterward, so a fifty-task list costs this one query, never one per row.
+ * `focusMinutesByTask` and `goalRefsByContainer` already batch — with the per-task matching, the
+ * word-sharing filter and the `limit` slice, done in memory afterward, so a fifty-task list
+ * costs this one query, never one per row. The query itself carries no `.limit()` and is not
+ * capped — it reads every finished, booked task across every container the list touches, because
+ * which twenty are newest differs per task, so the cap has to be applied per task in memory
+ * rather than on the row set the query returns (honest-forecast review F7).
  */
 export function likeThisMinutesByTask(
   db: DB,

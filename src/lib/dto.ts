@@ -150,6 +150,11 @@ export interface CapacityDTO {
   plannedMinutes: number;
   unestimated: number;
   workHours: string;
+  /** ISO weekday numbers (Monday 1 through Sunday 7) the plan is measured against — the same
+   * list `isWorkingDay` gates the week on (`src/lib/work-hours.ts`), read back here so the
+   * working-hours chip has a working-days one to sit beside rather than a write path with no
+   * control (honest-forecast review F4). */
+  workingDays: number[];
   blockedMinutes: number;
   unplacedMinutes: number;
   /** The person's own actual-over-estimate multiplier, from their last `DRIFT_WINDOW` finished

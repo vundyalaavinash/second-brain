@@ -18,7 +18,7 @@ function day(calendar: PlannerDayDTO["calendar"] = CALENDAR, over: Partial<Plann
     meetings: [],
     calendar,
     sources: { inbox: [], due: { overdue: [], today: [] }, projects: [], areas: [] },
-    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
+    capacity: { freeMinutes: 540, plannedMinutes: 0, unestimated: 0, workHours: "09:00-18:00", workingDays: [1, 2, 3, 4, 5], blockedMinutes: 0, unplacedMinutes: 0, drift: null, forecastMinutes: null, leftTodayMinutes: 540 },
     ...over,
   };
 }
@@ -157,6 +157,43 @@ describe("PlannerShell", () => {
       await waitFor(() => expect(toasts).toEqual(["Could not save the hours"]));
       // Nothing was read back, so the chip still names the hours the day was built with.
       expect(screen.getByRole("button", { name: "Hours 09:00-18:00" })).toBeTruthy();
+      expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeUndefined();
+    } finally {
+      window.removeEventListener("sb:toast", onToast);
+    }
+  });
+
+  it("says the days are the day's own and hands a new set to the settings route (F4)", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => Response.json({ workingDays: [1, 2, 3, 4] }) });
+    render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Days Mon-Fri" }));
+    fireEvent.click(screen.getByRole("button", { name: "Friday" }));
+    fireEvent.mouseDown(document.body);
+
+    const saved = await waitFor(() => {
+      const call = callTo(fetchMock, "/api/settings/planner");
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(saved[1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(saved[1]?.body))).toEqual({ workingDays: [1, 2, 3, 4] });
+    // The capacity is reckoned server-side, so the day is read back rather than patched here.
+    await waitFor(() => expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeTruthy());
+  });
+
+  it("keeps the old days and says so when the save is refused", async () => {
+    const fetchMock = stubRoutes({ "/api/settings/planner": () => new Response(null, { status: 400 }) });
+    const toasts: string[] = [];
+    const onToast = (e: Event) => toasts.push((e as CustomEvent<{ text: string }>).detail.text);
+    window.addEventListener("sb:toast", onToast);
+    try {
+      render(<PlannerShell view="day" today="2026-09-22" initial={day()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Days Mon-Fri" }));
+      fireEvent.click(screen.getByRole("button", { name: "Friday" }));
+      fireEvent.mouseDown(document.body);
+
+      await waitFor(() => expect(toasts).toEqual(["Could not save the working days"]));
+      expect(screen.getByRole("button", { name: "Days Mon-Fri" })).toBeTruthy();
       expect(callTo(fetchMock, "/api/planner/day?date=2026-09-22")).toBeUndefined();
     } finally {
       window.removeEventListener("sb:toast", onToast);
