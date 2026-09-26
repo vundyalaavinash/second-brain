@@ -12,6 +12,12 @@ const kickoff: ContainerMeetingDTO = {
   item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 },
 };
 
+const adhoc: ContainerMeetingDTO = {
+  title: "Hallway chat",
+  startsAt: null,
+  item: { id: 41, hasNotes: false, hasTranscript: true, hasSummary: false, containerId: 7 },
+};
+
 describe("MeetingsSection", () => {
   it("shows the title, links to the item, and the item's own badges", () => {
     render(<MeetingsSection containerId={7} meetings={[kickoff]} />);
@@ -23,7 +29,6 @@ describe("MeetingsSection", () => {
   });
 
   it("says a meeting has no calendar event behind it, rather than guessing a date", () => {
-    const adhoc: ContainerMeetingDTO = { title: "Hallway chat", startsAt: null, item: { id: 41, hasNotes: false, hasTranscript: true, hasSummary: false, containerId: 7 } };
     render(<MeetingsSection containerId={7} meetings={[adhoc]} />);
     expect(screen.getByText("Not on the calendar")).toBeTruthy();
   });
@@ -31,11 +36,21 @@ describe("MeetingsSection", () => {
   it("shows the empty state when nothing is filed here, and hides the Planner link", () => {
     render(<MeetingsSection containerId={7} meetings={[]} />);
     expect(screen.getByText("No meetings filed here yet.")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "See all in Planner" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "See calendar meetings in Planner" })).toBeNull();
   });
 
-  it("links out to the same container's meetings in the Planner, filtered by its id", () => {
+  it("links out to the same container's calendar meetings in the Planner, filtered by its id", () => {
     render(<MeetingsSection containerId={7} meetings={[kickoff]} />);
-    expect(screen.getByRole("link", { name: "See all in Planner" }).getAttribute("href")).toBe("/planner/meetings?container=7");
+    expect(screen.getByRole("link", { name: "See calendar meetings in Planner" }).getAttribute("href")).toBe("/planner/meetings?container=7");
+  });
+
+  it("hides the Planner link when every filed meeting is ad hoc, since the Planner can't show any of them (review F2 residual)", () => {
+    render(<MeetingsSection containerId={7} meetings={[adhoc]} />);
+    expect(screen.queryByRole("link", { name: "See calendar meetings in Planner" })).toBeNull();
+  });
+
+  it("still offers the Planner link when at least one filed meeting has a calendar event", () => {
+    render(<MeetingsSection containerId={7} meetings={[adhoc, kickoff]} />);
+    expect(screen.getByRole("link", { name: "See calendar meetings in Planner" })).toBeTruthy();
   });
 });

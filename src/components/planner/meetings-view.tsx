@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
 import type { MeetingListDTO, MeetingSettingsDTO } from "@/lib/dto";
@@ -13,23 +13,20 @@ import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
 import { CalendarFeed } from "./calendar-feed";
 
-/** `?container=<id>` on this same `/planner/meetings` route, not a dedicated
- * `/planner/meetings/c/[id]` one — the Planner is already a route per *view* (`/planner`,
- * `/planner/week`, `/planner/meetings`), with a query param for scope *within* a view (`?date=`
- * on the day route, `?start=` on the week route); a project scope is that same kind of sub-state
- * on the meetings route, not a fourth view. */
-function useContainerFilter(): number | null {
-  const raw = useSearchParams().get("container");
-  const n = raw === null ? NaN : Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
 const JSON_HEADERS = { "content-type": "application/json" };
 const SETTINGS_URL = "/api/settings/meetings";
 
 interface Props {
   today: string;
   meetings: MeetingListDTO[];
+  /** `?container=<id>` on this same `/planner/meetings` route, not a dedicated
+   * `/planner/meetings/c/[id]` one — the Planner is already a route per *view* (`/planner`,
+   * `/planner/week`, `/planner/meetings`), with a query param for scope *within* a view
+   * (`?date=` on the day route, `?start=` on the week route); a project scope is that same kind
+   * of sub-state on the meetings route, not a fourth view. Parsed and validated once by the page
+   * (`app/planner/meetings/page.tsx`) rather than re-parsed here from the raw query string,
+   * so the two can never disagree on what counts as a valid id (review N1). */
+  containerId?: number | null;
   onRefresh?: () => void;
 }
 
@@ -76,9 +73,8 @@ function groupByDay(meetings: MeetingListDTO[]): Group[] {
   return [...groups].map(([key, list]) => ({ key, label: formatDayHeading(key), meetings: list }));
 }
 
-export function MeetingsView({ today, meetings, onRefresh }: Props) {
+export function MeetingsView({ today, meetings, containerId: containerFilter = null, onRefresh }: Props) {
   const router = useRouter();
-  const containerFilter = useContainerFilter();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   // A dismissed suggestion is a "not now", not a "never" -- nothing here is written for it, so
@@ -417,7 +413,12 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
             ? "No meetings match that search"
             : scoped.length === 0
               ? containerFilter !== null
-                ? "No meetings are filed here yet"
+                // Never a bare "no meetings": this view only ever holds meetings with a calendar
+                // event behind them, so a container whose only filed meetings are ad hoc
+                // recordings or dropped-in audio (no calendar event at all) would otherwise read
+                // as having nothing filed, when the project page's own Meetings section may show
+                // several (review F2 residual).
+                ? "No calendar meetings are filed here"
                 : "No meetings in the next 60 days"
               : filter === "not-going"
                 ? "Nothing here is marked not going"

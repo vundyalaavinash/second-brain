@@ -12,13 +12,20 @@ import { MeetingBadges } from "../planner/meeting-row";
  * created from this section — there is nothing to "capture" into a meeting that doesn't already
  * have a calendar event or a recording behind it. */
 export function MeetingsSection({ containerId, meetings }: { containerId: number; meetings: ContainerMeetingDTO[] }) {
+  // The Planner's meetings view is sourced from calendar events (`plannerMeetings` ->
+  // `listMeetings` -> `calendarEvents`), so an ad hoc recording or a dropped-in audio file --
+  // a meeting item with no calendar event behind it, shown here as "Not on the calendar" --
+  // can never appear there no matter how wide its query window is. The link only offers to show
+  // what the Planner can actually show, and only when there is at least one such meeting, so it
+  // is never an invitation to click through to a false "nothing here" (review F2 residual).
+  const hasCalendarMeeting = meetings.some((m) => m.startsAt !== null);
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <SectionHeading count={meetings.length}>Meetings</SectionHeading>
-        {meetings.length > 0 && (
+        {hasCalendarMeeting && (
           <Link href={`/planner/meetings?container=${containerId}`} className="focus-ring text-[12.5px] text-fg-muted hover:text-fg rounded-sm">
-            See all in Planner
+            See calendar meetings in Planner
           </Link>
         )}
       </div>

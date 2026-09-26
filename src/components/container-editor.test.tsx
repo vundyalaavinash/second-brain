@@ -308,6 +308,6 @@ describe("the project page's own Meetings section", () => {
 
   it("links out to the project-filtered Planner view", () => {
     const { getByRole } = render(<ContainerEditor initial={project} items={[]} tasks={[]} meetings={[meeting]} today="2026-09-16" />);
-    expect(getByRole("link", { name: "See all in Planner" }).getAttribute("href")).toBe(`/planner/meetings?container=${project.id}`);
+    expect(getByRole("link", { name: "See calendar meetings in Planner" }).getAttribute("href")).toBe(`/planner/meetings?container=${project.id}`);
   });
 });

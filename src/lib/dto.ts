@@ -361,6 +361,10 @@ export interface PlannerMeetingsDTO {
   to: string;
   meetings: MeetingListDTO[];
   calendar: PlannerCalendarDTO;
+  /** The `?container=` filter, already parsed and validated once by the page — resolved here
+   * rather than re-parsed from the raw query string client-side, so the two never disagree on
+   * what counts as a valid id (review N1). Null when no filter is in effect. */
+  containerId: number | null;
 }
 
 /** A meeting filed to a project or area, for that container's own Meetings section — the same

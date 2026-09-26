@@ -219,7 +219,7 @@ export function PlannerShell(props: Props) {
       <div id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(view)}>
         {day && <DayView day={day} today={today} onRefresh={refreshDay} />}
         {week && <WeekView week={week} today={today} onRefresh={refreshWeek} />}
-        {meetings && <MeetingsView today={today} meetings={meetings.meetings} onRefresh={refreshMeetings} />}
+        {meetings && <MeetingsView today={today} meetings={meetings.meetings} containerId={meetings.containerId} onRefresh={refreshMeetings} />}
       </div>
     </div>
   );

@@ -4,11 +4,10 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { MeetingsView } from "./meetings-view";
 import type { MeetingListDTO, MeetingSettingsDTO, RecorderStatusDTO } from "@/lib/dto";
 
-const nav = vi.hoisted(() => ({ push: vi.fn(), params: new URLSearchParams() }));
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, refresh: () => {} }),
   usePathname: () => "/planner/meetings",
-  useSearchParams: () => nav.params,
 }));
 
 const TODAY = "2026-09-22";
@@ -101,7 +100,6 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   nav.push.mockClear();
-  nav.params = new URLSearchParams();
 });
 
 describe("MeetingsView", () => {
@@ -461,9 +459,8 @@ describe("MeetingsView", () => {
       item: { id: 32, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 9 },
     });
 
-    it("shows only meetings filed to the container the ?container= param names, with neutral copy that never assumes a project (review F3)", () => {
-      nav.params = new URLSearchParams("container=5");
-      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
+    it("shows only meetings filed to the containerId prop the page resolved, with neutral copy that never assumes a project (review F3)", () => {
+      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} containerId={5} />);
       expect(screen.getByText("Roadmap review")).toBeTruthy();
       expect(screen.queryByText("Other project sync")).toBeNull();
       // "this project" would lie for an area's meetings -- MeetingsSection renders for both kinds.
@@ -471,13 +468,14 @@ describe("MeetingsView", () => {
       expect(screen.getByText("Show all meetings")).toBeTruthy();
     });
 
-    it("says nothing is filed there yet, rather than claiming the window itself is empty", () => {
-      nav.params = new URLSearchParams("container=5");
-      render(<MeetingsView today={TODAY} meetings={[filedElsewhere]} />);
-      expect(screen.getByText("No meetings are filed here yet")).toBeTruthy();
+    it("says no calendar meetings are filed, never a bare 'no meetings' this view can't verify (review F2 residual)", () => {
+      // This view is calendar-sourced only, so it can never see an ad hoc or audio-only meeting
+      // filed to the container -- the copy must not claim there are none of those either.
+      render(<MeetingsView today={TODAY} meetings={[filedElsewhere]} containerId={5} />);
+      expect(screen.getByText("No calendar meetings are filed here")).toBeTruthy();
     });
 
-    it("shows everything with no ?container= param at all", () => {
+    it("shows everything with no containerId prop at all", () => {
       render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
       expect(screen.getByText("Roadmap review")).toBeTruthy();
       expect(screen.getByText("Other project sync")).toBeTruthy();

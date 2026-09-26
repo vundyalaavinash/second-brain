@@ -301,6 +301,36 @@ describe("plannerMeetings", () => {
     const [m] = plannerMeetings(t.db, { from: FROM, to: TO });
     expect(m.suggestedContainer).toBeUndefined();
   });
+
+  it("keeps each meeting's own suggestion at its own row in a mixed batch, matches and no-matches interleaved (review F8)", () => {
+    // Every other test in this block plays only one meeting at a time; none of them can catch an
+    // index-alignment bug in this function's own zip (`uncontained.map((m, i) => [m.id,
+    // suggestions[i]])`, planner.ts) the way a mixed multi-meeting batch can.
+    const project = createContainer(t.db, { kind: "project", name: "Platform Migration" });
+    const area = createContainer(t.db, { kind: "area", name: "Health" });
+    replaceCalendarEvents(t.db, [
+      { externalId: "a", title: "Platform sync", startsAt: `${EVENT_DAY}T09:00:00.000Z`, endsAt: `${EVENT_DAY}T09:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "b", title: "Random meeting", startsAt: `${EVENT_DAY}T10:00:00.000Z`, endsAt: `${EVENT_DAY}T10:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "c", title: "Health checkup", startsAt: `${EVENT_DAY}T11:00:00.000Z`, endsAt: `${EVENT_DAY}T11:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "d", title: "Already filed sync", startsAt: `${EVENT_DAY}T12:00:00.000Z`, endsAt: `${EVENT_DAY}T12:30:00.000Z`, attendees: 2, hasCallLink: false },
+    ]);
+    const events = listMeetings(t.db, { from: FROM, to: TO });
+    const byTitle = (title: string) => events.find((e) => e.title === title)!;
+    captureMeeting(t.db, byTitle("Platform sync").id);
+    captureMeeting(t.db, byTitle("Random meeting").id);
+    captureMeeting(t.db, byTitle("Health checkup").id);
+    const alreadyFiled = captureMeeting(t.db, byTitle("Already filed sync").id);
+    fileItem(t.db, alreadyFiled.id, project.id);
+
+    const result = plannerMeetings(t.db, { from: FROM, to: TO });
+    const suggestionFor = (title: string) => result.find((m) => m.title === title)!.suggestedContainer;
+    expect(suggestionFor("Platform sync")).toEqual({ id: project.id, name: project.name, slug: project.slug, kind: "project" });
+    expect(suggestionFor("Health checkup")).toEqual({ id: area.id, name: area.name, slug: area.slug, kind: "area" });
+    // Uncontained but matching nothing: the batched suggestion pass ran for it and came back
+    // null, distinct from "Already filed sync" below, which never entered that pass at all.
+    expect(suggestionFor("Random meeting")).toBeNull();
+    expect(suggestionFor("Already filed sync")).toBeUndefined();
+  });
 });
 
 describe("containerMeetings", () => {

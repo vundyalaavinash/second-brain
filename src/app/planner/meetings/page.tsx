@@ -18,12 +18,25 @@ const AHEAD_DAYS = 60;
 const ALL_TIME_FROM = "0001-01-01";
 const ALL_TIME_TO = "9999-12-31";
 
+/** `?container=<id>` -> a validated id, or `null` for anything else (absent, `0`, a decimal, a
+ * leading zero, garbage) -- resolved once, here, rather than re-parsed by the client with its
+ * own, easily-diverging rule (review N1: the two disagreed on `0` and on non-canonical digit
+ * strings). A malformed value falls back to "no filter" rather than a page-breaking 400: this is
+ * a page a person can navigate to by hand, not an API route. */
+function parseContainerId(raw: string | undefined): number | null {
+  if (raw === undefined || !/^[1-9]\d*$/.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
 export default async function PlannerMeetingsPage({ searchParams }: { searchParams: Promise<{ container?: string }> }) {
   const { container } = await searchParams;
   const db = getDb();
   const today = todayLocal();
-  const filtered = container !== undefined && /^\d+$/.test(container);
-  const from = filtered ? ALL_TIME_FROM : addDays(today, -PAST_DAYS);
-  const to = filtered ? ALL_TIME_TO : addDays(today, AHEAD_DAYS + 1);
-  return <PlannerShell view="meetings" today={today} initial={{ from, to, meetings: plannerMeetings(db, { from, to }), calendar: plannerCalendar(db) }} />;
+  const containerId = parseContainerId(container);
+  const from = containerId !== null ? ALL_TIME_FROM : addDays(today, -PAST_DAYS);
+  const to = containerId !== null ? ALL_TIME_TO : addDays(today, AHEAD_DAYS + 1);
+  return (
+    <PlannerShell view="meetings" today={today} initial={{ from, to, meetings: plannerMeetings(db, { from, to }), calendar: plannerCalendar(db), containerId }} />
+  );
 }
