@@ -302,3 +302,56 @@ the retention purge, and this slice had four tasks and two review rounds behind
 it -- adding a new field and a new piece of row UI at that point is scope, not
 finishing. Recorded explicitly as a §6 deviation rather than quietly dropped,
 which is the whole reason it surfaced.
+
+## Two small scheduler/capacity disagreements a `maybe` meeting can still cause
+
+F-D's fix (the second final whole-branch review) made `busySpans` charge a
+`maybe` meeting half its duration, matching `freeMinutes`, and closed the two
+disagreements that motivated it: a standalone `maybe` hour and two adjacent
+`maybe` hours now agree exactly between capacity and the scheduler. Measuring
+by hand across every shape of overlap turned up two narrower ones that were
+never the fix's target and remain, both bounded and self-correcting:
+
+A `maybe` meeting that only partly overlaps a `going` one can let the
+scheduler place up to the non-overlapping tail's length more than capacity
+reports free, because `busySpans` takes its half-span from the *start* of the
+`maybe` meeting (falling inside the `going` one) while `freeMinutes` charges
+the tail through `outsideCover`. And a `maybe` meeting that runs past the end
+of the working day can make the scheduler under-place by up to the after-hours
+portion, because `busySpans` costs the meeting's whole span before `freeSlots`
+clips it to working hours -- this second case is pre-existing (it applies to
+`going` meetings too) and not something F-D introduced.
+
+Neither is a data-safety or correctness issue -- nothing is lost, nothing is
+double-booked, and both self-correct as soon as the calendar or the day
+changes. Left for a future pass rather than folded into F-D's fix, which
+already closed the two disagreements that were actually reachable in the
+common case (a `maybe` meeting on its own, or fully inside another meeting).
+
+## `effectiveDecisionAsOf`'s time comparison is a raw string compare, not a real instant compare
+
+`effectiveDecisionAsOf` (and the `startsAt <= decidedAt` check inside
+`setMeetingDecision`) compares two ISO timestamp strings lexically rather than
+parsing them first. This is correct today only because every writer that
+produces a `startsAt` emits a UTC `Z` instant -- the Swift EventKit helper's
+`ISO8601DateFormatter` and the ICS-feed ingestion's `.toISOString()` -- so a
+lexical compare and a real instant compare agree. But the API route that
+accepts a calendar sync payload validates `startsAt` only as "some string
+`Date.parse` can read" (`z.string().refine(...)`), which also accepts an
+offset-less local timestamp or one with an explicit `+HH:MM` offset. In a
+positive-UTC-offset timezone, an offset-less local `startsAt` string can
+compare *greater* than an equivalent UTC `decidedAt`, silently flipping which
+side of the `decidedAt` boundary an occurrence falls on -- confirmed live
+during the second final whole-branch review, on this machine's own timezone,
+using exactly such a fixture.
+
+Nothing in this app's own two writers can produce that shape today, so this is
+latent rather than reachable in practice, and several existing test fixtures
+already use the offset-less form -- meaning a test can pass while asserting
+the opposite of what production would do in a positive-offset zone, the same
+blind spot this slice has now found twice elsewhere. Fix shape for whoever
+picks this up: normalize `startsAt` to a UTC instant on ingest, or compare via
+`Date.parse(a) <= Date.parse(b)` rather than the raw strings, at both call
+sites. Left as a follow-up rather than fixed alongside F-B/priority-2 because
+it is not the thing that regressed -- it predates this slice's own review
+rounds and was reviewed (unnoticed) at least twice already.
