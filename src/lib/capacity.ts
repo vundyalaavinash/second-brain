@@ -144,6 +144,14 @@ export function formatMinutes(n: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+/** "3 h in meetings this week, about 18% of the working week." -- design §7 (the meeting audit)
+ * calls this "the whole argument in a line". Shared between the audit page and Home so the two
+ * can never disagree about the same week's figure. */
+export function meetingShareLine(share: { minutes: number; workingMinutes: number }): string {
+  const pct = share.workingMinutes > 0 ? Math.round((share.minutes / share.workingMinutes) * 100) : 0;
+  return `${formatMinutes(share.minutes)} in meetings this week, about ${pct}% of the working week.`;
+}
+
 export const DEFAULT_BLOCK_MINUTES = 25;
 export function blockLength(task: { estimateMinutes: number | null }): number {
   return task.estimateMinutes ?? DEFAULT_BLOCK_MINUTES;

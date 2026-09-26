@@ -37,6 +37,8 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
     activity: { activeMs: 3_600_000, top: [{ label: "Code", ms: 3_600_000 }] },
     focus: { minutes: 0, running: null },
     review: { due: false },
+    meetingShare: { minutes: 0, workingMinutes: 2700 },
+    stalledGoals: [],
     ...over,
   };
 }

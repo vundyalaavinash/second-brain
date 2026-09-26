@@ -6,6 +6,7 @@ import { count } from "../planner/open-meeting";
 import { CapacityLine } from "../planner/capacity-line";
 import { DateHeader } from "../planner/date-header";
 import { formatDuration } from "../activity/format";
+import { formatMinutes } from "@/lib/capacity";
 
 /** A figure worth a number, or the words for a day that has none of it. */
 function figure(n: number, some: string, none: string): string {
@@ -26,6 +27,8 @@ interface Props {
   counts: HomeDTO["counts"];
   focus: HomeDTO["focus"];
   review: HomeDTO["review"];
+  meetingShare: HomeDTO["meetingShare"];
+  stalledGoals: HomeDTO["stalledGoals"];
   onHours: (workHours: string) => void;
   onWorkingDays: (workingDays: number[]) => void;
 }
@@ -40,7 +43,7 @@ interface Props {
  * week has a review it renders nothing at all, not even a tick, because this is a nudge and the
  * research behind it is explicit that the nagging version is the one people turn off.
  */
-export function TopBand({ day, counts, focus, review, onHours, onWorkingDays }: Props) {
+export function TopBand({ day, counts, focus, review, meetingShare, stalledGoals, onHours, onWorkingDays }: Props) {
   return (
     <header className="flex flex-col gap-3">
       <DateHeader
@@ -60,6 +63,23 @@ export function TopBand({ day, counts, focus, review, onHours, onWorkingDays }: 
         ))}
         {/* What the day has cost so far — nowhere of its own to lead to yet, so it is read, not linked. */}
         <li>{focus.minutes === 0 ? "Nothing focused yet" : `${formatDuration(focus.minutes * 60_000)} focused`}</li>
+        {/* This week's meeting load, the audit's own figure — reused, not re-derived, so the two
+          * can never disagree about the same week. Zero reads as a fact, not a nudge: a light
+          * meeting week is not something to fix. */}
+        {meetingShare.minutes > 0 && (
+          <li>
+            <Link href="/meetings/audit" className="focus-ring rounded-sm hover:text-fg transition-colors duration-150">
+              {formatMinutes(meetingShare.minutes)} in meetings this week
+            </Link>
+          </li>
+        )}
+        {stalledGoals.length > 0 && (
+          <li>
+            <Link href="/goals" className="focus-ring rounded-sm hover:text-fg transition-colors duration-150">
+              {count(stalledGoals.length, "goal")} stalled
+            </Link>
+          </li>
+        )}
         {review.due && (
           <li>
             <Link href="/review" className="focus-ring rounded-sm text-fg-muted hover:text-fg transition-colors duration-150">

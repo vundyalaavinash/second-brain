@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MeetingDecision } from "@/db/enums";
 import type { SeriesAudit } from "@/domain/meetings/audit";
-import { formatMinutes } from "@/lib/capacity";
+import { formatMinutes, meetingShareLine } from "@/lib/capacity";
 import { formatDuration, sinceLabel } from "../activity/format";
 import { count } from "../planner/open-meeting";
 import { Button, Chip, List, PageHeader } from "../ui";
@@ -27,13 +27,6 @@ interface Props {
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
-
-/** "3 h in meetings this week, about 18% of the working week." -- the one figure design §7 calls
- * "the whole argument in a line", in the planner capacity line's own wording style. */
-function shareLine(share: Props["share"]): string {
-  const pct = share.workingMinutes > 0 ? Math.round((share.minutes / share.workingMinutes) * 100) : 0;
-  return `${formatMinutes(share.minutes)} in meetings this week, about ${pct}% of the working week.`;
-}
 
 /** What ran during it, named rather than guessed -- the one thing only this app can say (design
  * §3), or an honest "nothing recorded" when there is genuinely nothing to name. */
@@ -79,7 +72,7 @@ export function AuditView({ rows, share, windowDays }: Props) {
   const windowLabel = count(windowDays, "day");
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
-      <PageHeader title="The audit" meta={shareLine(share)} />
+      <PageHeader title="The audit" meta={meetingShareLine(share)} />
       {rows.length === 0 ? (
         <p className="text-[13.5px] text-fg-faint">No meetings in the last {windowLabel} to weigh yet.</p>
       ) : (

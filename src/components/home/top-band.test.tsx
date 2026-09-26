@@ -20,9 +20,27 @@ function day(over: Partial<PlannerDayDTO> = {}): PlannerDayDTO {
 }
 
 const NOT_DUE: HomeDTO["review"] = { due: false };
+const NO_MEETING_LOAD: HomeDTO["meetingShare"] = { minutes: 0, workingMinutes: 2700 };
 
-function band(counts: HomeDTO["counts"], focus: HomeDTO["focus"] = { minutes: 0, running: null }, review: HomeDTO["review"] = NOT_DUE) {
-  render(<TopBand day={day()} counts={counts} focus={focus} review={review} onHours={() => {}} onWorkingDays={() => {}} />);
+function band(
+  counts: HomeDTO["counts"],
+  focus: HomeDTO["focus"] = { minutes: 0, running: null },
+  review: HomeDTO["review"] = NOT_DUE,
+  meetingShare: HomeDTO["meetingShare"] = NO_MEETING_LOAD,
+  stalledGoals: HomeDTO["stalledGoals"] = [],
+) {
+  render(
+    <TopBand
+      day={day()}
+      counts={counts}
+      focus={focus}
+      review={review}
+      meetingShare={meetingShare}
+      stalledGoals={stalledGoals}
+      onHours={() => {}}
+      onWorkingDays={() => {}}
+    />,
+  );
 }
 
 /** Every figure as it reads, paired with where it leads. */
@@ -92,5 +110,33 @@ describe("TopBand", () => {
   it("says nothing at all once the week already has a review", () => {
     band({ planned: 3, meetings: 2, inbox: 4 }, undefined, { due: false });
     expect(screen.queryByText("Review your week")).toBeNull();
+  });
+
+  it("links this week's meeting load to the audit, when there is one", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, undefined, { minutes: 210, workingMinutes: 2700 });
+    const link = screen.getByRole("link", { name: "3h 30m in meetings this week" });
+    expect(link.getAttribute("href")).toBe("/meetings/audit");
+  });
+
+  it("says nothing about meetings this week rather than a zero", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, undefined, { minutes: 0, workingMinutes: 2700 });
+    expect(screen.queryByText(/in meetings this week/)).toBeNull();
+  });
+
+  it("names a stalled goal and links it to Goals, singular and plural", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, undefined, undefined, [{ id: 1, title: "Ship the docs" }]);
+    const one = screen.getByRole("link", { name: "1 goal stalled" });
+    expect(one.getAttribute("href")).toBe("/goals");
+    cleanup();
+    band({ planned: 3, meetings: 2, inbox: 4 }, undefined, undefined, undefined, [
+      { id: 1, title: "Ship the docs" },
+      { id: 2, title: "Launch v2" },
+    ]);
+    expect(screen.getByRole("link", { name: "2 goals stalled" })).toBeTruthy();
+  });
+
+  it("says nothing about stalled goals when there are none", () => {
+    band({ planned: 3, meetings: 2, inbox: 4 });
+    expect(screen.queryByText(/stalled/)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { calendarEvents } from "@/db/schema";
 import { addBlock } from "@/domain/blocks";
 import { archiveContainer, createContainer } from "@/domain/containers";
 import { finishFocus, startFocus } from "@/domain/focus";
+import { closeGoal, createGoal, setGoalLinks } from "@/domain/goals";
 import { createItem } from "@/domain/items";
 import { setMeetingDecision } from "@/domain/meetings/decision";
 import { addToPlan } from "@/domain/plan";
@@ -274,6 +275,42 @@ describe("homePayload", () => {
       const friday = new Date(2026, 8, 25, 10, 0, 0);
       openReview(t.db, "2026-09-21");
       expect(homePayload(t.db, friday).review).toEqual({ due: false });
+    });
+  });
+
+  describe("this week's meeting load", () => {
+    it("reads the same figure the audit page's own weeklyMeetingShare computes", () => {
+      replaceCalendarEvents(t.db, [
+        { externalId: "standup", title: "Standup", startsAt: localAt(10), endsAt: localAt(10, 30), attendees: 3, hasCallLink: false },
+      ]);
+      // The week's own Monday, so the meeting lands inside it regardless of which weekday NOW is.
+      expect(homePayload(t.db, NOW).meetingShare.minutes).toBeGreaterThan(0);
+    });
+
+    it("reports nothing rather than a zero-minute meeting week", () => {
+      expect(homePayload(t.db, NOW).meetingShare).toEqual({ minutes: 0, workingMinutes: expect.any(Number) });
+    });
+  });
+
+  describe("stalled goals", () => {
+    it("names an active goal with no linked work at all -- stalled by definition", () => {
+      const goal = createGoal(t.db, { title: "Ship the docs", horizon: "quarter", targetDate: "2026-12-31" });
+      expect(homePayload(t.db, NOW).stalledGoals).toEqual([{ id: goal.id, title: "Ship the docs" }]);
+    });
+
+    it("leaves out a goal with something closed against it recently", () => {
+      const goal = createGoal(t.db, { title: "Launch v2", horizon: "quarter", targetDate: "2026-12-31" });
+      const container = createContainer(t.db, { kind: "project", name: "Launch" });
+      setGoalLinks(t.db, goal.id, [container.id]);
+      const task = createTask(t.db, { title: "Ship it", containerId: container.id });
+      completeTask(t.db, task.id);
+      expect(homePayload(t.db, NOW).stalledGoals).toEqual([]);
+    });
+
+    it("leaves out a closed goal even with nothing linked", () => {
+      const goal = createGoal(t.db, { title: "Old goal", horizon: "quarter", targetDate: "2026-01-01" });
+      closeGoal(t.db, goal.id, "dropped");
+      expect(homePayload(t.db, NOW).stalledGoals).toEqual([]);
     });
   });
 

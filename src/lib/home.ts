@@ -8,6 +8,8 @@ import { countInbox, listItems, parseMeta } from "@/domain/items";
 import { containerProgress, getTask } from "@/domain/tasks";
 import { focusSummary, runningFocus } from "@/domain/focus";
 import { getReview } from "@/domain/review";
+import { goalsWithMeasure } from "@/domain/goals";
+import { weeklyMeetingShare } from "@/domain/meetings/audit";
 import { serializeFocusRun } from "./api";
 import { daysBetween } from "./deadline";
 import { plannerDay } from "./planner";
@@ -40,6 +42,21 @@ function reviewPrompt(db: DB, date: string): HomeDTO["review"] {
   const week = weekStart(date);
   const review = getReview(db, week);
   return { due: isoWeekday(date) >= PROMPT_FROM_WEEKDAY && !review };
+}
+
+/** This week's meeting load, the same figure the audit's own headline reads off — reused
+ * directly rather than re-derived, so the two can never disagree about the same week. */
+function meetingLoad(db: DB, date: string): HomeDTO["meetingShare"] {
+  return weeklyMeetingShare(db, weekStart(date));
+}
+
+/** Active goals nothing has closed against lately (`stalled`, already computed the same way the
+ * Goals page and the Weekly Review's own Goals step read it) — named here, not just counted, so
+ * the one thing worth a click is a click away rather than a trip through /goals to find which. */
+function stalledGoals(db: DB, date: string): HomeDTO["stalledGoals"] {
+  return goalsWithMeasure(db, { status: "active" }, date)
+    .filter((g) => g.measure.stalled)
+    .map((g) => ({ id: g.id, title: g.title }));
 }
 
 /** A session's end in the same local wall-clock spelling its start uses. */
@@ -220,5 +237,7 @@ export function homePayload(db: DB, now: Date): HomeDTO {
       running: running ? serializeFocusRun(running, getTask(db, running.taskId)?.title ?? "") : null,
     },
     review: reviewPrompt(db, date),
+    meetingShare: meetingLoad(db, date),
+    stalledGoals: stalledGoals(db, date),
   };
 }

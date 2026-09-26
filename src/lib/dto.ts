@@ -449,6 +449,13 @@ export interface HomeDTO {
    * static `/review`, not `/review?week=…`, so only `due` is read here — the week and the save
    * time belong to `/review`'s own payload, not to Home's. */
   review: { due: boolean };
+  /** This week's meeting load, the audit page's own `weeklyMeetingShare` reused directly so the
+   * two figures can never disagree about the same week. */
+  meetingShare: { minutes: number; workingMinutes: number };
+  /** Active goals with nothing closed against them lately (`GoalMeasureDTO.stalled`, the same
+   * flag the Goals page and Weekly Review's own Goals step already compute) — named here so
+   * the one thing worth a click is a click away, not a trip through /goals to find which. */
+  stalledGoals: { id: number; title: string }[];
 }
 
 export interface GoalMeasureDTO {
