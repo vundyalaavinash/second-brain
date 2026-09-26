@@ -102,6 +102,26 @@ function sumBy<K>(rows: DaySession[], key: (s: DaySession) => K): Map<K, number>
   return m;
 }
 
+/**
+ * The captured item id for each of `eventIds` (an item recorded through some path other than
+ * `itemId` itself, e.g. an ad-hoc recording that only ever wrote `meta.calendarEventId`), in one
+ * grouped query rather than one per event — shared by `getDay` and the meeting audit
+ * (`domain/meetings/audit.ts`), which both need the same "what got captured" answer for a whole
+ * window's worth of events at once.
+ */
+export function capturedItemsFor(db: DB, eventIds: number[]): Map<number, number> {
+  const out = new Map<number, number>();
+  if (eventIds.length === 0) return out;
+  const eventIdExpr = sql<number>`json_extract(${items.meta}, '$.calendarEventId')`;
+  const captured = db
+    .select({ id: items.id, eventId: eventIdExpr })
+    .from(items)
+    .where(inArray(eventIdExpr, eventIds))
+    .all();
+  for (const row of captured) out.set(row.eventId, row.id);
+  return out;
+}
+
 export function getDay(db: DB, day: string): ActivityDay {
   const sessions = clippedSessions(db, day);
   const active = sessions.filter((s) => !s.afk);
@@ -123,16 +143,7 @@ export function getDay(db: DB, day: string): ActivityDay {
     .orderBy(asc(calendarEvents.startsAt))
     .all();
   const eventIds = events.map((ev) => ev.id);
-  const capturedByEvent = new Map<number, number>();
-  if (eventIds.length) {
-    const eventIdExpr = sql<number>`json_extract(${items.meta}, '$.calendarEventId')`;
-    const captured = db
-      .select({ id: items.id, eventId: eventIdExpr })
-      .from(items)
-      .where(inArray(eventIdExpr, eventIds))
-      .all();
-    for (const row of captured) capturedByEvent.set(row.eventId, row.id);
-  }
+  const capturedByEvent = capturedItemsFor(db, eventIds);
   // One batched series-decision query for the whole day's events, not one per row.
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
   const decisions = seriesDecisionsFor(db, seriesIds);
