@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Plus, Check, Archive, RotateCcw, Trash2, FileText, CalendarDays, ChevronRight } from "lucide-react";
-import type { ContainerDTO, GoalRefDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
+import type { ContainerDTO, ContainerMeetingDTO, GoalRefDTO, ItemDTO, ProgressDTO, TaskDTO } from "@/lib/dto";
 import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
 import { setCurrentContainer } from "@/lib/current-container";
@@ -21,6 +21,7 @@ import { ContainerRail } from "./containers/container-rail";
 import { GoalsLine } from "./containers/goals-line";
 import { LinksSection } from "./containers/links-section";
 import { NotesSection } from "./containers/notes-section";
+import { MeetingsSection } from "./containers/meetings-section";
 
 const ABOUT_LABEL: Record<ContainerDTO["kind"], string> = {
   project: "About this project",
@@ -41,6 +42,7 @@ export function ContainerEditor({
   initial,
   items,
   tasks,
+  meetings = [],
   goals = [],
   today,
   onEditorReady,
@@ -48,6 +50,10 @@ export function ContainerEditor({
   initial: ContainerDTO;
   items: ItemDTO[];
   tasks: TaskDTO[];
+  /** This container's own meetings — badged and dated, the same rule the Planner already
+   * renders them with (Task 3, step 3). Never built from `items`: a meeting's date lives on its
+   * calendar event, not the item, so the page hands this down already put together. */
+  meetings?: ContainerMeetingDTO[];
   /** The active goals this container serves, for the line under its name. */
   goals?: GoalRefDTO[];
   today: string;
@@ -283,7 +289,10 @@ export function ContainerEditor({
 
   const links = items.filter((i) => i.type === "link");
   const notes = items.filter((i) => i.type === "note");
-  const others = items.filter((i) => i.type !== "link" && i.type !== "note");
+  // Meetings get their own section below, drawn from `meetings` rather than `items`: they
+  // carry a date and badges the generic bucket has no room for. Filtered out here so a meeting
+  // never shows twice.
+  const others = items.filter((i) => i.type !== "link" && i.type !== "note" && i.type !== "meeting");
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
@@ -406,11 +415,12 @@ export function ContainerEditor({
 
       {c.kind === "project" || c.kind === "area" ? (
         <div className="grid grid-cols-1 min-[1200px]:grid-cols-[3fr_2fr] gap-6">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-6">
             <section className="flex flex-col gap-2">
               <SectionHeading count={progress.open}>Tasks</SectionHeading>
               <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
             </section>
+            <MeetingsSection containerId={c.id} meetings={meetings} />
           </div>
           <div className="flex flex-col gap-6">
             <LinksSection containerId={c.id} initial={links} readOnly={c.status === "archived"} />

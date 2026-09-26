@@ -4,8 +4,12 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-li
 import { MeetingsView } from "./meetings-view";
 import type { MeetingListDTO, MeetingSettingsDTO, RecorderStatusDTO } from "@/lib/dto";
 
-const nav = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: () => {} }), usePathname: () => "/planner/meetings" }));
+const nav = vi.hoisted(() => ({ push: vi.fn(), params: new URLSearchParams() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: nav.push, refresh: () => {} }),
+  usePathname: () => "/planner/meetings",
+  useSearchParams: () => nav.params,
+}));
 
 const TODAY = "2026-09-22";
 
@@ -97,6 +101,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   nav.push.mockClear();
+  nav.params = new URLSearchParams();
 });
 
 describe("MeetingsView", () => {
@@ -383,6 +388,98 @@ describe("MeetingsView", () => {
         expect(call).toBeTruthy();
         expect(JSON.parse(String(call![1]?.body))).toEqual({ decision: "maybe", scope: "occurrence" });
       });
+    });
+  });
+
+  describe("the container suggestion", () => {
+    const suggested = meeting({
+      id: 20,
+      title: "Kickoff",
+      startsAt: `${TODAY}T14:00:00`,
+      endsAt: `${TODAY}T14:30:00`,
+      itemId: 30,
+      item: { id: 30, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null },
+      suggestedContainer: { id: 5, name: "Q3 Platform", slug: "q3-platform", kind: "project" },
+    });
+
+    /** The PATCH the offer's accept hits, and nothing else -- no path of its own. */
+    function stubItemPatch() {
+      const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (/\/api\/items\/\d+$/.test(String(input)) && init?.method === "PATCH") return Response.json({});
+        return new Response("{}", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fn);
+      return fn;
+    }
+
+    it("offers a suggestion on an uncontained meeting, an offer only, never a write on its own", () => {
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      expect(screen.getByText("Q3 Platform")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "File it there" })).toBeTruthy();
+    });
+
+    it("shows nothing for a meeting with no suggestion", () => {
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0]]} />);
+      expect(screen.queryByRole("button", { name: "File it there" })).toBeNull();
+    });
+
+    it("accepting files the meeting's own item through the existing item PATCH, the only write this offer ever makes", async () => {
+      const fetchMock = stubItemPatch();
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      fireEvent.click(screen.getByRole("button", { name: "File it there" }));
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/items/30" && (init as RequestInit)?.method === "PATCH");
+        expect(call).toBeTruthy();
+        expect(JSON.parse(String(call![1]?.body))).toEqual({ containerId: 5 });
+      });
+    });
+
+    it("dismissing drops the offer for this session, without writing anything", () => {
+      const fetchMock = stubItemPatch();
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      fireEvent.click(screen.getByRole("button", { name: "Not this one" }));
+      expect(screen.queryByText("Q3 Platform")).toBeNull();
+      expect(fetchMock.mock.calls.some(([url]) => /\/api\/items\/\d+$/.test(String(url)))).toBe(false);
+    });
+  });
+
+  describe("filtered to a project", () => {
+    const filed = meeting({
+      id: 21,
+      title: "Roadmap review",
+      startsAt: `${TODAY}T15:00:00`,
+      endsAt: `${TODAY}T15:30:00`,
+      itemId: 31,
+      item: { id: 31, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 5 },
+    });
+    const filedElsewhere = meeting({
+      id: 22,
+      title: "Other project sync",
+      startsAt: `${TODAY}T16:00:00`,
+      endsAt: `${TODAY}T16:30:00`,
+      itemId: 32,
+      item: { id: 32, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 9 },
+    });
+
+    it("shows only meetings filed to the project the ?container= param names", () => {
+      nav.params = new URLSearchParams("container=5");
+      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
+      expect(screen.getByText("Roadmap review")).toBeTruthy();
+      expect(screen.queryByText("Other project sync")).toBeNull();
+      expect(screen.getByText("Show all meetings")).toBeTruthy();
+    });
+
+    it("says nothing is filed there yet, rather than claiming the window itself is empty", () => {
+      nav.params = new URLSearchParams("container=5");
+      render(<MeetingsView today={TODAY} meetings={[filedElsewhere]} />);
+      expect(screen.getByText("No meetings are filed here yet")).toBeTruthy();
+    });
+
+    it("shows everything with no ?container= param at all", () => {
+      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
+      expect(screen.getByText("Roadmap review")).toBeTruthy();
+      expect(screen.getByText("Other project sync")).toBeTruthy();
+      expect(screen.queryByText("Show all meetings")).toBeNull();
     });
   });
 });

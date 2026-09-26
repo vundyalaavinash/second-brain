@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Fragment, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Settings2 } from "lucide-react";
 import type { MeetingListDTO, MeetingSettingsDTO } from "@/lib/dto";
 import type { MeetingDecision } from "@/db/enums";
@@ -11,6 +12,16 @@ import { MeetingRow } from "./meeting-row";
 import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
 import { CalendarFeed } from "./calendar-feed";
+
+/** `?container=<id>` on this same route, read here rather than through a dedicated route —
+ * the meetings view already reads its own filters (search, decision) as component state rather
+ * than a route per state, so a project scope follows that same shape instead of inventing a
+ * `/planner/meetings/c/[id]` route this app has no other example of. */
+function useContainerFilter(): number | null {
+  const raw = useSearchParams().get("container");
+  const n = raw === null ? NaN : Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 const JSON_HEADERS = { "content-type": "application/json" };
 const SETTINGS_URL = "/api/settings/meetings";
@@ -66,8 +77,14 @@ function groupByDay(meetings: MeetingListDTO[]): Group[] {
 
 export function MeetingsView({ today, meetings, onRefresh }: Props) {
   const router = useRouter();
+  const containerFilter = useContainerFilter();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // A dismissed suggestion is a "not now", not a "never" -- nothing here is written for it, so
+  // it is only ever known for this render of the page (brief's own words: a dismissal table is
+  // more machinery than the feature needs). It may reappear on reload; that is the deliberate
+  // trade, not a bug.
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<number>>(new Set());
   // Null until the server has answered: a switch that renders before then would render a guess.
   const [settings, setSettings] = useState<MeetingSettingsDTO | null>(null);
   // The switches and the feed link live behind one control; with no meetings at all the panel
@@ -98,8 +115,12 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     };
   }, []);
 
+  // A project scope, when one is given, narrows the whole window down before search or the
+  // decision filter ever see it -- the same list every other control here already works from,
+  // rather than a second, parallel path.
+  const scoped = containerFilter === null ? meetings : meetings.filter((m) => m.item?.containerId === containerFilter);
   const q = query.trim().toLowerCase();
-  const searched = q ? meetings.filter((m) => matches(m, q)) : meetings;
+  const searched = q ? scoped.filter((m) => matches(m, q)) : scoped;
   const shown = applyFilter(searched, filter);
   const todays = shown.filter((m) => dayOf(m.startsAt) === today);
   const upcoming = groupByDay(shown.filter((m) => dayOf(m.startsAt) > today));
@@ -143,6 +164,28 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     })();
   }
 
+  /** The offer's accept: the same `PATCH /api/items/[id]` a person filing the item by hand would
+   * hit, never a path of its own -- this is the only write the suggestion chip ever makes, and
+   * only once someone has said yes to it (design "no button implies an action it didn't take"). */
+  function acceptSuggestion(m: MeetingListDTO) {
+    if (m.itemId === null || !m.suggestedContainer) return;
+    const containerId = m.suggestedContainer.id;
+    void (async () => {
+      const res = await fetch(`/api/items/${m.itemId}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ containerId }) });
+      if (!res.ok) {
+        setError("Could not file that meeting");
+        return;
+      }
+      setError(null);
+      onRefresh?.();
+    })();
+  }
+
+  /** The offer's dismiss: session-local only, so it never needs a table to remember it. */
+  function dismissSuggestion(id: number) {
+    setDismissedSuggestions((prev) => new Set(prev).add(id));
+  }
+
   /** The only outward action a decision ever takes: opening Calendar so the person can tell the
    * organiser themselves, by hand. Nothing here sends anything on their behalf. */
   function openCalendar() {
@@ -168,21 +211,45 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     })();
   }
 
+  /** The offer band under an uncontained meeting's row: "Looks like <container>?" with an
+   * accept and a dismiss, and nothing else -- an offer, never an assignment. Nothing renders
+   * once a meeting is filed (its `suggestedContainer` goes away server-side the moment
+   * `item.containerId` is no longer null) or once this session has dismissed it. */
+  function suggestionBand(m: MeetingListDTO) {
+    if (!m.suggestedContainer || dismissedSuggestions.has(m.id)) return null;
+    const suggestion = m.suggestedContainer;
+    return (
+      <li key={`${m.id}-suggestion`} className="hairline-row flex items-center gap-2 flex-wrap px-3 py-1.5 pl-[calc(6rem+0.75rem)] text-[12px] text-fg-muted">
+        <span>
+          Looks like <span className="text-fg">{suggestion.name}</span>?
+        </span>
+        <Button size="sm" variant="ghost" onClick={() => acceptSuggestion(m)} className="shrink-0">
+          File it there
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => dismissSuggestion(m.id)} className="shrink-0">
+          Not this one
+        </Button>
+      </li>
+    );
+  }
+
   function rows(list: MeetingListDTO[]) {
     return (
       <List>
         {list.map((m) => (
-          <MeetingRow
-            key={m.id}
-            meeting={m}
-            onOpen={() => open(m.id)}
-            onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
-            onRecord={() => recorder.record({ calendarEventId: m.id })}
-            onDecision={(decision, scope) => setDecision(m.id, decision, scope)}
-            onOpenCalendar={openCalendar}
-            blocked={recorder.blocked}
-            recordTitle={recorder.title}
-          />
+          <Fragment key={m.id}>
+            <MeetingRow
+              meeting={m}
+              onOpen={() => open(m.id)}
+              onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
+              onRecord={() => recorder.record({ calendarEventId: m.id })}
+              onDecision={(decision, scope) => setDecision(m.id, decision, scope)}
+              onOpenCalendar={openCalendar}
+              blocked={recorder.blocked}
+              recordTitle={recorder.title}
+            />
+            {suggestionBand(m)}
+          </Fragment>
         ))}
       </List>
     );
@@ -217,6 +284,14 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      {containerFilter !== null && (
+        <div className="flex items-center gap-2 text-[12.5px] text-fg-muted">
+          <span>Showing only meetings filed to this project.</span>
+          <Link href="/planner/meetings" className="focus-ring text-violet-bright hover:underline rounded-sm">
+            Show all meetings
+          </Link>
+        </div>
+      )}
       <div className="flex items-center gap-3 flex-wrap">
         <Input
           type="search"
@@ -330,8 +405,10 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
         <p className="text-[13px] text-fg-faint m-0">
           {q
             ? "No meetings match that search"
-            : meetings.length === 0
-              ? "No meetings in the next 60 days"
+            : scoped.length === 0
+              ? containerFilter !== null
+                ? "No meetings are filed here yet"
+                : "No meetings in the next 60 days"
               : filter === "not-going"
                 ? "Nothing here is marked not going"
                 : 'Everything in this window is marked not going. Switch to "Everything" to see it.'}

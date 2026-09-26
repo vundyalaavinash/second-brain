@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, act, cleanup, fireEvent } from "@testing-library/react";
+import { render, act, cleanup, fireEvent, within } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { useRouter } from "next/navigation";
 import { ContainerEditor } from "./container-editor";
-import type { ContainerDTO } from "@/lib/dto";
+import type { ContainerDTO, ContainerMeetingDTO } from "@/lib/dto";
 
 // A single stable router object (not a fresh one per call) so tests can grab `replace` etc. up
 // front via `useRouter()` and assert on the same spy instances the component used.
@@ -246,5 +246,36 @@ describe("ContainerEditor with RichEditor", () => {
     expect((patches[0] as { name: string }).name).toBe("Wellness");
     expect(replace).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("the project page's own Meetings section", () => {
+  const meeting: ContainerMeetingDTO = {
+    title: "Kickoff",
+    startsAt: "2026-09-20T14:00:00.000Z",
+    item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 },
+  };
+
+  it("lists a filed meeting with its date and its item's badges, not the generic 'Files and other items' bucket", () => {
+    const { getByText, getByRole } = render(<ContainerEditor initial={project} items={[]} tasks={[]} meetings={[meeting]} today="2026-09-16" />);
+    const row = getByRole("link", { name: "Kickoff" }).closest("li") as HTMLElement;
+    expect(row.querySelector('a[href="/items/40"]')).toBeTruthy();
+    // `meeting-row.tsx`'s own badge rule, reused rather than a second one: Notes and Summary
+    // earned, Transcript not.
+    expect(within(row).getByText("Notes")).toBeTruthy();
+    expect(within(row).getByText("Summary")).toBeTruthy();
+    expect(within(row).queryByText("Transcript")).toBeNull();
+    // Nothing else filed here, so the generic bucket says so rather than repeating the meeting.
+    expect(getByText("Nothing else filed here.")).toBeTruthy();
+  });
+
+  it("says nothing is filed yet when the container has no meetings", () => {
+    const { getByText } = render(<ContainerEditor initial={project} items={[]} tasks={[]} meetings={[]} today="2026-09-16" />);
+    expect(getByText("No meetings filed here yet.")).toBeTruthy();
+  });
+
+  it("links out to the project-filtered Planner view", () => {
+    const { getByRole } = render(<ContainerEditor initial={project} items={[]} tasks={[]} meetings={[meeting]} today="2026-09-16" />);
+    expect(getByRole("link", { name: "See all in Planner" }).getAttribute("href")).toBe(`/planner/meetings?container=${project.id}`);
   });
 });
