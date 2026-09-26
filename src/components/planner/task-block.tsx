@@ -240,6 +240,10 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
           <span className={`truncate text-[13px] ${done ? "line-through text-fg-muted" : ""}`}>{task.title}</span>
           {/* Spec §2: which of the day's sessions this one is, when the task holds more than one. */}
           {count > 1 && <span className="font-mono text-[11px] text-fg-faint shrink-0">{`${index} of ${count}`}</span>}
+          {/* Below 30 minutes the time-range row never gets a second row to sit on (the block's
+            * own overflow-hidden clips it), so the length rides here instead -- shorter than the
+            * full range, but never gone the way it used to. */}
+          {height * pxPerMin < 30 && <span className="font-mono text-[10.5px] text-fg-faint shrink-0">{formatMinutes(block.minutes)}</span>}
           {/* Focus lives on the title row, not the row below the time range, because that row
             * is the first thing this block's own overflow-hidden clips away on anything shorter
             * than about 45 minutes -- the one control someone actually presses from here must
@@ -251,10 +255,8 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
           )}
         </span>
         {height * pxPerMin >= 30 && (
-          <span className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[11px] text-fg-faint">
-              {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
-            </span>
+          <span className="font-mono text-[11px] text-fg-faint truncate">
+            {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
           </span>
         )}
       </div>

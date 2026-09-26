@@ -165,6 +165,15 @@ describe("Timeline", () => {
     expect(screen.queryByRole("link", { name: /Join/ })).toBeNull();
   });
 
+  // Under 30 minutes the time-range row has nowhere to sit without the block's own
+  // overflow-hidden clipping it, so a compact length rides the title row instead of vanishing.
+  it("shows a compact length instead of the time-range row on a meeting too short for it", () => {
+    const short: MeetingListDTO = { ...sync, id: 4, title: "Quick standup", startsAt: `${DATE}T10:00:00`, endsAt: `${DATE}T10:20:00` };
+    render(<Timeline date={DATE} meetings={[short]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    expect(screen.getByText("20m")).toBeTruthy();
+    expect(screen.queryByText("10:00–10:20")).toBeNull();
+  });
+
   it("draws no current-time line on a day that is not today", () => {
     const { container } = render(
       <Timeline
@@ -216,12 +225,14 @@ describe("Timeline", () => {
 
   // A session under 30 minutes drops its time-range line (the same shape the meeting block
   // uses) -- Focus must not have gone with it, since it lived in that same row before this fix
-  // and was the one control someone actually presses from here.
+  // and was the one control someone actually presses from here. Its length rides the title row
+  // instead of vanishing along with the row it used to share.
   it("keeps Focus on a session too short for its own time-range line", () => {
     const quick: PlanTaskDTO = { ...blocked, id: 13, title: "Quick check", blocks: [{ id: 3, taskId: 13, startsAt: `${DATE}T10:30:00`, minutes: 15 }] };
     render(<Timeline date={DATE} meetings={[]} tasks={[quick]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
     expect(screen.getByRole("button", { name: "Focus on Quick check" })).toBeTruthy();
     expect(screen.queryByText(/10:30.*10:45/)).toBeNull();
+    expect(screen.getByText("15m")).toBeTruthy();
   });
 
   it("draws every session a task holds on the day, each marked with its place", () => {

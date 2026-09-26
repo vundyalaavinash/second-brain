@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ActivityMeetingDTO, BlockDTO, MeetingItemDTO, MeetingListDTO, PlanTaskDTO } from "@/lib/dto";
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
-import { DEFAULT_BLOCK_MINUTES, parseWorkHours } from "@/lib/capacity";
+import { DEFAULT_BLOCK_MINUTES, formatMinutes, parseWorkHours } from "@/lib/capacity";
 import { layoutBlocks, type TimelineMeeting } from "./timeline-layout";
 import { blockEnd, blocksOn, minutesToIso, snap, SNAP_MINUTES } from "./block-math";
 import { PLAN_DRAG_MIME, readPlanMinutes } from "./drag-mime";
@@ -405,6 +405,9 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                   {BADGES.filter((badge) => m.item?.[badge.key]).map((badge) => (
                     <span key={badge.label} className={`w-1.5 h-1.5 rounded-full shrink-0 pointer-events-auto ${badge.dot}`} title={badge.label} />
                   ))}
+                  {/* Below 30 minutes the time-range row below never has the room to sit on
+                    * (the block's own overflow-hidden clips it), so the length rides here instead. */}
+                  {b.height < 30 && <span className="font-mono text-[10.5px] text-fg-faint shrink-0">{formatMinutes(b.height)}</span>}
                   {/* A disabled button takes no pointer events, so the reason hangs on the wrapper. */}
                   <span title={recorder.title ?? undefined} className="ml-auto shrink-0 pointer-events-auto">
                     <button
@@ -419,9 +422,11 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                     </button>
                   </span>
                 </span>
-                <span className="font-mono text-[11px] text-fg-faint">
-                  {formatClock(m.startsAt)}–{formatClock(m.endsAt)}
-                </span>
+                {b.height >= 30 && (
+                  <span className="font-mono text-[11px] text-fg-faint truncate">
+                    {formatClock(m.startsAt)}–{formatClock(m.endsAt)}
+                  </span>
+                )}
                 {b.height >= 48 && (
                   <span className="flex items-center gap-2 text-[11.5px] text-fg-faint">
                     <span>{count(m.attendees, "attendee")}</span>
