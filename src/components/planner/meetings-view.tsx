@@ -235,8 +235,14 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
                       aria-label="Audio retention, in days"
                       defaultValue={settings.audioRetentionDays}
                       onBlur={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isInteger(n) && n >= 0 && n <= 365) saveSetting({ audioRetentionDays: n });
+                        // `Number("")` is 0, not "unset" — an emptied field must not silently
+                        // save as "release the audio the moment a transcript exists", the most
+                        // destructive value the setting can take. A blank or non-numeric field
+                        // reverts to what was last saved rather than committing anything.
+                        const raw = e.target.value.trim();
+                        const n = Number(raw);
+                        if (raw !== "" && Number.isInteger(n) && n >= 0 && n <= 365) saveSetting({ audioRetentionDays: n });
+                        else e.target.value = String(settings.audioRetentionDays);
                       }}
                       className="w-full"
                     />

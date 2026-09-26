@@ -83,3 +83,24 @@ which element actually forces the width rather than guessing.
 A lead, from the Task 2 review: `src/components/planner/calendar-feed.tsx`'s
 `min-w-[240px]` is the most likely culprit. Measure before believing it — the
 point of this note is that the element was guessed at rather than found.
+
+## The audio footprint line does not say how stale it is
+
+`safetyStatus` reads a persisted snapshot of how much recorded audio is held,
+refreshed by the nightly job, by "Remove the audio", and by the manual
+`release-audio` command -- never when a recording finishes on its own. So the
+figure can lag by up to one nightly cycle, and the line renders it in the
+present tense ("No audio held.") with nothing saying as of when.
+
+`recordAudioFootprint` already stores `computedAt` for exactly this reason --
+the field exists, documented as "the status line does not currently show
+this, but the shape is here so it could without another format change." It is
+dropped by `readAudioFootprintSnapshot` and absent from `AudioFootprintDTO`.
+
+Not fixed now because the staleness window is bounded and the current wording
+is not actually false -- a freshly upgraded install correctly shows zero until
+the first nightly run touches it, which is the same "silence is not evidence
+of a problem" reading the rest of the safety design already gives an unset
+value. Worth doing when the status line next changes shape: surface
+`computedAt` in the DTO and word the line as "as of last night" rather than
+letting the present tense imply something it does not measure live.

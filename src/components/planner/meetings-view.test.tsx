@@ -248,6 +248,25 @@ describe("MeetingsView", () => {
     });
   });
 
+  it("does not save an emptied retention field as 0, the most destructive value", async () => {
+    // `Number("")` is 0, and 0 means "release the audio the moment a transcript exists" — the
+    // exact opposite of what clearing a field to look at it means. A blank field must revert to
+    // what was saved, not commit anything.
+    const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
+    mount();
+    openSettings();
+
+    const days = (await screen.findByRole("spinbutton", { name: "Audio retention, in days" })) as HTMLInputElement;
+    fireEvent.change(days, { target: { value: "" } });
+    fireEvent.blur(days);
+
+    // Give any stray save a tick to land before asserting none did.
+    await new Promise((r) => setTimeout(r, 0));
+    const patch = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/settings/meetings" && init?.method === "PATCH");
+    expect(patch).toBeUndefined();
+    expect(days.value).toBe("7");
+  });
+
   it("switches the audio retention window to keep forever, and back", async () => {
     const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
     mount();
