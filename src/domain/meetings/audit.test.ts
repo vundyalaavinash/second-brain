@@ -366,6 +366,30 @@ describe("weeklyMeetingShare", () => {
     expect(share.minutes).toBe(60);
     expect(share.minutes).toBeLessThanOrEqual(share.workingMinutes);
   });
+
+  // F4 (whole-branch review): `weeklyMeetingShare` must use `effectiveDecisionAsOf`, the same
+  // `decidedAt`-scoped resolution `attendedCount` uses, not plain `effectiveDecision` -- otherwise
+  // declining a series mid-week retroactively zeroes out hours that already elapsed under the
+  // decision actually in force when they happened.
+  it("does not retroactively zero out a week's already-elapsed minutes when its series is declined afterward", () => {
+    const week = "2026-09-14"; // a Monday, safely in the past relative to the real wall clock --
+    // `setMeetingDecision` stamps `decidedAt` from `Date.now()`, not an injectable clock, so the
+    // occurrence itself must genuinely predate "now" for this to prove anything.
+    const S = Date.parse(dayBounds(week).start) + 10 * 3600_000;
+    const wat = (s: number) => new Date(S + s * 1000).toISOString();
+    replaceCalendarEvents(t.db, [
+      { externalId: "retro-week", title: "Standup", startsAt: wat(0), endsAt: wat(3600), attendees: 2, hasCallLink: true, seriesId: "eventkit:retro-week" },
+    ]);
+    // The person actually attended (default "going", no per-occurrence override) -- this hour
+    // already happened, long before the decision below is made.
+    setMeetingDecision(t.db, eventBy(t, "retro-week").id, { decision: "not-going", scope: "series" });
+
+    const share = weeklyMeetingShare(t.db, week);
+    // If the bug were still present (plain `effectiveDecision`, with no `decidedAt` scoping) this
+    // would read 0: the series decision would apply retroactively to an hour that already
+    // happened before it was ever made.
+    expect(share.minutes).toBe(60);
+  });
 });
 
 describe("nextOccurrenceIds", () => {

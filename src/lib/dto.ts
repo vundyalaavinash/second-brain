@@ -208,14 +208,16 @@ export interface ActivityMeetingDTO {
   decision: MeetingDecision;
   /** This occurrence's own note, alongside its own `decision` — not resolved through the series. */
   decisionNote: string;
+  /** The series' own standing decision (`meetingSeriesDecisions`), independent of this occurrence's
+   * own override — null when this is a one-off meeting or nobody has ever decided one for its
+   * series. This is what a row needs to know an active series decision exists at all *to reverse*:
+   * `decision` above already folds a series decision into its answer, so it alone cannot tell "no
+   * decision was ever made" apart from "an occurrence override happens to agree with the default".
+   * Resolved and batched the same way `decision` is, from the same `seriesDecisionsFor` call —
+   * never a second, per-row query. */
+  seriesDecision: MeetingDecision | null;
 }
 
-/** The body `PATCH /api/meetings/[id]/decision` takes, and what the row's decision control sends. */
-export interface MeetingDecisionDTO {
-  decision: MeetingDecision;
-  note: string;
-  scope: "occurrence" | "series";
-}
 export interface ActivityDayDTO {
   day: string;
   activeMs: number;

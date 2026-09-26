@@ -22,17 +22,19 @@ interface Props {
 
 const DECISION_LABEL: Record<MeetingDecision, string> = { going: "Going", maybe: "Maybe", "not-going": "Not going" };
 
-/** The badges a linked item has earned. Nothing is shown for a meeting with no item yet.
- * Exported so any other place a meeting item's badges are shown — the project page's own
- * Meetings section among them — reads them off the same rule, rather than a second one that
- * could drift from this one. */
-export function meetingBadges(item: MeetingItemDTO | null | undefined): string[] {
+/** The badges a linked item has earned. Nothing is shown for a meeting with no item yet. Not
+ * exported: `MeetingBadges` below is what any other place a meeting item's badges are shown —
+ * the project page's own Meetings section among them — actually imports, so the rule for which
+ * badges apply lives in exactly one place without this helper needing a life of its own outside
+ * it. */
+function meetingBadges(item: MeetingItemDTO | null | undefined): string[] {
   if (!item) return [];
   return [item.hasNotes && "Notes", item.hasTranscript && "Transcript", item.hasSummary && "Summary"].filter((b): b is string => !!b);
 }
 
-/** The badge chips themselves, so a badge's look — not just which ones apply — never has to be
- * redrawn twice either. */
+/** The badge chips themselves — what every other place a meeting item's badges are shown
+ * actually imports — so a badge's look — not just which ones apply — never has to be redrawn
+ * twice either. */
 export function MeetingBadges({ item }: { item: MeetingItemDTO | null | undefined }) {
   return (
     <>
@@ -48,12 +50,21 @@ export function MeetingBadges({ item }: { item: MeetingItemDTO | null | undefine
 export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, onOpenCalendar, blocked, recordTitle }: Props) {
   // A decision on a recurring meeting can mean "just this once" or "every time it happens" --
   // asked once, right here, rather than guessed. A one-off meeting (no seriesId) has no series
-  // to ask about, so it writes the occurrence straight away. Going back to "Going" never asks:
-  // re-accepting is one click, design §7.
+  // to ask about, so it writes the occurrence straight away. Going back to "Going" never asks
+  // in the ordinary case -- re-accepting a normal recurring meeting nobody has ever declined at
+  // the series level is one click, design §7 -- *unless* there is currently an active series
+  // decision for this meeting's series (`meeting.seriesDecision`, independent of this occurrence's
+  // own possibly-different `decision`): without asking there, "Going" would silently write only
+  // an occurrence override and leave the series decision standing, so the only way to reverse a
+  // declined series would be clicking Going on every future occurrence individually, forever.
   const [asking, setAsking] = useState<MeetingDecision | null>(null);
 
   function choose(decision: MeetingDecision) {
-    if (decision !== "going" && meeting.seriesId) {
+    if (!meeting.seriesId) {
+      onDecision(decision, "occurrence");
+      return;
+    }
+    if (decision !== "going" || meeting.seriesDecision) {
       setAsking(decision);
       return;
     }

@@ -80,6 +80,7 @@ const EVENT: ActivityMeetingDTO = {
   seriesId: null,
   decision: "going",
   decisionNote: "",
+  seriesDecision: null,
 };
 
 const IDLE: RecorderStatusDTO = { state: "idle", missing: [] };

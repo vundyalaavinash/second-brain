@@ -42,6 +42,10 @@ export interface ActivityMeeting {
   seriesId: string | null;
   decision: MeetingDecision;
   decisionNote: string;
+  /** The series' own standing decision, independent of this occurrence's override — see
+   * `ActivityMeetingDTO.seriesDecision` (`@/lib/dto`) for why `decision` alone can't answer
+   * "is there one to reverse". */
+  seriesDecision: MeetingDecision | null;
 }
 
 export interface ActivityDay {
@@ -169,6 +173,7 @@ export function getDay(db: DB, day: string): ActivityDay {
     seriesId: ev.seriesId,
     decision: effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
     decisionNote: ev.decisionNote,
+    seriesDecision: ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }

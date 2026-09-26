@@ -25,6 +25,7 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string } =
     seriesId: null,
     decision: "going",
     decisionNote: "",
+    seriesDecision: null,
     ...over,
   };
 }
@@ -59,6 +60,26 @@ describe("MeetingRow decision control", () => {
     const { onDecision } = mount({ id: 1, title: "Standup", decision: "not-going", seriesId: "eventkit:series-1" });
     fireEvent.click(screen.getByRole("button", { name: "Going" }));
     expect(onDecision).toHaveBeenCalledWith("going", "occurrence");
+  });
+
+  // F2: the ordinary case above (no active series decision) must keep writing directly with no
+  // question. But a series that currently has an active decision -- something to actually
+  // reverse -- must ask the same scope question "Going" asks for maybe/not-going, or a declined
+  // series could only ever be un-declined one future occurrence at a time, forever.
+  it("asks the scope question before writing going, when the series has an active decision to reverse", () => {
+    const { onDecision } = mount({
+      id: 1,
+      title: "Standup",
+      decision: "not-going",
+      seriesId: "eventkit:series-1",
+      seriesDecision: "not-going",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Going" }));
+    expect(onDecision).not.toHaveBeenCalled();
+    expect(screen.getByText("Just this one, or every time this meeting happens?")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Every time" }));
+    expect(onDecision).toHaveBeenCalledWith("going", "series");
   });
 
   it("writes a one-off meeting's decision directly, with no question", () => {

@@ -5,7 +5,7 @@ import { activityBetween, addDays, capturedItemsFor, dayBounds, listMeetings, lo
 import { meetingCost, parseWorkHours } from "@/lib/capacity";
 import { meetingItemFlags } from "@/lib/planner";
 import { getWorkHours, getWorkingDays, isWorkingDay } from "@/lib/work-hours";
-import { effectiveDecision, seriesDecisionDetailsFor, seriesDecisionsFor } from "./decision";
+import { seriesDecisionDetailsFor } from "./decision";
 
 /** How many apps' worth of "what ran during it" the evidence names — the same figure
  * `activityToday` (home.ts) and `focusWhere` (domain/focus) already settled on for "the three
@@ -53,17 +53,36 @@ function occurrenceItemId(ev: CalendarEvent, capturedByEvent: Map<number, number
   return ev.itemId ?? capturedByEvent.get(ev.id) ?? null;
 }
 
-/** One occurrence's own slice of `sessions` (the whole window's activity, already fetched once),
- * clipped to its start and end — a meeting's audit must not attribute a minute of activity to
- * time outside it, so every overlap is clipped before it is counted, in memory, rather than
- * asking the database again for each occurrence. */
-function activityDuring(ev: { startsAt: string; endsAt: string }, sessions: DaySession[]): { appId: string | null; appName: string | null; domain: string | null; ms: number }[] {
+/** A window session's own instant bounds, parsed once for the whole window rather than once per
+ * occurrence it might overlap — `auditSeries` runs this pass on every server render of a real
+ * page, and the window's session list is the same for every occurrence in it. Sorted by start so
+ * the bounds read in the same order the events they overlap are likely to, though `activityDuring`
+ * below still checks every one; this is a modest hoist, not a smarter algorithm. */
+interface SessionBounds {
+  start: number;
+  end: number;
+  appId: string | null;
+  appName: string | null;
+  domain: string | null;
+}
+
+function sessionBounds(sessions: DaySession[]): SessionBounds[] {
+  return sessions
+    .map((s) => ({ start: Date.parse(s.startedAt), end: Date.parse(s.endedAt), appId: s.appId, appName: s.appName, domain: s.domain }))
+    .sort((a, b) => a.start - b.start);
+}
+
+/** One occurrence's own slice of `bounds` (the whole window's activity, already fetched and
+ * parsed once), clipped to its start and end — a meeting's audit must not attribute a minute of
+ * activity to time outside it, so every overlap is clipped before it is counted, in memory,
+ * rather than asking the database again for each occurrence. */
+function activityDuring(ev: { startsAt: string; endsAt: string }, bounds: SessionBounds[]): { appId: string | null; appName: string | null; domain: string | null; ms: number }[] {
   const start = Date.parse(ev.startsAt);
   const end = Date.parse(ev.endsAt);
   const out: { appId: string | null; appName: string | null; domain: string | null; ms: number }[] = [];
-  for (const s of sessions) {
-    const overlapStart = Math.max(start, Date.parse(s.startedAt));
-    const overlapEnd = Math.min(end, Date.parse(s.endedAt));
+  for (const s of bounds) {
+    const overlapStart = Math.max(start, s.start);
+    const overlapEnd = Math.min(end, s.end);
     if (overlapEnd > overlapStart) out.push({ appId: s.appId, appName: s.appName, domain: s.domain, ms: overlapEnd - overlapStart });
   }
   return out;
@@ -139,7 +158,8 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
   // that date, which east of Greenwich falls *after* the local day actually starts, silently
   // dropping real activity from the audit's own early-morning meetings under exactly the same
   // class of timezone bug already fixed for the event-window read above.
-  const windowSessions = activityBetween(db, dayBounds(opts.since).start, nowIso).filter((s) => !s.afk);
+  // Parsed and sorted once for the whole window, not once per occurrence below.
+  const windowSessionBounds = sessionBounds(activityBetween(db, dayBounds(opts.since).start, nowIso).filter((s) => !s.afk));
 
   return [...groups.values()]
     .map((group): SeriesAudit => {
@@ -173,7 +193,7 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
       // it, so a series whose occurrences somehow resolve to the same item never double-counts.
       const tasksSince = [...occItemIds].reduce((n, id) => n + (tasksByItem.get(id) ?? 0), 0);
 
-      const appTimes = occurrences.flatMap((ev) => activityDuring(ev, windowSessions));
+      const appTimes = occurrences.flatMap((ev) => activityDuring(ev, windowSessionBounds));
 
       return {
         seriesId: group.seriesId,
@@ -209,11 +229,16 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
  * Every 7-day week contains each ISO weekday exactly once regardless of which day it starts on,
  * so the working week's total is just the working-day count times the working hours' length —
  * no need to walk the seven days one at a time to get the same number.
+ *
+ * Uses `effectiveDecisionAsOf`, the same time-scoped resolution `attendedCount` above uses and
+ * for the same reason: a series decided `not-going` mid-week must not retroactively zero out the
+ * hours already elapsed earlier that same week under the decision then in force — only occurrences
+ * from the moment of the decision onward are affected.
  */
 export function weeklyMeetingShare(db: DB, week: string): { minutes: number; workingMinutes: number } {
   const events = listMeetings(db, { from: week, to: addDays(week, 7) }).filter((ev) => ev.allDay !== 1);
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
-  const decisions = seriesDecisionsFor(db, seriesIds);
+  const decisions = seriesDecisionDetailsFor(db, seriesIds);
   const workHours = getWorkHours(db);
   const hours = parseWorkHours(workHours)!; // getWorkHours only ever returns a value that parses
   const workingDays = getWorkingDays(db);
@@ -228,7 +253,7 @@ export function weeklyMeetingShare(db: DB, week: string): { minutes: number; wor
     const clippedEnd = ev.endsAt > workEnd ? workEnd : ev.endsAt;
     const end = (Date.parse(clippedEnd) - Date.parse(clippedStart)) / 60_000;
     if (end <= 0) return sum;
-    const decision = effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null);
+    const decision = effectiveDecisionAsOf(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null);
     return sum + meetingCost({ start: 0, end, decision });
   }, 0);
 

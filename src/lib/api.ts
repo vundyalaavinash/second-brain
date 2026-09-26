@@ -245,6 +245,7 @@ export function serializeMeeting(ev: CalendarEvent, seriesDecision: MeetingDecis
     seriesId: ev.seriesId,
     decision: effectiveDecision(ev, seriesDecision),
     decisionNote: ev.decisionNote,
+    seriesDecision,
   };
 }
 

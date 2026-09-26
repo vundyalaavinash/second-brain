@@ -31,6 +31,7 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string; st
     seriesId: null,
     decision: "going",
     decisionNote: "",
+    seriesDecision: null,
     ...over,
   };
 }

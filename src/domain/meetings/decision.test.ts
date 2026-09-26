@@ -79,6 +79,26 @@ describe("setMeetingDecision / seriesDecisionsFor", () => {
     expect(seriesDecisionsFor(t.db, ["eventkit:series-1"]).get("eventkit:series-1")).toBe("not-going");
   });
 
+  // A series decision is not a one-way door: writing "going, every time" over an active
+  // "not-going, every time" must genuinely un-decline the series, not merely be accepted and
+  // ignored. A fresh occurrence with no override of its own -- exactly what a future occurrence
+  // synced in later would look like -- must resolve back to "going" through the same
+  // `seriesDecisionsFor` + `effectiveDecision` path every other caller in this file uses.
+  it("a series-scoped 'going' write reverses an active series-scoped 'not-going', for a fresh future occurrence too", () => {
+    const ev = event("a", "eventkit:series-1");
+    setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "series" });
+    expect(seriesDecisionsFor(t.db, ["eventkit:series-1"]).get("eventkit:series-1")).toBe("not-going");
+
+    setMeetingDecision(t.db, ev.id, { decision: "going", scope: "series" });
+    const decisions = seriesDecisionsFor(t.db, ["eventkit:series-1"]);
+    expect(decisions.get("eventkit:series-1")).toBe("going");
+
+    // A future occurrence of the same series, never itself decided: no occurrence override, so
+    // it must read the reversed series decision, not the old one.
+    const freshOccurrence = { status: "accepted" as const, decision: null };
+    expect(effectiveDecision(freshOccurrence, decisions.get("eventkit:series-1") ?? null)).toBe("going");
+  });
+
   // Finding 2: an occurrence override outranks a series decision (effectiveDecision's own
   // ordering), so a series write that leaves a stale override in place on the row it was issued
   // from would make "every time" visibly do nothing to that very meeting.
