@@ -10,7 +10,11 @@ export const dynamic = "force-dynamic";
 /** Design §7: "the last ninety days of meetings" — but never wider than the person's own
  * configurable retention setting (`retentionDays`, 1-3650 days, default 90): `pruneActivity`
  * deletes `calendarEvents` past that window every night, so a retention set below ninety would
- * otherwise leave this page claiming to cover data that no longer exists. */
+ * otherwise leave this page claiming to cover data that no longer exists. Rows carrying a decision
+ * the person made themselves are exempt from that purge and survive at any age, so under a short
+ * retention this bound is conservative rather than exact — it can narrow the window past a decided
+ * occurrence that is in fact still there. Conservative in the right direction: the label never
+ * promises more coverage than the page has. */
 const WINDOW_DAYS = 90;
 
 /**

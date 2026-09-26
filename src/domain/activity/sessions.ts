@@ -1,4 +1,4 @@
-import { desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, type ActivitySession } from "@/db/schema";
 import { ActivityError, domainOf, evaluateRules, isExcluded, listCategories, listExclusions, listRules, type Sample } from "./rules";
@@ -186,9 +186,32 @@ export function recategorise(db: DB, days: number, now: Date = new Date()): numb
   return changed;
 }
 
+/**
+ * Drops activity and calendar rows past the retention window — except a calendar row carrying a
+ * decision the person made themselves, which no automatic sweep deletes at any age. That is the
+ * same rule the audio-retention design already established for a recording: a sweep may reclaim
+ * what the machine recorded, never what a person decided.
+ *
+ * Not merely a data-loss worry, an actual silent revert: `replaceCalendarEvents`'s own resync
+ * window reaches roughly thirty days back, so a purged occurrence inside it gets re-inserted on
+ * the next sync. `decision` is (correctly) excluded from that upsert's `set` clause so a sync
+ * never overwrites a stored decision — but a purged row has nothing left to preserve, so the fresh
+ * insert lands `decision: NULL` and the person's "Not going" quietly becomes "going" again, with
+ * no warning and no error. Reachable at any retention setting under about thirty days, and the
+ * setting goes as low as one day.
+ *
+ * `decision IS NULL` is the right test rather than a comparison against `"going"`: the column is
+ * nullable precisely so that "nobody has decided anything about this occurrence" is distinguishable
+ * from "somebody decided it is going" (`effectiveDecision`), and only the former is the default
+ * this sweep is entitled to throw away. `decisionNote` needs no test of its own — nothing writes a
+ * note without a decision beside it.
+ */
 export function pruneActivity(db: DB, retentionDays: number, now: Date = new Date()): { sessions: number; events: number } {
   const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
   const sessions = db.delete(activitySessions).where(lt(activitySessions.startedAt, cutoff)).run().changes;
-  const events = db.delete(calendarEvents).where(lt(calendarEvents.endsAt, cutoff)).run().changes;
+  const events = db
+    .delete(calendarEvents)
+    .where(and(lt(calendarEvents.endsAt, cutoff), isNull(calendarEvents.decision)))
+    .run().changes;
   return { sessions, events };
 }

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { activitySessions } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { activitySessions, calendarEvents } from "@/db/schema";
+import { replaceCalendarEvents } from "./calendar";
+import { setMeetingDecision } from "@/domain/meetings/decision";
 import { ingestHeartbeat, getOpenSession, recategorise, pruneActivity, labelSession, EXCLUDED_APP_ID } from "./sessions";
 import { listCategories, createRule, reorderRules, listRules } from "./rules";
 
@@ -138,5 +141,26 @@ describe("session folding", () => {
     ingestHeartbeat(t.db, { ...code(0), at: new Date(T0 + 100 * 86_400_000).toISOString() });
     expect(pruneActivity(t.db, 90, new Date(T0 + 100 * 86_400_000)).sessions).toBe(1);
     expect(all()).toHaveLength(1);
+  });
+
+  // F-E (final whole-branch review): the purge deleted any calendar row past the cutoff, including
+  // one carrying a decision the person made. Because `replaceCalendarEvents`'s resync window
+  // reaches ~30 days back and `decision` is excluded from its upsert's `set` clause, a purged row
+  // re-inserted later lands `decision: NULL` -- silently reverting "Not going" to "going".
+  it("never purges a calendar event carrying a person's own decision, however old", () => {
+    const longAgo = new Date(T0 - 400 * 86_400_000);
+    replaceCalendarEvents(t.db, [
+      { externalId: "decided", title: "Weekly sync", startsAt: longAgo.toISOString(), endsAt: new Date(longAgo.getTime() + 1800_000).toISOString(), attendees: 3, hasCallLink: true },
+      { externalId: "undecided", title: "Weekly sync", startsAt: longAgo.toISOString(), endsAt: new Date(longAgo.getTime() + 1800_000).toISOString(), attendees: 3, hasCallLink: true },
+    ]);
+    const decided = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "decided")).get()!;
+    setMeetingDecision(t.db, decided.id, { decision: "not-going", note: "Nothing for me in this one", scope: "occurrence" });
+
+    // A one-day retention window, the most aggressive the setting allows.
+    expect(pruneActivity(t.db, 1, new Date(T0)).events).toBe(1);
+    const left = t.db.select().from(calendarEvents).all();
+    expect(left.map((e) => e.externalId)).toEqual(["decided"]);
+    // Intact, note and all -- not merely undeleted.
+    expect(left[0]).toMatchObject({ decision: "not-going", decisionNote: "Nothing for me in this one" });
   });
 });
