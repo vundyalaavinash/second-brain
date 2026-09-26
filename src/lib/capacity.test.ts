@@ -26,9 +26,17 @@ describe("capacity", () => {
     expect(freeMinutes([m("07:00", "08:00")], "09:00-18:00", DAY)).toBe(540);
   });
 
-  it("ignores all-day and declined meetings and meetings on other days", () => {
-    expect(freeMinutes([m("00:00", "23:59", { allDay: true }), m("10:00", "11:00", { status: "declined" })], "09:00-18:00", DAY)).toBe(540);
+  // "declined" here is the person's own RSVP (`status`), not whether the organiser cancelled
+  // the event — those are two different facts upstream (see CalendarReader.swift's
+  // `rsvpStatus`), and a meeting genuinely cancelled by its organiser never reaches this
+  // function at all: it is dropped from the sync payload, not stored with some status here.
+  it("ignores all-day meetings and meetings on other days", () => {
+    expect(freeMinutes([m("00:00", "23:59", { allDay: true })], "09:00-18:00", DAY)).toBe(540);
     expect(freeMinutes([{ ...m("10:00", "11:00"), startsAt: "2026-09-24T10:00:00", endsAt: "2026-09-24T11:00:00" }], "09:00-18:00", DAY)).toBe(540);
+  });
+
+  it("excludes a meeting the person actually declined, once status carries their real RSVP", () => {
+    expect(freeMinutes([m("10:00", "11:00", { status: "declined" })], "09:00-18:00", DAY)).toBe(540);
   });
 
   it("with no `now`, answers the whole window — every existing caller keeps today's behaviour", () => {

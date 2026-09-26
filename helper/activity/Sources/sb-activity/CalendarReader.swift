@@ -16,6 +16,9 @@ struct EventPayload: Encodable {
     var allDay: Bool
     var status: String
     var calendarTitle: String
+    /// The same value across every occurrence of a recurring series; a "series of one" for a
+    /// non-recurring event. Always `calendarItemIdentifier` — see `upcoming()`.
+    var seriesId: String?
 }
 
 /// The local-day range `[from, to)` a payload speaks for, so the server can drop what vanished.
@@ -76,11 +79,28 @@ final class CalendarReader {
         return String(s[s.startIndex..<end])
     }
 
-    private func statusName(_ status: EKEventStatus) -> String {
-        switch status {
-        case .confirmed: return "accepted"
+    /// The current user's own RSVP, not the event's confirmed/tentative/cancelled state — those
+    /// are two different facts EventKit keeps separately (`EKEvent.status` is the latter, read
+    /// nowhere below). A meeting you declined must arrive as declined regardless of whether the
+    /// organiser still calls the event confirmed; a meeting the organiser cancelled is handled
+    /// separately, in `upcoming()`, by omitting it rather than by faking an RSVP for it.
+    private func rsvpStatus(_ event: EKEvent) -> String {
+        // No attendee list at all, or none of its entries is `isCurrentUser`, both fall through
+        // to "none" on purpose, for two distinct reasons that land on the same answer:
+        //   1. A personal, unshared calendar entry has no attendees full stop — there is no RSVP
+        //      to have.
+        //   2. An event this person organises: some calendars omit the organiser from the
+        //      attendee list entirely, others include them pre-accepted. Either way, do not
+        //      special-case the organiser — falling through to "none" when no `isCurrentUser`
+        //      attendee is found is the safe answer for both.
+        guard let me = event.attendees?.first(where: { $0.isCurrentUser }) else { return "none" }
+        switch me.participantStatus {
+        case .accepted: return "accepted"
+        case .declined: return "declined"
         case .tentative: return "tentative"
-        case .canceled: return "declined"
+        // .unknown, .pending, .delegated, .completed, .inProcess: none of these is a real
+        // accept/decline/maybe from the person themselves, so none of them should cost or free
+        // capacity — "none" is the only honest answer for all five.
         default: return "none"
         }
     }
@@ -108,7 +128,13 @@ final class CalendarReader {
         guard granted else { return [] }
         let b = bounds(now)
         let pred = store.predicateForEvents(withStart: b.start, end: b.end, calendars: nil)
-        return store.events(matching: pred).map { e in
+        return store.events(matching: pred).compactMap { e in
+            // A genuinely cancelled event is dropped here rather than sent with some invented
+            // status: the server's calendar sync already removes rows that stop appearing in a
+            // sync window (see the "drop what vanished" purge in
+            // src/domain/activity/calendar.ts), so simply not sending it is sufficient — no new
+            // deletion path is needed on either side.
+            if e.status == .canceled { return nil }
             let notes = capped(e.notes ?? "", 4000)
             let location = e.location ?? ""
             let text = [e.url?.absoluteString, location, notes].compactMap { $0 }.joined(separator: " ")
@@ -127,8 +153,12 @@ final class CalendarReader {
                 joinUrl: joinUrl,
                 notes: notes,
                 allDay: e.isAllDay,
-                status: statusName(e.status),
-                calendarTitle: e.calendar?.title ?? "")
+                status: rsvpStatus(e),
+                calendarTitle: e.calendar?.title ?? "",
+                // calendarItemIdentifier is unconditional, not detected-and-set-when-recurring:
+                // EventKit gives every event one, and for a non-recurring event it is simply
+                // unique to that one event — a harmless "series of one."
+                seriesId: e.calendarItemIdentifier)
         }
     }
 }

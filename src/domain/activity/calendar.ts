@@ -20,6 +20,12 @@ export interface CalendarEventInput {
   allDay?: boolean;
   status?: MeetingStatus;
   calendarTitle?: string;
+  /** EventKit's `calendarItemIdentifier`, or the feed's own `UID` — the same value across every
+   * occurrence of a recurring series, and a harmless "series of one" for a non-recurring event.
+   * Accepted here so both ingestion paths can start sending it now; `calendar_events` has no
+   * column for it yet (that lands with the grouping feature that consumes it), so `replaceCalendarEvents`
+   * takes it but does not persist it below. */
+  seriesId?: string;
 }
 
 /** Known meeting providers first; any https link is a usable fallback. */
@@ -81,6 +87,9 @@ export function replaceCalendarEvents(
       if (Date.parse(e.endsAt) <= Date.parse(e.startsAt)) continue;
       const joinUrl = e.joinUrl ?? joinUrlFrom(e.location, e.notes);
       // item_id and no_record are ours, not the calendar's: they stay off the upsert so a refresh keeps them.
+      // e.seriesId is calendar-owned like title below, so it belongs in this upsert once
+      // calendar_events grows the column to hold it; today it is only threaded through the input
+      // type so both ingestion paths can already send it.
       const values = {
         externalId: e.externalId,
         title: e.title.trim() || "Untitled event",

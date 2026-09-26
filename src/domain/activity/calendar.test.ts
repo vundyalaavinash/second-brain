@@ -97,6 +97,17 @@ describe("calendar", () => {
     expect(ev.itemId).toBeNull();
   });
 
+  it("accepts seriesId on the input without erroring — calendar_events has no column for it yet", () => {
+    replaceCalendarEvents(t.db, [
+      { externalId: "s1", title: "Recurring", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false, seriesId: "series-abc" },
+    ]);
+    // Read the row directly, not through a day window: this is about seriesId surviving the
+    // upsert unharmed, not about day-bucketing, which localDay handles (and tests) elsewhere.
+    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!;
+    expect(ev.externalId).toBe("s1");
+    expect(ev).not.toHaveProperty("seriesId");
+  });
+
   it("lists meetings in a window with a text filter", () => {
     replaceCalendarEvents(t.db, [
       { externalId: "d1", title: "Design review", startsAt: "2026-09-22T09:00:00.000Z", endsAt: "2026-09-22T10:00:00.000Z", attendees: 2, hasCallLink: false, attendeeNames: ["Cy"] },

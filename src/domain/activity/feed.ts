@@ -125,6 +125,10 @@ function occurrenceInput(ev: ICAL.Event, start: ICAL.Time, end: ICAL.Time, exter
     allDay: start.isDate,
     status: statusOf(comp),
     calendarTitle,
+    // externalId already embeds ev.uid (as `feed:{uid}` or `feed:{uid}:{recurrenceId}`) to keep
+    // occurrences distinct rows; seriesId is the same uid on its own, shared by every occurrence
+    // of a recurring event, so grouping can key on it directly instead of stripping externalId.
+    seriesId: ev.uid,
   };
 }
 
