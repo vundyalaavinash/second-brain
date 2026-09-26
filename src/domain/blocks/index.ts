@@ -4,6 +4,7 @@ import { dailyPlanEntries, taskBlocks, tasks, type Task, type TaskBlock } from "
 import { addDays, listMeetings } from "@/domain/activity";
 import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
 import { getTask, updateTask } from "@/domain/tasks";
+import { meetingCost } from "@/lib/capacity";
 import { freeSlots, placeSessions, SESSION_GAP, sessionsFor, type Span } from "@/lib/scheduler";
 import { getWorkHours } from "@/lib/work-hours";
 
@@ -170,12 +171,28 @@ export function clearBlocks(db: DB, taskId: number, date?: string): number {
 
 /**
  * What the day is already spoken for: timed meetings the person is actually going to (or has not
- * yet said otherwise about), and every session on it a live task holds. A meeting decided
- * `not-going` in this app — regardless of what the calendar's own RSVP still says — frees its
- * time here the same way `freeMinutes` already frees it on the capacity line; the two must never
- * disagree about the same hour. A dropped task gives its hours back — `dropTask` takes its
- * sessions away, and this skips them besides, so a row left behind by an older write or by a
- * hand-edited database never blocks a slot.
+ * yet said otherwise about), and every session on it a live task holds. A dropped task gives its
+ * hours back — `dropTask` takes its sessions away, and this skips them besides, so a row left
+ * behind by an older write or by a hand-edited database never blocks a slot.
+ *
+ * A meeting blocks exactly the minutes `meetingCost` charges it against the capacity line, not
+ * its whole clock length: the capacity figure and the scheduler must never disagree about the same
+ * hour, and `meetingCost` is the one rule that decides what an hour of meeting actually costs.
+ * That falls out to three behaviours, all of them `freeMinutes`'s own, none of them restated here:
+ * a `going` meeting blocks its full length; a `not-going` meeting — regardless of what the
+ * calendar's own RSVP still says — costs nothing and so blocks nothing, its zero-length span
+ * dropped before it reaches `freeSlots`; a `maybe` meeting costs half, so it blocks half, leaving
+ * the back half of the hour placeable. Before this the `maybe` case was the one disagreement left:
+ * the hour was blocked whole while capacity reported half of it free, so "Fill the day" could
+ * leave a genuinely available half-hour unplaced.
+ *
+ * The blocked half is taken from the *start* of the meeting, which is also what keeps a `maybe`
+ * sitting on top of a `going` meeting from freeing anything: its half span falls inside the going
+ * meeting's own, and `freeSlots` merges them — the same "an overlapping maybe adds nothing over
+ * time already fully spoken for" rule `freeMinutes` reaches through `outsideCover`.
+ *
+ * `effectiveDecision`, not `effectiveDecisionAsOf`: this is a forward-looking read, always about a
+ * day still being planned, so there is no past occurrence here to protect.
  */
 function busySpans(db: DB, date: string): Span[] {
   const events = listMeetings(db, { from: date, to: addDays(date, 1) });
@@ -183,8 +200,13 @@ function busySpans(db: DB, date: string): Span[] {
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
   const decisions = seriesDecisionsFor(db, seriesIds);
   const meetings = events
-    .filter((m) => m.allDay === 0 && effectiveDecision(m, m.seriesId ? (decisions.get(m.seriesId) ?? null) : null) !== "not-going")
-    .map((m) => ({ start: minutesInto(date, m.startsAt), end: minutesInto(date, m.endsAt) }));
+    .filter((m) => m.allDay === 0)
+    .map((m) => {
+      const decision = effectiveDecision(m, m.seriesId ? (decisions.get(m.seriesId) ?? null) : null);
+      const start = minutesInto(date, m.startsAt);
+      return { start, end: start + meetingCost({ start, end: minutesInto(date, m.endsAt), decision }) };
+    })
+    .filter((s) => s.end > s.start);
   const blocks = db
     .select({ startsAt: taskBlocks.startsAt, minutes: taskBlocks.minutes })
     .from(taskBlocks)

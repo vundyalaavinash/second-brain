@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
+import { eq } from "drizzle-orm";
+import { calendarEvents } from "@/db/schema";
 import { replaceCalendarEvents } from "@/domain/activity";
 import { addToPlan } from "@/domain/plan";
+import { freeMinutes } from "@/lib/capacity";
 import { setMeetingDecision } from "@/domain/meetings/decision";
 import { completeTask, createTask, deleteTask, dropTask, getTask } from "@/domain/tasks";
 import { addBlock, blocksByTask, BlockError, clearBlocks, fillDay, listBlocks, placeTask, removeBlock, updateBlock } from "./index";
@@ -125,6 +128,58 @@ describe("blocks domain", () => {
     expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 2, unplacedMinutes: 0 });
     const placed = listBlocks(t.db, { taskId: task.id });
     expect(placed.some((b) => b.startsAt >= `${DAY}T16:00:00` && b.startsAt < `${DAY}T17:00:00`)).toBe(true);
+  });
+
+  // F-D (final whole-branch review): `busySpans` excluded only `not-going`, so a `maybe` meeting
+  // blocked its whole hour for auto-placement while `freeMinutes` already reported half that hour
+  // as free — "Fill the day" could leave a genuinely available half-hour unplaced, with both
+  // files' own comments claiming the two must never disagree about the same hour. Same class of
+  // bug as Task 2's Finding 5 above, one decision value over.
+  it("blocks only the half of a maybe meeting that capacity charges, so the scheduler and the capacity line agree about that hour", () => {
+    replaceCalendarEvents(t.db, [meeting("m1", "10:00", "11:00")]);
+    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "m1")).get()!;
+    setMeetingDecision(t.db, ev.id, { decision: "maybe", scope: "occurrence" });
+
+    // What the capacity line says about that one hour: a half-commitment holds half a slot, so
+    // thirty of its sixty minutes are free time (`meetingCost`).
+    const capacityFree = freeMinutes([{ startsAt: `${DAY}T10:00:00`, endsAt: `${DAY}T11:00:00`, allDay: false, decision: "maybe" }], "10:00-11:00", DAY);
+    expect(capacityFree).toBe(30);
+
+    // Every other minute of the working day is spoken for by another task's sessions, so the only
+    // room the scheduler has is whatever this hour gives up.
+    const other = createTask(t.db, { title: "Other" });
+    addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T09:00:00`, minutes: 60 });
+    addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T11:00:00`, minutes: 420 });
+
+    const task = createTask(t.db, { title: "Write", estimateMinutes: 30 });
+    // Before the fix this placed nothing: the whole hour read busy.
+    expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 1, unplacedMinutes: 0 });
+    const [placed] = listBlocks(t.db, { taskId: task.id });
+    // The back half, because the charged half is taken from the meeting's start.
+    expect([placed.startsAt.slice(11, 16), placed.minutes]).toEqual(["10:30", 30]);
+    // The whole point: the scheduler placed exactly the minutes capacity called free, not more.
+    expect(placed.minutes).toBe(capacityFree);
+  });
+
+  it("frees nothing extra for a maybe meeting sitting on top of a going one, exactly as freeMinutes does not", () => {
+    replaceCalendarEvents(t.db, [meeting("going", "10:00", "11:00"), meeting("maybe", "10:00", "11:00")]);
+    const overlapping = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "maybe")).get()!;
+    setMeetingDecision(t.db, overlapping.id, { decision: "maybe", scope: "occurrence" });
+
+    // `freeMinutes` charges the going meeting the full hour and the maybe nothing on top of it
+    // (`outsideCover`): time already fully spoken for cannot be half-spoken-for as well.
+    const both = [
+      { startsAt: `${DAY}T10:00:00`, endsAt: `${DAY}T11:00:00`, allDay: false, decision: "going" as const },
+      { startsAt: `${DAY}T10:00:00`, endsAt: `${DAY}T11:00:00`, allDay: false, decision: "maybe" as const },
+    ];
+    expect(freeMinutes(both, "10:00-11:00", DAY)).toBe(0);
+
+    const other = createTask(t.db, { title: "Other" });
+    addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T09:00:00`, minutes: 60 });
+    addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T11:00:00`, minutes: 420 });
+    const task = createTask(t.db, { title: "Write", estimateMinutes: 15 });
+    // The maybe's half span falls inside the going meeting's own, so merging leaves no gap.
+    expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 0, unplacedMinutes: 15 });
   });
 
   it("starts no earlier than now when the day is today", () => {
