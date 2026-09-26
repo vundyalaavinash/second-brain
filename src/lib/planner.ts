@@ -186,7 +186,7 @@ export function hasUserNotes(body: string): boolean {
  * silently drift between the Planner and the project page (review F5). Pure: no query of its
  * own, so a caller looping this over a list still costs nothing beyond the rows it already has.
  */
-function meetingItemFlags(row: Item): MeetingItemDTO {
+export function meetingItemFlags(row: Item): MeetingItemDTO {
   const meta = parseMeta(row);
   return {
     id: row.id,

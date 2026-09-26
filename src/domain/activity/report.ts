@@ -54,19 +54,29 @@ export interface ActivityDay {
   meetings: ActivityMeeting[];
 }
 
-function clippedSessions(db: DB, day: string): DaySession[] {
-  const { start, end } = dayBounds(day);
-  const lookback = new Date(Date.parse(start) - CLIP_LOOKBACK_MS).toISOString();
+/**
+ * Sessions overlapping an arbitrary UTC instant range `[from, to)`, clipped to it — a sibling of
+ * `getDay`'s own per-day query, not a copy of it: the boundary is whatever the caller passes,
+ * not a local day's midnight-to-midnight. Reuses the same overlap predicate
+ * (`lt(startedAt, to) && gt(endedAt, from)`) and the same lookback bound `clippedSessions` uses
+ * for a day, which holds just as well here — a session cannot start more than a day plus the
+ * fold gap before it ends, whatever the range's own start is, so bounding the scan by the
+ * range's start rather than by the whole table is still correct, not just fast. Built for the
+ * meeting audit (`domain/meetings/audit.ts`), which needs one occurrence's own start-to-end
+ * window, never a whole day around it.
+ */
+export function activityBetween(db: DB, from: string, to: string): DaySession[] {
+  const lookback = new Date(Date.parse(from) - CLIP_LOOKBACK_MS).toISOString();
   return db
     .select()
     .from(activitySessions)
-    .where(and(lt(activitySessions.startedAt, end), gt(activitySessions.endedAt, start), gte(activitySessions.startedAt, lookback)))
+    .where(and(lt(activitySessions.startedAt, to), gt(activitySessions.endedAt, from), gte(activitySessions.startedAt, lookback)))
     .orderBy(asc(activitySessions.startedAt))
     .all()
     .map((s) => ({
       id: s.id,
-      startedAt: s.startedAt < start ? start : s.startedAt,
-      endedAt: s.endedAt > end ? end : s.endedAt,
+      startedAt: s.startedAt < from ? from : s.startedAt,
+      endedAt: s.endedAt > to ? to : s.endedAt,
       appId: s.appId,
       appName: s.appName,
       title: s.title,
@@ -75,6 +85,13 @@ function clippedSessions(db: DB, day: string): DaySession[] {
       afk: s.afk === 1,
       meetingId: s.meetingId,
     }));
+}
+
+/** A whole local day's sessions, clipped to it — `activityBetween` with a day's own bounds
+ * standing in for the arbitrary range. */
+function clippedSessions(db: DB, day: string): DaySession[] {
+  const { start, end } = dayBounds(day);
+  return activityBetween(db, start, end);
 }
 
 const ms = (s: DaySession) => Date.parse(s.endedAt) - Date.parse(s.startedAt);
