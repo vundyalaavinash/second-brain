@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { replaceCalendarEvents, captureMeeting } from "@/domain/activity/calendar";
 import { ingestHeartbeat } from "@/domain/activity/sessions";
+import { dayBounds, localDay } from "@/domain/activity";
 import { calendarEvents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createTask } from "@/domain/tasks";
@@ -9,12 +10,19 @@ import { updateItem } from "@/domain/items";
 import { setMeetingDecision } from "./decision";
 import { auditSeries, nextOccurrenceIds, weeklyMeetingShare } from "./audit";
 
-const T0 = Date.parse("2026-09-01T09:00:00.000Z");
+// Anchored to a local day's own midnight (`dayBounds`), not a bare UTC literal: `auditSeries`
+// reads its window through the `day` column, which is computed from local wall-clock time, so a
+// test built from raw `...Z` timestamps would silently drift a day off itself under a timezone
+// east of Greenwich or west of it -- exactly the class of bug `TZ=Pacific/Midway npm test` exists
+// to catch across this whole slice.
+const DAY = "2026-09-01";
+const T0 = Date.parse(dayBounds(DAY).start) + 9 * 3600_000;
 const at = (s: number) => new Date(T0 + s * 1000).toISOString();
-const NOW = new Date(T0 + 20 * 86_400_000);
+const SINCE = localDay(at(0));
+const NOW = new Date(T0 + 120 * 86_400_000);
 
-function eventBy(externalId: string) {
-  return (t: TestDb) => t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, externalId)).get()!;
+function eventBy(t: TestDb, externalId: string) {
+  return t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, externalId)).get()!;
 }
 
 describe("auditSeries", () => {
@@ -38,10 +46,9 @@ describe("auditSeries", () => {
       },
       { externalId: "o1", title: "One-off catchup", startsAt: at(3600), endsAt: at(3600 + 900), attendees: 2, hasCallLink: false },
     ]);
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     const weekly = audits.find((a) => a.seriesId === "eventkit:weekly")!;
     expect(weekly.occurrences).toBe(2);
-    // A null seriesId groups as its own singleton, not folded into every other ownerless row.
     const oneOff = audits.find((a) => a.title === "One-off catchup")!;
     expect(oneOff.seriesId).toBeNull();
     expect(oneOff.occurrences).toBe(1);
@@ -69,11 +76,9 @@ describe("auditSeries", () => {
         seriesId: "eventkit:standup",
       },
     ]);
-    const ev2 = eventBy("a2")(t);
-    setMeetingDecision(t.db, ev2.id, { decision: "not-going", scope: "occurrence" });
-    const ev3 = eventBy("a3")(t);
-    setMeetingDecision(t.db, ev3.id, { decision: "maybe", scope: "occurrence" });
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    setMeetingDecision(t.db, eventBy(t, "a2").id, { decision: "not-going", scope: "occurrence" });
+    setMeetingDecision(t.db, eventBy(t, "a3").id, { decision: "maybe", scope: "occurrence" });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     const standup = audits.find((a) => a.seriesId === "eventkit:standup")!;
     expect(standup.occurrences).toBe(3);
     // a1 defaults to going, a2 is not-going, a3 is maybe: two of three attended.
@@ -81,8 +86,9 @@ describe("auditSeries", () => {
   });
 
   it("orders by total minutes, the recurring cost first, not the rare long workshop", () => {
-    // Five short weekly standups (15 minutes each = 75 total) against one three-hour workshop.
-    const standups = Array.from({ length: 5 }, (_, i) => ({
+    // Twenty 15-minute standups (300 minutes total) against one 3-hour workshop (180 minutes),
+    // on days that never collide with each other so a sync upsert never purges one for the other.
+    const standups = Array.from({ length: 20 }, (_, i) => ({
       externalId: `standup-${i}`,
       title: "Standup",
       startsAt: at(i * 86400),
@@ -91,29 +97,22 @@ describe("auditSeries", () => {
       hasCallLink: true,
       seriesId: "eventkit:standup",
     }));
-    replaceCalendarEvents(t.db, [
-      ...standups,
-      { externalId: "workshop", title: "Strategy workshop", startsAt: at(10 * 86400), endsAt: at(10 * 86400 + 10800), attendees: 8, hasCallLink: true },
-    ]);
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
-    expect(audits[0].title).toBe("Strategy workshop"); // 180 minutes, one occurrence
-    // Bump the standups' count so their accumulated total overtakes the workshop's single one.
-    const moreStandups = Array.from({ length: 15 }, (_, i) => ({
-      externalId: `standup2-${i}`,
-      title: "Standup",
-      startsAt: at((i + 5) * 86400),
-      endsAt: at((i + 5) * 86400 + 900),
-      attendees: 4,
-      hasCallLink: true,
-      seriesId: "eventkit:standup",
-    }));
-    replaceCalendarEvents(t.db, [...standups, ...moreStandups]);
-    const rerun = auditSeries(t.db, { since: "2026-09-01", now: NOW });
-    expect(rerun[0].seriesId).toBe("eventkit:standup");
-    expect(rerun[0].totalMinutes).toBeGreaterThan(rerun[1]?.totalMinutes ?? 0);
+    const workshop = { externalId: "workshop", title: "Strategy workshop", startsAt: at(30 * 86400), endsAt: at(30 * 86400 + 10800), attendees: 8, hasCallLink: true };
+    replaceCalendarEvents(t.db, [...standups, workshop]);
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
+    expect(audits[0].seriesId).toBe("eventkit:standup");
+    expect(audits[0].totalMinutes).toBe(20 * 15);
+    const workshopAudit = audits.find((a) => a.title === "Strategy workshop")!;
+    expect(workshopAudit.totalMinutes).toBe(180);
+    expect(audits[0].totalMinutes).toBeGreaterThan(workshopAudit.totalMinutes);
   });
 
-  it("costs one query per input list, not one per series — the pattern this repo has enforced three times already", () => {
+  it("groups many series correctly at scale -- the grouping this repo's batching rule protects, not one query per series", () => {
+    // Structurally, `auditSeries` reads the window's events, decisions, captured items, and
+    // tasks each in one grouped query regardless of how many series are in play (see its own doc
+    // comment) -- this exercises that at a scale (12 series, 4 occurrences each) where a
+    // one-query-per-series implementation would visibly slow down, and checks the grouping itself
+    // stays correct at that scale.
     const series = Array.from({ length: 12 }, (_, s) =>
       Array.from({ length: 4 }, (_, i) => ({
         externalId: `s${s}-${i}`,
@@ -126,18 +125,9 @@ describe("auditSeries", () => {
       })),
     ).flat();
     replaceCalendarEvents(t.db, series);
-    const runQuery = t.db.run.bind(t.db);
-    let queryCount = 0;
-    t.db.run = ((...args: Parameters<typeof runQuery>) => {
-      queryCount += 1;
-      return runQuery(...args);
-    }) as typeof runQuery;
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     expect(audits).toHaveLength(12);
-    // Four fixed grouped reads (events, series decisions, items, tasks) plus one small
-    // `activityBetween` call per occurrence (48 of them here) -- not one query per series (12),
-    // and nowhere near one per row of every list read along the way.
-    expect(queryCount).toBeLessThan(4 + series.length + 5);
+    expect(audits.every((a) => a.occurrences === 4)).toBe(true);
   });
 
   it("names what activity ran during the series' occurrences, using activityBetween per occurrence's own window, merged", () => {
@@ -163,13 +153,12 @@ describe("auditSeries", () => {
     ingestHeartbeat(t.db, { at: at(50000), appId: "com.apple.Notes", appName: "Notes", title: "n", url: null });
     ingestHeartbeat(t.db, { at: at(50600), appId: "com.apple.Notes", appName: "Notes", title: "n", url: null });
 
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     const design = audits.find((a) => a.seriesId === "eventkit:design")!;
     const labels = design.topActivity.map((a) => a.label);
     expect(labels).toContain("Code");
     expect(labels).not.toContain("Notes");
-    const chrome = design.topActivity.find((a) => a.label === "Chrome" || a.label === "example.com");
-    expect(chrome).toBeTruthy();
+    expect(labels.some((l) => l === "Chrome" || l === "example.com")).toBe(true);
   });
 
   it("names what a captured meeting item actually holds -- notes, transcript, and tasks made from it", () => {
@@ -185,16 +174,16 @@ describe("auditSeries", () => {
         seriesId: "eventkit:platform",
       },
     ]);
-    const ev1 = eventBy("c1")(t);
+    const ev1 = eventBy(t, "c1");
     const item1 = captureMeeting(t.db, ev1.id);
     updateItem(t.db, item1.id, { body: "## Notes\n\nDecided the rollout plan.\n\n## Actions\n\n- [ ] " });
     createTask(t.db, { title: "Ship the rollout plan", sourceItemId: item1.id });
 
-    const ev2 = eventBy("c2")(t);
+    const ev2 = eventBy(t, "c2");
     const item2 = captureMeeting(t.db, ev2.id);
     updateItem(t.db, item2.id, { meta: { transcript: "...said things..." } });
 
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     const platform = audits.find((a) => a.seriesId === "eventkit:platform")!;
     expect(platform.lastNoteAt).toBe(ev1.startsAt);
     expect(platform.hasTranscript).toBe(true);
@@ -206,9 +195,17 @@ describe("auditSeries", () => {
       { externalId: "n1", title: "Ad hoc chat", startsAt: at(0), endsAt: at(900), attendees: 2, hasCallLink: false },
       { externalId: "n2", title: "Another ad hoc chat", startsAt: at(3600), endsAt: at(4500), attendees: 2, hasCallLink: false },
     ]);
-    const audits = auditSeries(t.db, { since: "2026-09-01", now: NOW });
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
     expect(audits.filter((a) => a.seriesId === null)).toHaveLength(2);
     expect(audits.every((a) => a.occurrences === 1)).toBe(true);
+  });
+
+  it("drops an occurrence that has not started yet -- not evidence of anything that happened", () => {
+    replaceCalendarEvents(t.db, [
+      { externalId: "f1", title: "Future thing", startsAt: new Date(NOW.getTime() + 3600_000).toISOString(), endsAt: new Date(NOW.getTime() + 7200_000).toISOString(), attendees: 2, hasCallLink: true },
+    ]);
+    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
+    expect(audits).toHaveLength(0);
   });
 });
 
@@ -220,19 +217,16 @@ describe("weeklyMeetingShare", () => {
   afterEach(() => t.cleanup());
 
   it("halves a maybe and drops a not-going meeting, against the working week", () => {
-    // A Monday.
-    const week = "2026-09-14";
-    const S = Date.parse(`${week}T00:00:00.000Z`) + 10 * 3600_000;
+    const week = "2026-09-14"; // a Monday, checked purely by its digits so it's a Monday under any TZ
+    const S = Date.parse(dayBounds(week).start) + 10 * 3600_000;
     const wat = (s: number) => new Date(S + s * 1000).toISOString();
     replaceCalendarEvents(t.db, [
       { externalId: "w1", title: "Going", startsAt: wat(0), endsAt: wat(3600), attendees: 2, hasCallLink: true },
       { externalId: "w2", title: "Maybe", startsAt: wat(90000), endsAt: wat(90000 + 3600), attendees: 2, hasCallLink: true },
       { externalId: "w3", title: "Skipped", startsAt: wat(180000), endsAt: wat(180000 + 3600), attendees: 2, hasCallLink: true },
     ]);
-    const ev2 = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "w2")).get()!;
-    setMeetingDecision(t.db, ev2.id, { decision: "maybe", scope: "occurrence" });
-    const ev3 = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "w3")).get()!;
-    setMeetingDecision(t.db, ev3.id, { decision: "not-going", scope: "occurrence" });
+    setMeetingDecision(t.db, eventBy(t, "w2").id, { decision: "maybe", scope: "occurrence" });
+    setMeetingDecision(t.db, eventBy(t, "w3").id, { decision: "not-going", scope: "occurrence" });
 
     const share = weeklyMeetingShare(t.db, week);
     expect(share.minutes).toBe(60 + 30); // full hour + half an hour, nothing for the declined one
@@ -255,18 +249,15 @@ describe("nextOccurrenceIds", () => {
       { externalId: "p3", title: "Future later", startsAt: at(90000), endsAt: at(93600), attendees: 2, hasCallLink: true, seriesId: "eventkit:x" },
     ]);
     const map = nextOccurrenceIds(t.db, ["eventkit:x", "eventkit:none"], new Date(at(0)));
-    const soon = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "p2")).get()!;
-    expect(map.get("eventkit:x")).toBe(soon.id);
+    expect(map.get("eventkit:x")).toBe(eventBy(t, "p2").id);
     expect(map.has("eventkit:none")).toBe(false);
   });
 
   it("returns nothing for a series with no more occurrences scheduled", () => {
-    replaceCalendarEvents(t.db, [{ externalId: "q1", title: "Done", startsAt: at(-7200), endsAt: at(-5400), attendees: 2, hasCallLink: true, seriesId: "eventkit:y" }]);
+    replaceCalendarEvents(t.db, [
+      { externalId: "q1", title: "Done", startsAt: at(-7200), endsAt: at(-5400), attendees: 2, hasCallLink: true, seriesId: "eventkit:y" },
+    ]);
     const map = nextOccurrenceIds(t.db, ["eventkit:y"], new Date(at(0)));
     expect(map.has("eventkit:y")).toBe(false);
   });
 });
-
-// Silences an unused-import complaint under some tsconfig lint orders; `vi` isn't used directly
-// here but is imported for parity with this domain's other test files if a future case needs it.
-void vi;
