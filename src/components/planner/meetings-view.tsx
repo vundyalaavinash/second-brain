@@ -324,8 +324,14 @@ export function MeetingsView({ today, meetings, containerId: containerFilter = n
             </Chip>
           ))}
         </div>
+        {/* The audit's only entry point in the app -- otherwise this whole feature is reachable
+          * only by typing the URL by hand (F4). Placed here, not in the dock: it is a view of
+          * this same meetings data, not a new top-level section of the app. */}
+        <Button href="/meetings/audit" size="sm" variant="ghost" className="ml-auto">
+          The audit
+        </Button>
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
-        <span title={recorder.title ?? undefined} className="ml-auto">
+        <span title={recorder.title ?? undefined}>
           <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>
             Record now
           </Button>

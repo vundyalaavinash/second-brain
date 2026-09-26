@@ -127,7 +127,7 @@ A meeting can also be filed to a project or an area, the same containers as ever
 
 ### The audit
 
-`/meetings/audit` groups the last ninety days of meetings into recurring series and asks, for each one: how often it runs, how many hours it has taken, how many of those occurrences you actually attended, whether anyone has taken notes or looked at the transcript, and what work — named apps and sites, not a guess — actually happened while it ran. Rows are ordered by hours taken, because the recurring half hour is worth examining and the rare three-hour workshop is not. One line at the top reads this week's meeting time as a share of the working week the Planner already tracks.
+`/meetings/audit` groups the last ninety days of meetings into recurring series and asks, for each one: how often it runs, how many hours it has taken, how many you didn't decline, whether anyone has taken notes or looked at the transcript, and what work — named apps and sites, not a guess — actually happened while it ran. Rows are ordered by hours taken, because the recurring half hour is worth examining and the rare three-hour workshop is not. One line at the top reads this week's meeting time as a share of the working week the Planner already tracks.
 
 There is no score, no health label, and no colour ranking anywhere on this page. The audit hands you the evidence for the five questions above and leaves the answer to you, on purpose — that judgement is the point, not something software should make for you. The only control on the page is **Not going**, for the next occurrence or for the whole series, and it writes through the same local decision described above, nothing more.
 

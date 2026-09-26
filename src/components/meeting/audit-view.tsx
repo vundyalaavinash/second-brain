@@ -42,8 +42,16 @@ function activityLine(topActivity: SeriesAudit["topActivity"]): string {
   return `Time alongside it went mostly to ${named}.`;
 }
 
+/** `sinceLabel`'s relative forms ("just now", "3 min ago", "2 h ago") read fine on their own; its
+ * short-date fallback ("14 Sep") does not, and wants the "on" a bare date needs to read as a
+ * sentence rather than a fragment. */
+function noteRecency(iso: string, now: number): string {
+  const label = sinceLabel(iso, now);
+  return /ago$|^just now$/.test(label) ? label : `on ${label}`;
+}
+
 function notesLine(row: AuditRow, now: number): string {
-  const notes = row.lastNoteAt ? `Notes were last written ${sinceLabel(row.lastNoteAt, now)}.` : "No notes have ever been taken.";
+  const notes = row.lastNoteAt ? `Notes were last written ${noteRecency(row.lastNoteAt, now)}.` : "No notes have ever been taken.";
   const transcript = row.hasTranscript ? "A transcript exists for at least one occurrence." : "No transcript exists.";
   return `${notes} ${transcript}`;
 }
@@ -70,8 +78,11 @@ export function AuditView({ rows, share }: Props) {
         <p className="text-[13.5px] text-fg-faint">No meetings in the last ninety days to weigh yet.</p>
       ) : (
         <List className="pane flex flex-col">
-          {rows.map((row) => (
-            <AuditRowView key={row.seriesId ?? `solo-${row.title}`} row={row} now={now} />
+          {rows.map((row, i) => (
+            // Index, not `row.seriesId ?? title`: two different one-off meetings (both
+            // `seriesId: null`) can share a title, and the server computes a stable order for
+            // this list on every render, so an index key is safe here.
+            <AuditRowView key={i} row={row} now={now} />
           ))}
         </List>
       )}

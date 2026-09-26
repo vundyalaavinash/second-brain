@@ -74,3 +74,27 @@ export function seriesDecisionsFor(db: DB, seriesIds: string[]): Map<string, Mee
   for (const row of rows) out.set(row.seriesId, row.decision);
   return out;
 }
+
+/**
+ * Every series decision among `seriesIds`, alongside when it was made. `seriesDecisionsFor` on
+ * its own is enough for every existing caller, because they all read a meeting as of *now* — a
+ * series decision with no per-occurrence override unconditionally applies, since there is no
+ * older state to protect. A caller that looks *backward* across history (the meeting audit, which
+ * reports whether ninety days of past occurrences were attended) cannot use it the same way:
+ * `meetingSeriesDecisions` is not itself time-scoped, so treating it as always-effective would let
+ * a decision made today rewrite whether a person attended a meeting last month. `decidedAt` is
+ * what lets a caller draw that line themselves. One grouped query for the whole list, same as
+ * `seriesDecisionsFor`.
+ */
+export function seriesDecisionDetailsFor(db: DB, seriesIds: string[]): Map<string, { decision: MeetingDecision; decidedAt: string }> {
+  const out = new Map<string, { decision: MeetingDecision; decidedAt: string }>();
+  const ids = [...new Set(seriesIds)];
+  if (ids.length === 0) return out;
+  const rows = db
+    .select({ seriesId: meetingSeriesDecisions.seriesId, decision: meetingSeriesDecisions.decision, decidedAt: meetingSeriesDecisions.decidedAt })
+    .from(meetingSeriesDecisions)
+    .where(inArray(meetingSeriesDecisions.seriesId, ids))
+    .all();
+  for (const row of rows) out.set(row.seriesId, { decision: row.decision, decidedAt: row.decidedAt });
+  return out;
+}

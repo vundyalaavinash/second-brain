@@ -54,6 +54,45 @@ describe("AuditView", () => {
     expect(screen.queryByText(/score/i)).toBeNull();
   });
 
+  it("renders a deliberately bad row exactly like a good one -- no colour, class, or style keyed to outcome", () => {
+    // The single most important design constraint on this page can't be checked by grepping the
+    // rendered text for the words "health" or "score" alone: a conditional class applied only to
+    // a bad-looking row would never even render if every fixture in this file looked healthy.
+    // This row is deliberately as bad as the evidence can read -- 0 of 20 attended, no notes, no
+    // transcript, nothing produced -- and its whole rendered tree is compared class-for-class
+    // against a good row's.
+    const good = row({
+      title: "Good series",
+      occurrences: 8,
+      totalMinutes: 480,
+      attendedCount: 8,
+      lastNoteAt: "2026-09-01T09:00:00.000Z",
+      hasTranscript: true,
+      tasksSince: 3,
+      topActivity: [{ label: "Code", ms: 600_000 }],
+    });
+    const bad = row({
+      title: "Bad series",
+      occurrences: 20,
+      totalMinutes: 1200,
+      attendedCount: 0,
+      lastNoteAt: null,
+      hasTranscript: false,
+      tasksSince: 0,
+      topActivity: [],
+    });
+    render(<AuditView rows={[good, bad]} share={{ minutes: 0, workingMinutes: 1 }} />);
+
+    const goodRow = screen.getByText("Good series").closest("li")!;
+    const badRow = screen.getByText("Bad series").closest("li")!;
+    expect(badRow.className).toBe(goodRow.className);
+
+    // Every element under each row, not just the row itself -- a colour or emphasis class hiding
+    // on some inner node would still be caught by comparing the whole set.
+    const classesOf = (root: Element) => [...root.querySelectorAll("*")].map((el) => el.className).sort();
+    expect(classesOf(badRow)).toEqual(classesOf(goodRow));
+  });
+
   it("names what activity ran, or says plainly that none was recorded", () => {
     render(<AuditView rows={[row({ title: "Design review", topActivity: [{ label: "Code", ms: 600_000 }] })]} share={{ minutes: 0, workingMinutes: 1 }} />);
     expect(screen.getByText(/Time alongside it went mostly to Code \(10m\)\./)).toBeTruthy();
@@ -73,6 +112,11 @@ describe("AuditView", () => {
     expect(screen.getByText(/Notes were last written/)).toBeTruthy();
     expect(screen.getByText(/A transcript exists for at least one occurrence\./)).toBeTruthy();
     expect(screen.getByText(/2 tasks came out of it\./)).toBeTruthy();
+  });
+
+  it("reads as a sentence, not a fragment, for a note older than a day -- 'on 1 Jan', not a bare date", () => {
+    render(<AuditView rows={[row({ title: "Old notes", lastNoteAt: "2020-01-01T09:00:00.000Z" })]} share={{ minutes: 0, workingMinutes: 1 }} />);
+    expect(screen.getByText(/Notes were last written on \d+ \w+\./)).toBeTruthy();
   });
 
   it("hides the Not going control entirely when there is no next occurrence to write against", () => {

@@ -1,11 +1,11 @@
 import { and, asc, gte, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { calendarEvents, items, tasks, type CalendarEvent } from "@/db/schema";
-import { activityBetween, addDays, capturedItemsFor, listMeetings, localDay, topApps, type DaySession } from "@/domain/activity";
+import { calendarEvents, items, tasks, type CalendarEvent, type MeetingDecision } from "@/db/schema";
+import { activityBetween, addDays, capturedItemsFor, dayBounds, listMeetings, localDay, topApps, type DaySession } from "@/domain/activity";
 import { meetingCost, parseWorkHours } from "@/lib/capacity";
 import { meetingItemFlags } from "@/lib/planner";
-import { getWorkHours, getWorkingDays } from "@/lib/work-hours";
-import { effectiveDecision, seriesDecisionsFor } from "./decision";
+import { getWorkHours, getWorkingDays, isWorkingDay } from "@/lib/work-hours";
+import { effectiveDecision, seriesDecisionDetailsFor, seriesDecisionsFor } from "./decision";
 
 /** How many apps' worth of "what ran during it" the evidence names — the same figure
  * `activityToday` (home.ts) and `focusWhere` (domain/focus) already settled on for "the three
@@ -28,6 +28,22 @@ export interface SeriesAudit {
   hasTranscript: boolean;
   tasksSince: number;
   topActivity: { label: string; ms: number }[];
+}
+
+/**
+ * `effectiveDecision`, but a series decision only ever governs occurrences at or after the moment
+ * it was made. `meetingSeriesDecisions` has no time scoping of its own -- it is one row per
+ * series, always current -- so reading it the way every other caller of `effectiveDecision` does
+ * (unconditionally, for whatever occurrence is being asked about) would let a "Not going, every
+ * time" click made today rewrite whether a person attended a meeting last month: attendance that
+ * already happened cannot retroactively become non-attendance because of a decision made after
+ * the fact. An occurrence's own override always applies regardless of when it was made, since it
+ * was made specifically about that occurrence.
+ */
+function effectiveDecisionAsOf(ev: CalendarEvent, seriesDecision: { decision: MeetingDecision; decidedAt: string } | null): MeetingDecision {
+  if (ev.decision) return ev.decision;
+  if (seriesDecision && ev.startsAt >= seriesDecision.decidedAt) return seriesDecision.decision;
+  return ev.status === "declined" ? "not-going" : "going";
 }
 
 /** The item captured from `ev`, by either path a capture can take: `calendarEvents.itemId`
@@ -100,7 +116,7 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
   }
 
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
-  const decisions = seriesDecisionsFor(db, seriesIds);
+  const decisions = seriesDecisionDetailsFor(db, seriesIds);
 
   const eventIds = events.map((ev) => ev.id);
   const capturedByEvent = capturedItemsFor(db, eventIds);
@@ -117,7 +133,13 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
     tasksByItem.set(row.sourceItemId, (tasksByItem.get(row.sourceItemId) ?? 0) + 1);
   }
 
-  const windowSessions = activityBetween(db, opts.since, nowIso).filter((s) => !s.afk);
+  // `opts.since` is a bare local day, not a UTC instant -- `activityBetween`'s contract is an
+  // arbitrary instant range, so the local day's own start (`dayBounds`, not the bare string
+  // itself) is what has to be passed here. Passing the string directly reads as UTC midnight of
+  // that date, which east of Greenwich falls *after* the local day actually starts, silently
+  // dropping real activity from the audit's own early-morning meetings under exactly the same
+  // class of timezone bug already fixed for the event-window read above.
+  const windowSessions = activityBetween(db, dayBounds(opts.since).start, nowIso).filter((s) => !s.afk);
 
   return [...groups.values()]
     .map((group): SeriesAudit => {
@@ -126,7 +148,7 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
       const totalMinutes = occurrences.reduce((n, ev) => n + (Date.parse(ev.endsAt) - Date.parse(ev.startsAt)) / 60_000, 0);
       const seriesDecision = group.seriesId ? (decisions.get(group.seriesId) ?? null) : null;
       const attendedCount = occurrences.filter((ev) => {
-        const decision = effectiveDecision(ev, seriesDecision);
+        const decision = effectiveDecisionAsOf(ev, seriesDecision);
         return decision === "going" || decision === "maybe";
       }).length;
 
@@ -177,6 +199,13 @@ export function auditSeries(db: DB, opts: { since: string; now?: Date }): Series
  * `plannerWeek`'s own `start` takes, and is read the same way `auditSeries` reads its own window:
  * through `listMeetings`'s day column, not a raw instant comparison against a bare day string.
  *
+ * Every meeting is clipped to its own day's working-hours window before it is costed, the same
+ * way `freeMinutes` clips a day's meetings before subtracting them — a meeting on a non-working
+ * day counts for nothing, and one that starts before or runs past the working hours only counts
+ * the part of it inside them. Without this the numerator could include time the denominator
+ * (working hours only) never counted in the first place, letting the headline read over 100% on
+ * nothing but a Saturday meeting or one that ran into the evening.
+ *
  * Every 7-day week contains each ISO weekday exactly once regardless of which day it starts on,
  * so the working week's total is just the working-day count times the working hours' length —
  * no need to walk the seven days one at a time to get the same number.
@@ -185,14 +214,25 @@ export function weeklyMeetingShare(db: DB, week: string): { minutes: number; wor
   const events = listMeetings(db, { from: week, to: addDays(week, 7) }).filter((ev) => ev.allDay !== 1);
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
   const decisions = seriesDecisionsFor(db, seriesIds);
+  const workHours = getWorkHours(db);
+  const hours = parseWorkHours(workHours)!; // getWorkHours only ever returns a value that parses
+  const workingDays = getWorkingDays(db);
+
   const minutes = events.reduce((sum, ev) => {
+    const day = localDay(ev.startsAt);
+    if (!isWorkingDay(workingDays, day)) return sum;
+    const dayStart = Date.parse(dayBounds(day).start);
+    const workStart = new Date(dayStart + hours.start * 60_000).toISOString();
+    const workEnd = new Date(dayStart + hours.end * 60_000).toISOString();
+    const clippedStart = ev.startsAt < workStart ? workStart : ev.startsAt;
+    const clippedEnd = ev.endsAt > workEnd ? workEnd : ev.endsAt;
+    const end = (Date.parse(clippedEnd) - Date.parse(clippedStart)) / 60_000;
+    if (end <= 0) return sum;
     const decision = effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null);
-    const end = (Date.parse(ev.endsAt) - Date.parse(ev.startsAt)) / 60_000;
     return sum + meetingCost({ start: 0, end, decision });
   }, 0);
 
-  const hours = parseWorkHours(getWorkHours(db))!; // getWorkHours only ever returns a value that parses
-  const workingMinutes = getWorkingDays(db).length * (hours.end - hours.start);
+  const workingMinutes = workingDays.length * (hours.end - hours.start);
   return { minutes, workingMinutes };
 }
 
@@ -202,7 +242,8 @@ export function weeklyMeetingShare(db: DB, week: string): { minutes: number; wor
  * occurrence-scoped decision against, since `SeriesAudit` itself only ever looks backward and
  * carries no occurrence id of its own. A series with nothing scheduled ahead of `now` (it ended,
  * or every future instance has already been declined off the calendar) has no entry: there is
- * nothing for "just the next one" to mean, and the control falls back to the series as a whole.
+ * nothing for the control to write against, so the view leaves the whole control off that row
+ * rather than offering an action it cannot actually take.
  */
 export function nextOccurrenceIds(db: DB, seriesIds: string[], now: Date): Map<string, number> {
   const out = new Map<string, number>();

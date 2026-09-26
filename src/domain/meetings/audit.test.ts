@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { replaceCalendarEvents, captureMeeting } from "@/domain/activity/calendar";
 import { ingestHeartbeat } from "@/domain/activity/sessions";
@@ -85,6 +85,61 @@ describe("auditSeries", () => {
     expect(standup.attendedCount).toBe(2);
   });
 
+  it("a series-scoped 'not going' write leaves past attendance intact -- decidedAt scopes it, not the whole history", () => {
+    // `setMeetingDecision` stamps `decidedAt` with the real wall clock, not an injectable one, so
+    // this test is built off real `Date.now()` rather than the file's fixed `DAY` anchor: an
+    // occurrence timestamped before the decision is made, and one timestamped after it.
+    const realNow = Date.now();
+    const iso = (offsetMs: number) => new Date(realNow + offsetMs).toISOString();
+    const DAY_MS = 86_400_000;
+    replaceCalendarEvents(t.db, [
+      {
+        externalId: "retro-past",
+        title: "Retro sync",
+        startsAt: iso(-10 * DAY_MS),
+        endsAt: iso(-10 * DAY_MS + 30 * 60_000),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:retro",
+      },
+    ]);
+    // The person actually showed up (no override needed -- "going" is the default); this already
+    // happened before any decision about the series existed.
+    setMeetingDecision(t.db, eventBy(t, "retro-past").id, { decision: "not-going", scope: "series" });
+    // A later occurrence, timestamped after the write above -- the series decision should govern
+    // this one, since it happens (or "happens", for `auditSeries`'s own not-yet-started filter --
+    // it must be in the past relative to the `now` passed below) after the decision was made.
+    replaceCalendarEvents(t.db, [
+      {
+        externalId: "retro-past",
+        title: "Retro sync",
+        startsAt: iso(-10 * DAY_MS),
+        endsAt: iso(-10 * DAY_MS + 30 * 60_000),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:retro",
+      },
+      {
+        externalId: "retro-future",
+        title: "Retro sync",
+        startsAt: iso(60 * 60_000),
+        endsAt: iso(90 * 60_000),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:retro",
+      },
+    ]);
+
+    const since = localDay(iso(-15 * DAY_MS));
+    const now = new Date(realNow + 2 * 60 * 60_000); // after retro-future has "started"
+    const audits = auditSeries(t.db, { since, now });
+    const retro = audits.find((a) => a.seriesId === "eventkit:retro")!;
+    expect(retro.occurrences).toBe(2);
+    // If the bug were still present, this would read 0: the series decision would apply
+    // retroactively to the occurrence that already happened before it was ever made.
+    expect(retro.attendedCount).toBe(1);
+  });
+
   it("orders by total minutes, the recurring cost first, not the rare long workshop", () => {
     // Twenty 15-minute standups (300 minutes total) against one 3-hour workshop (180 minutes),
     // on days that never collide with each other so a sync upsert never purges one for the other.
@@ -107,27 +162,55 @@ describe("auditSeries", () => {
     expect(audits[0].totalMinutes).toBeGreaterThan(workshopAudit.totalMinutes);
   });
 
-  it("groups many series correctly at scale -- the grouping this repo's batching rule protects, not one query per series", () => {
+  it("groups many series correctly at scale, and costs the same number of queries at 1 series as at 12", () => {
     // Structurally, `auditSeries` reads the window's events, decisions, captured items, and
     // tasks each in one grouped query regardless of how many series are in play (see its own doc
-    // comment) -- this exercises that at a scale (12 series, 4 occurrences each) where a
-    // one-query-per-series implementation would visibly slow down, and checks the grouping itself
-    // stays correct at that scale.
-    const series = Array.from({ length: 12 }, (_, s) =>
-      Array.from({ length: 4 }, (_, i) => ({
-        externalId: `s${s}-${i}`,
-        title: `Series ${s}`,
-        startsAt: at((s * 4 + i) * 3600),
-        endsAt: at((s * 4 + i) * 3600 + 1500),
-        attendees: 3,
-        hasCallLink: true,
-        seriesId: `eventkit:series-${s}`,
-      })),
-    ).flat();
-    replaceCalendarEvents(t.db, series);
-    const audits = auditSeries(t.db, { since: SINCE, now: NOW });
-    expect(audits).toHaveLength(12);
-    expect(audits.every((a) => a.occurrences === 4)).toBe(true);
+    // comment) -- checked here the same way `seriesDecisionsFor`'s own test and
+    // `suggestContainersFor`'s (`domain/containers/suggest.test.ts`) already do, with
+    // `vi.spyOn(db, "select")`, rather than only checking the grouping is correct at scale.
+    const oneSeries = Array.from({ length: 4 }, (_, i) => ({
+      externalId: `one-${i}`,
+      title: "Solo standup",
+      startsAt: at(i * 3600),
+      endsAt: at(i * 3600 + 1500),
+      attendees: 3,
+      hasCallLink: true,
+      seriesId: "eventkit:solo",
+    }));
+    replaceCalendarEvents(t.db, oneSeries);
+    const spy1 = vi.spyOn(t.db, "select");
+    const oneSeriesAudits = auditSeries(t.db, { since: SINCE, now: NOW });
+    const oneSeriesCalls = spy1.mock.calls.length;
+    spy1.mockRestore();
+    expect(oneSeriesAudits).toHaveLength(1);
+
+    const t2 = makeTestDb();
+    try {
+      const manySeries = Array.from({ length: 12 }, (_, s) =>
+        Array.from({ length: 4 }, (_, i) => ({
+          externalId: `many-${s}-${i}`,
+          title: `Series ${s}`,
+          startsAt: at((s * 4 + i) * 3600),
+          endsAt: at((s * 4 + i) * 3600 + 1500),
+          attendees: 3,
+          hasCallLink: true,
+          seriesId: `eventkit:many-${s}`,
+        })),
+      ).flat();
+      replaceCalendarEvents(t2.db, manySeries);
+      const spy2 = vi.spyOn(t2.db, "select");
+      const manySeriesAudits = auditSeries(t2.db, { since: SINCE, now: NOW });
+      const manySeriesCalls = spy2.mock.calls.length;
+      spy2.mockRestore();
+      expect(manySeriesAudits).toHaveLength(12);
+      expect(manySeriesAudits.every((a) => a.occurrences === 4)).toBe(true);
+      // The whole point: reading twelve series' worth of events costs exactly what reading one
+      // series' worth does -- never one query per series.
+      expect(manySeriesCalls).toBe(oneSeriesCalls);
+      expect(oneSeriesCalls).toBeGreaterThan(0);
+    } finally {
+      t2.cleanup();
+    }
   });
 
   it("names what activity ran during the series' occurrences, using activityBetween per occurrence's own window, merged", () => {
@@ -159,6 +242,33 @@ describe("auditSeries", () => {
     expect(labels).toContain("Code");
     expect(labels).not.toContain("Notes");
     expect(labels.some((l) => l === "Chrome" || l === "example.com")).toBe(true);
+  });
+
+  it("includes activity from the very start of the local day, not the whole day's UTC prefix -- run under TZ=Asia/Tokyo to see this actually bite", () => {
+    // The exact class of bug already fixed for the event-window read (`listMeetings` vs. a raw
+    // `startsAt` comparison), reproduced for the activity read: `activityBetween` must be given
+    // the local day's own start (`dayBounds`), not the bare `since` string passed straight
+    // through. Under a positive UTC offset, a meeting and its activity sitting in the first few
+    // hours of the local day fall on the *previous* UTC calendar date; passing the bare date
+    // string as a UTC instant puts the window's start several hours too late and silently drops
+    // exactly this activity. `TZ=Pacific/Midway` (negative offset) cannot catch this direction of
+    // the bug -- only a positive-offset zone like `Asia/Tokyo` can, which is why this test exists
+    // in addition to the file's other TZ-safety tests, and why `TZ=Asia/Tokyo npm test` is part of
+    // this task's own verification, not just `TZ=Pacific/Midway`.
+    const day = "2026-09-05";
+    const localMidnight = Date.parse(dayBounds(day).start);
+    const morningStart = new Date(localMidnight + 30 * 60_000).toISOString(); // 00:30 local
+    const morningEnd = new Date(localMidnight + 60 * 60_000).toISOString(); // 01:00 local
+    replaceCalendarEvents(t.db, [
+      { externalId: "morning", title: "Early standup", startsAt: morningStart, endsAt: morningEnd, attendees: 2, hasCallLink: true, seriesId: "eventkit:morning" },
+    ]);
+    ingestHeartbeat(t.db, { at: morningStart, appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    ingestHeartbeat(t.db, { at: new Date(Date.parse(morningStart) + 10 * 60_000).toISOString(), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+
+    const now = new Date(Date.parse(morningEnd) + 3_600_000);
+    const audits = auditSeries(t.db, { since: day, now });
+    const morning = audits.find((a) => a.seriesId === "eventkit:morning")!;
+    expect(morning.topActivity.map((a) => a.label)).toContain("Code");
   });
 
   it("names what a captured meeting item actually holds -- notes, transcript, and tasks made from it", () => {
@@ -232,6 +342,29 @@ describe("weeklyMeetingShare", () => {
     expect(share.minutes).toBe(60 + 30); // full hour + half an hour, nothing for the declined one
     // Default work hours 09:00-18:00 (9h/day) times the default five working days.
     expect(share.workingMinutes).toBe(9 * 60 * 5);
+  });
+
+  it("clips a meeting to its own day's working hours before costing it -- a Saturday or after-hours meeting cannot inflate the share past what the working week actually holds", () => {
+    const week = "2026-09-14"; // Monday
+    const dayStart = (offset: number) => Date.parse(dayBounds(week).start) + offset * 86_400_000;
+    // A meeting that starts inside working hours and runs an hour past them: only the part inside
+    // 09:00-18:00 should count.
+    const lateStart = new Date(dayStart(0) + 17 * 3600_000).toISOString(); // Monday 17:00
+    const lateEnd = new Date(dayStart(0) + 19 * 3600_000).toISOString(); // Monday 19:00
+    // A meeting entirely on Saturday, well inside what would be a normal working window on a
+    // working day -- but Saturday isn't one under the default Mon-Fri setting, so this must count
+    // for nothing at all, not just be clipped down.
+    const saturdayStart = new Date(dayStart(5) + 10 * 3600_000).toISOString(); // Saturday 10:00
+    const saturdayEnd = new Date(dayStart(5) + 11 * 3600_000).toISOString(); // Saturday 11:00
+    replaceCalendarEvents(t.db, [
+      { externalId: "late", title: "Runs past six", startsAt: lateStart, endsAt: lateEnd, attendees: 2, hasCallLink: true },
+      { externalId: "saturday", title: "Weekend sync", startsAt: saturdayStart, endsAt: saturdayEnd, attendees: 2, hasCallLink: true },
+    ]);
+    const share = weeklyMeetingShare(t.db, week);
+    // Only 17:00-18:00 of the late meeting counts (60 minutes); the Saturday meeting counts for
+    // nothing. Without clipping this would read 60 + 60 (late, unclipped) + 60 (Saturday) = 180.
+    expect(share.minutes).toBe(60);
+    expect(share.minutes).toBeLessThanOrEqual(share.workingMinutes);
   });
 });
 

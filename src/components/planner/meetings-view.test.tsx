@@ -112,6 +112,11 @@ describe("MeetingsView", () => {
     expect(within(past).getByText("Retro")).toBeTruthy();
   });
 
+  it("links to the audit from the header -- otherwise it has no way to be found in the app (F4)", () => {
+    mount();
+    expect(screen.getByRole("link", { name: "The audit" }).getAttribute("href")).toBe("/meetings/audit");
+  });
+
   it("filters the rows as the search is typed", () => {
     mount();
     expect(titles()).toEqual(["Standup", "Product sync", "Retro"]);

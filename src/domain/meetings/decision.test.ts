@@ -4,7 +4,7 @@ import { calendarEvents, meetingSeriesDecisions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { replaceCalendarEvents } from "@/domain/activity/calendar";
 import { MeetingError } from "./errors";
-import { effectiveDecision, seriesDecisionsFor, setMeetingDecision } from "./decision";
+import { effectiveDecision, seriesDecisionDetailsFor, seriesDecisionsFor, setMeetingDecision } from "./decision";
 
 const T0 = Date.parse("2026-09-16T09:00:00.000Z");
 const at = (s: number) => new Date(T0 + s * 1000).toISOString();
@@ -146,5 +146,21 @@ describe("setMeetingDecision / seriesDecisionsFor", () => {
     const spy = vi.spyOn(t.db, "select");
     expect(seriesDecisionsFor(t.db, [])).toEqual(new Map());
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("seriesDecisionDetailsFor carries decidedAt alongside the decision, one query for the whole list", () => {
+    const ids = Array.from({ length: 5 }, (_, i) => `eventkit:series-${i}`);
+    for (const id of ids) {
+      const ev = event(`ext-${id}`, id);
+      setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "series" });
+    }
+    const spy = vi.spyOn(t.db, "select");
+    const details = seriesDecisionDetailsFor(t.db, ids);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(details.size).toBe(5);
+    const first = details.get(ids[0])!;
+    expect(first.decision).toBe("not-going");
+    expect(typeof first.decidedAt).toBe("string");
+    expect(Number.isNaN(Date.parse(first.decidedAt))).toBe(false);
   });
 });
