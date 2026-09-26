@@ -20,11 +20,12 @@ export interface CalendarEventInput {
   allDay?: boolean;
   status?: MeetingStatus;
   calendarTitle?: string;
-  /** EventKit's `calendarItemIdentifier`, or the feed's own `UID` — the same value across every
-   * occurrence of a recurring series, and a harmless "series of one" for a non-recurring event.
-   * Accepted here so both ingestion paths can start sending it now; `calendar_events` has no
-   * column for it yet (that lands with the grouping feature that consumes it), so `replaceCalendarEvents`
-   * takes it but does not persist it below. */
+  /** `eventkit:{calendarItemIdentifier}` or `feed:{uid}` — the same value across every occurrence
+   * of a recurring series, and a harmless "series of one" for a non-recurring event. Prefixed per
+   * source so the two unrelated id spaces can never collide once something groups by this value
+   * across sources. Accepted here so both ingestion paths can start sending it now;
+   * `calendar_events` has no column for it yet (that lands with the grouping feature that
+   * consumes it), so `replaceCalendarEvents` takes it but does not persist it below. */
   seriesId?: string;
 }
 

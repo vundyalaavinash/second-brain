@@ -37,7 +37,7 @@ describe("parseCalendarFeed", () => {
     expect(e.status).toBe("accepted");
     expect(e.allDay).toBe(false);
     expect(e.calendarTitle).toBe("Avinash's calendar");
-    expect(e.seriesId).toBe("single-1");
+    expect(e.seriesId).toBe("feed:single-1");
   });
 
   it("marks an all-day event on its day", () => {
@@ -60,9 +60,10 @@ describe("parseCalendarFeed", () => {
     expect(moved.title).toBe("Standup (moved)");
     expect(moved.externalId).toBe("feed:weekly-1:2026-10-05T03:30:00.000Z");
     expect(standups[0].status).toBe("tentative");
-    // externalId disambiguates each occurrence with a recurrenceId; seriesId is the bare uid,
-    // the same across every occurrence, so a caller can group the series without parsing externalId.
-    expect(standups.every((e) => e.seriesId === "weekly-1")).toBe(true);
+    // externalId disambiguates each occurrence with a recurrenceId; seriesId is the bare
+    // `feed:`-prefixed uid, the same across every occurrence, so a caller can group the series
+    // without parsing externalId.
+    expect(standups.every((e) => e.seriesId === "feed:weekly-1")).toBe(true);
   });
 
   it("keeps each series' overrides to itself", () => {

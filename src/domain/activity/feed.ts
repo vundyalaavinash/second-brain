@@ -128,7 +128,10 @@ function occurrenceInput(ev: ICAL.Event, start: ICAL.Time, end: ICAL.Time, exter
     // externalId already embeds ev.uid (as `feed:{uid}` or `feed:{uid}:{recurrenceId}`) to keep
     // occurrences distinct rows; seriesId is the same uid on its own, shared by every occurrence
     // of a recurring event, so grouping can key on it directly instead of stripping externalId.
-    seriesId: ev.uid,
+    // The `feed:` prefix matches externalId's and keeps this source's ids out of the EventKit
+    // source's space (`eventkit:{calendarItemIdentifier}`, CalendarReader.swift) — the two id
+    // spaces are unrelated, and a meeting synced from both sources must not collide here.
+    seriesId: `feed:${ev.uid}`,
   };
 }
 

@@ -103,9 +103,12 @@ describe("calendar", () => {
     ]);
     // Read the row directly, not through a day window: this is about seriesId surviving the
     // upsert unharmed, not about day-bucketing, which localDay handles (and tests) elsewhere.
+    // There's deliberately no assertion here that the row lacks a `seriesId` property: that
+    // would be true only because the column doesn't exist yet, and would start failing the
+    // moment Task 2's migration adds it — asserting something true today for the wrong reason.
+    // Task 2 owns testing seriesId's persistence once there's a column to persist it in.
     const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!;
     expect(ev.externalId).toBe("s1");
-    expect(ev).not.toHaveProperty("seriesId");
   });
 
   it("lists meetings in a window with a text filter", () => {
