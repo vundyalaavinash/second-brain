@@ -71,7 +71,7 @@ describe("plannerDay", () => {
     const ev = meeting();
     expect(plannerDay(t.db, DATE).meetings[0].item).toBeUndefined();
     const item = captureMeeting(t.db, ev.id);
-    expect(plannerDay(t.db, DATE).meetings[0].item).toEqual({ id: item.id, hasNotes: false, hasTranscript: false, hasSummary: false });
+    expect(plannerDay(t.db, DATE).meetings[0].item).toEqual({ id: item.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null });
   });
 
   it("loads only the tasks the day and the week can show", () => {

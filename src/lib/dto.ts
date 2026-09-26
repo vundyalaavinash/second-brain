@@ -342,15 +342,35 @@ export interface MeetingItemDTO {
   hasNotes: boolean;
   hasTranscript: boolean;
   hasSummary: boolean;
+  /** Null when the item has not been filed to a project or area yet — what the suggestion
+   * offer, and the project-filtered meetings view, both key off. */
+  containerId: number | null;
 }
 
-export type MeetingListDTO = ActivityMeetingDTO & { item?: MeetingItemDTO };
+export type MeetingListDTO = ActivityMeetingDTO & {
+  item?: MeetingItemDTO;
+  /** The dull suggestion for where this meeting probably belongs (`suggestContainer`,
+   * `@/domain/containers/suggest`), present only when the item exists and has no container yet.
+   * An offer, never an assignment — accepting it writes through the existing item `PATCH`;
+   * nothing here writes on its own. */
+  suggestedContainer?: ContainerRefDTO | null;
+};
 
 export interface PlannerMeetingsDTO {
   from: string;
   to: string;
   meetings: MeetingListDTO[];
   calendar: PlannerCalendarDTO;
+}
+
+/** A meeting filed to a project or area, for that container's own Meetings section — the same
+ * badges `MeetingListDTO.item` carries, alongside the meeting's date, without the rest of the
+ * Planner's own meeting shape (decisions, join links) that section has no use for. */
+export interface ContainerMeetingDTO {
+  title: string;
+  /** Null for a meeting item with no calendar event behind it (an ad hoc recording). */
+  startsAt: string | null;
+  item: MeetingItemDTO;
 }
 
 /** One timed thing on the day: the meeting or session Home shows as now, or as what comes next. */

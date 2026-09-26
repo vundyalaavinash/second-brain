@@ -1,8 +1,9 @@
 import { inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { items } from "@/db/schema";
-import { addDays, getHelperState, listMeetings, localDay } from "@/domain/activity";
+import { items, type Item } from "@/db/schema";
+import { addDays, getHelperState, listMeetings, localDay, meetingTimesByItemIds } from "@/domain/activity";
 import { listContainers } from "@/domain/containers";
+import { suggestContainersFor } from "@/domain/containers/suggest";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { estimateActualPairs } from "@/domain/focus";
@@ -12,7 +13,7 @@ import { serializeMeeting, serializeMeetings, serializePlanTasks, serializeTasks
 import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
 import { getWorkHours, getWorkingDays, isWorkingDay } from "./work-hours";
-import type { MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
+import type { ContainerMeetingDTO, MeetingItemDTO, MeetingListDTO, PlannerCalendarDTO, PlannerDayDTO, PlannerSourcesDTO, PlannerWeekDTO, SourceGroupDTO, TaskDTO } from "./dto";
 
 /** What the Planner tells the setup card about the helper's calendar access. */
 export function plannerCalendar(db: DB): PlannerCalendarDTO {
@@ -189,20 +190,59 @@ function itemFlags(db: DB, ids: number[]): Map<number, MeetingItemDTO> {
       hasNotes: hasUserNotes(row.body),
       hasTranscript: !!meta.transcript,
       hasSummary: !!meta.summary,
+      containerId: row.containerId,
     });
   }
   return flags;
 }
 
-/** Meetings in `[from, to)`, each carrying its item's badges when it has been captured. */
+/**
+ * Meetings in `[from, to)`, each carrying its item's badges when it has been captured, and a
+ * dull suggestion for where it probably belongs when it has been captured but filed nowhere yet
+ * (`suggestContainer`, `@/domain/containers/suggest`) — an offer for the row's chip, never a
+ * write of its own. The suggestion pass costs the two queries `suggestContainersFor` batches for
+ * its whole list, once for this call, not once per uncontained meeting in it.
+ */
 export function plannerMeetings(db: DB, opts: { from: string; to: string; q?: string }): MeetingListDTO[] {
   const meetings = serializeMeetings(db, listMeetings(db, opts));
   const flags = itemFlags(
     db,
     meetings.map((m) => m.itemId).filter((id): id is number => id !== null),
   );
-  return meetings.map((m) => {
+  const withItems: MeetingListDTO[] = meetings.map((m) => {
     const item = m.itemId === null ? undefined : flags.get(m.itemId);
     return item ? { ...m, item } : m;
   });
+
+  const uncontained = withItems.filter((m) => m.item && m.item.containerId === null);
+  const suggestions = suggestContainersFor(
+    db,
+    uncontained.map((m) => ({ title: m.title, attendeeNames: m.attendeeNames })),
+  );
+  const suggestionByMeetingId = new Map(uncontained.map((m, i) => [m.id, suggestions[i] ?? null]));
+  return withItems.map((m) => (suggestionByMeetingId.has(m.id) ? { ...m, suggestedContainer: suggestionByMeetingId.get(m.id) } : m));
+}
+
+/**
+ * Every meeting item filed to a container, for that container's own Meetings section — the
+ * same badges `itemFlags` computes for the Planner, plus the meeting's own start time, read here
+ * off calendar events rather than the item (which stores none). One query for the calendar
+ * times of the whole list, never one per meeting, on top of the item rows the caller already
+ * has in hand.
+ */
+export function containerMeetings(db: DB, meetingItems: Item[]): ContainerMeetingDTO[] {
+  const times = meetingTimesByItemIds(
+    db,
+    meetingItems.map((i) => i.id),
+  );
+  return meetingItems
+    .map((i) => {
+      const meta = parseMeta(i);
+      return {
+        title: i.title,
+        startsAt: times.get(i.id)?.startsAt ?? null,
+        item: { id: i.id, hasNotes: hasUserNotes(i.body), hasTranscript: !!meta.transcript, hasSummary: !!meta.summary, containerId: i.containerId },
+      };
+    })
+    .sort((a, b) => (b.startsAt ?? "").localeCompare(a.startsAt ?? ""));
 }

@@ -137,6 +137,26 @@ export function parseAttendeeNames(raw: string): string[] {
   }
 }
 
+/**
+ * Per captured meeting item id, the calendar event it was captured from — start and end time in
+ * particular, since neither lives on the item itself. One query for the whole list of item ids,
+ * never one per item, the same shape every other list-cost finding in this repository has
+ * already flagged.
+ */
+export function meetingTimesByItemIds(db: DB, itemIds: number[]): Map<number, { startsAt: string; endsAt: string }> {
+  const out = new Map<number, { startsAt: string; endsAt: string }>();
+  if (itemIds.length === 0) return out;
+  const rows = db
+    .select({ itemId: calendarEvents.itemId, startsAt: calendarEvents.startsAt, endsAt: calendarEvents.endsAt })
+    .from(calendarEvents)
+    .where(inArray(calendarEvents.itemId, itemIds))
+    .all();
+  for (const row of rows) {
+    if (row.itemId !== null) out.set(row.itemId, { startsAt: row.startsAt, endsAt: row.endsAt });
+  }
+  return out;
+}
+
 /** Events starting on a day in [from, to), oldest first; `q` matches title, organizer, or an attendee name. */
 export function listMeetings(db: DB, opts: { from: string; to: string; q?: string }): CalendarEvent[] {
   const rows = db

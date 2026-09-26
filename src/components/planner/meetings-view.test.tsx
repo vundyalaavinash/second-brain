@@ -42,7 +42,7 @@ const MEETINGS: MeetingListDTO[] = [
     joinUrl: "https://meet.example.com/sync",
     hasCallLink: true,
     itemId: 7,
-    item: { id: 7, hasNotes: true, hasTranscript: true, hasSummary: false },
+    item: { id: 7, hasNotes: true, hasTranscript: true, hasSummary: false, containerId: null },
   }),
   meeting({ id: 3, title: "Retro", startsAt: "2026-09-15T15:00:00", endsAt: "2026-09-15T16:00:00" }),
 ];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MeetingListDTO } from "@/lib/dto";
+import type { MeetingItemDTO, MeetingListDTO } from "@/lib/dto";
 import type { MeetingDecision } from "@/db/enums";
 import { formatClock } from "../activity/format";
 import { Button, Chip } from "../ui";
@@ -22,11 +22,27 @@ interface Props {
 
 const DECISION_LABEL: Record<MeetingDecision, string> = { going: "Going", maybe: "Maybe", "not-going": "Not going" };
 
-/** The badges the linked item has earned. Nothing is shown for a meeting with no item yet. */
-function badges(meeting: MeetingListDTO): string[] {
-  const item = meeting.item;
+/** The badges a linked item has earned. Nothing is shown for a meeting with no item yet.
+ * Exported so any other place a meeting item's badges are shown — the project page's own
+ * Meetings section among them — reads them off the same rule, rather than a second one that
+ * could drift from this one. */
+export function meetingBadges(item: MeetingItemDTO | null | undefined): string[] {
   if (!item) return [];
   return [item.hasNotes && "Notes", item.hasTranscript && "Transcript", item.hasSummary && "Summary"].filter((b): b is string => !!b);
+}
+
+/** The badge chips themselves, so a badge's look — not just which ones apply — never has to be
+ * redrawn twice either. */
+export function MeetingBadges({ item }: { item: MeetingItemDTO | null | undefined }) {
+  return (
+    <>
+      {meetingBadges(item).map((b) => (
+        <Chip as="span" key={b} className="shrink-0">
+          {b}
+        </Chip>
+      ))}
+    </>
+  );
 }
 
 export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, onOpenCalendar, blocked, recordTitle }: Props) {
@@ -61,11 +77,7 @@ export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, 
       </button>
       {meeting.organizer && <span className="text-[12px] text-fg-faint shrink-0 truncate max-w-[20ch]">{meeting.organizer}</span>}
       {meeting.attendees > 0 && <span className="text-[12px] text-fg-faint shrink-0 whitespace-nowrap">{count(meeting.attendees, "attendee")}</span>}
-      {badges(meeting).map((b) => (
-        <Chip as="span" key={b} className="shrink-0">
-          {b}
-        </Chip>
-      ))}
+      <MeetingBadges item={meeting.item} />
       {meeting.joinUrl && (
         <Button
           href={meeting.joinUrl}

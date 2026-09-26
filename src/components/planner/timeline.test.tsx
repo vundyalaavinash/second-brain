@@ -31,7 +31,7 @@ const sync: MeetingListDTO = {
   seriesId: null,
   decision: "going",
   decisionNote: "",
-  item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true },
+  item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: null },
 };
 
 const blocked: PlanTaskDTO = {
