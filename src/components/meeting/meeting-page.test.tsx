@@ -20,7 +20,19 @@ vi.mock("../editor/rich-editor", () => ({
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  // A test that added the rail's portal target (see `withRailSlot` below) removes it too, but
+  // this is the backstop -- a leftover slot must never bleed into the next test's DOM.
+  document.getElementById("rail-slot")?.remove();
 });
+
+/** The rail portals into the shell's slot, so a test that wants to see rail content -- the
+ * "Audio" row's size, sentence, or "Remove the audio" action -- has to supply one; without it
+ * `Rail` renders nothing, which every other test in this file relies on. */
+function withRailSlot(): void {
+  const slot = document.createElement("div");
+  slot.id = "rail-slot";
+  document.body.appendChild(slot);
+}
 
 const ITEM: ItemDTO = {
   id: 7,
@@ -73,18 +85,26 @@ function item(meta: Record<string, unknown>, over: Partial<ItemDTO> = {}): ItemD
   return { ...ITEM, meta, ...over };
 }
 
-/** Answers everything the page asks for on mount, and records what it posted. */
-function stubFetch(over: { task?: TaskDTO; status?: RecorderStatusDTO } = {}) {
+/** Answers everything the page asks for on mount, and records what it posted. A successful
+ * `DELETE .../audio` flips what the next `/api/items/:id` refresh answers with, to
+ * `itemAfterAudioRemoval` -- the same way the real route's write is only visible on a reload. */
+function stubFetch(over: { task?: TaskDTO; status?: RecorderStatusDTO; audioDeleteStatus?: number; itemAfterAudioRemoval?: ItemDTO } = {}) {
   const posts: { url: string; body: unknown }[] = [];
+  let audioRemoved = false;
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (init?.method === "DELETE" && url.endsWith("/audio")) {
+      const status = over.audioDeleteStatus ?? 200;
+      if (status < 300) audioRemoved = true;
+      return new Response("{}", { status });
+    }
     if (init?.method === "POST") {
       posts.push({ url, body: init.body ? JSON.parse(String(init.body)) : null });
       if (url.endsWith("/actions")) return Response.json({ task: over.task ?? TASK });
       return Response.json({ ...(over.status ?? IDLE), state: "recording" });
     }
     if (url === "/api/meetings/recorder") return Response.json(over.status ?? IDLE);
-    if (url.startsWith("/api/items/")) return Response.json(ITEM);
+    if (url.startsWith("/api/items/")) return Response.json(audioRemoved && over.itemAfterAudioRemoval ? over.itemAfterAudioRemoval : ITEM);
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fn);
@@ -111,17 +131,20 @@ const TASK: TaskDTO = {
   updatedAt: "2026-09-22T11:05:00.000Z",
 };
 
-function mount(dto: ItemDTO, over: { event?: ActivityMeetingDTO | null; tasks?: TaskDTO[]; hasKey?: boolean } = {}) {
+function mount(dto: ItemDTO, over: { event?: ActivityMeetingDTO | null; tasks?: TaskDTO[]; hasKey?: boolean; recordingBytes?: number | null } = {}) {
   render(
     <MeetingPage
       item={dto}
       event={over.event === undefined ? EVENT : over.event}
       tasks={over.tasks ?? []}
       hasKey={over.hasKey ?? true}
-      recordingBytes={null}
+      recordingBytes={over.recordingBytes ?? null}
     />,
   );
 }
+
+/** A recording that finished a while ago, for the audio rail row tests below. */
+const DONE_RECORDING = { startedAt: "2026-09-22T10:30:00.000Z", endedAt: "2026-09-22T11:00:00.000Z", wavPath: "meetings/7.wav", state: "done", autoStarted: false };
 
 describe("MeetingPage", () => {
   it("renders the title, the time range and the attendee chips", () => {
@@ -255,5 +278,44 @@ describe("MeetingPage", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("offers 'Remove the audio' for a meeting whose transcript is good, and removes it", async () => {
+    withRailSlot();
+    stubFetch({
+      itemAfterAudioRemoval: item({ recording: DONE_RECORDING, audioReleasedAt: "2026-10-03T09:00:00.000Z" }, { extractedText: "we agreed to ship on Friday" }),
+    });
+    mount(item({ recording: DONE_RECORDING }, { extractedText: "we agreed to ship on Friday" }), { recordingBytes: 2048 });
+    expect(screen.getByText("2 kB")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove the audio" }));
+    await waitFor(() => expect(screen.getByText("Removed 3 October; the transcript is kept")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Remove the audio" })).toBeNull();
+  });
+
+  it("does not offer 'Remove the audio' before there is a transcript", () => {
+    withRailSlot();
+    stubFetch();
+    mount(item({ recording: DONE_RECORDING }), { recordingBytes: 2048 });
+    expect(screen.getByText("2 kB")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove the audio" })).toBeNull();
+  });
+
+  it("says the audio was removed and the transcript is kept, rather than silently offering nothing", () => {
+    withRailSlot();
+    stubFetch();
+    mount(item({ recording: DONE_RECORDING, audioReleasedAt: "2026-10-03T09:00:00.000Z" }, { extractedText: "we agreed to ship on Friday" }));
+    expect(screen.getByText("Removed 3 October; the transcript is kept")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Remove the audio" })).toBeNull();
+  });
+
+  it("shows an error when removing the audio fails, and the button stays put", async () => {
+    withRailSlot();
+    stubFetch({ audioDeleteStatus: 409 });
+    mount(item({ recording: DONE_RECORDING }, { extractedText: "we agreed to ship on Friday" }), { recordingBytes: 2048 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove the audio" }));
+    await waitFor(() => expect(screen.getByText("Could not remove the audio")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Remove the audio" })).toBeTruthy();
   });
 });

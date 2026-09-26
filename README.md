@@ -98,6 +98,17 @@ Two permissions matter, both asked for on that first run: **Microphone**, and on
 
 Recordings are written as 16 kHz mono WAV under `DATA_DIR/files/meetings/`, alongside their transcripts; nothing is uploaded, and both whisper models run locally.
 
+The transcript is the record; the audio is scaffolding. Once a meeting has a transcript, its
+recording is deleted seven days later by default, in the same nightly pass that takes the
+backup — `meetings.audioRetentionDays` (`PATCH /api/settings/meetings`) takes any number of days
+from 0 (release as soon as the transcript lands) to 365, or `null` to keep every recording
+forever. Audio with no transcript is never deleted, however old: if transcription failed or
+never ran, that recording is the only copy of what was said, and a retention window is only ever
+a promise about disposable data. A meeting page whose audio has been released says so — "Audio
+removed on 3 October; the transcript is kept" — instead of silently offering nothing, and a
+meeting whose transcript is good offers **Remove the audio** to reclaim the file right away
+instead of waiting for the window.
+
 ### Recording automatically
 
 Two switches sit in the Meetings header. **Record meetings automatically** is off until you turn it on; with it on, a meeting starts recording itself as it begins — anywhere from two minutes after its start time to a minute before it. **Only with a join link** is on by default and keeps the rule to meetings that have somewhere to join, so a block held in the diary is not recorded.
@@ -145,6 +156,15 @@ What **stalls gets reconciled**: a run left open past its planned end by more th
 `/review` walks one week at a time through four steps — **Clear the decks**, the inbox count and whatever is still left open from the week, with a carry-to-next-week or a drop on each; **Look back**, what closed, what dropped, what slipped, the time spent focused, the meetings sat through, and the projects that moved; **Goals**, a note against each active goal as of the week; and **Look ahead**, next week's due tasks, deadlines, and meetings, with a one-click plan for whatever is worth carrying in. Nothing saves on a keystroke — only on leaving a step, leaving the page, or closing the tab — so a review can be started, abandoned mid-sentence, and picked back up exactly where it stopped, on this device or any other. The first answer saved writes the item, and every later one rewrites it — readable in the Library like any note and found by the same search, under a title that names its week; opening the same week again never makes a second one. `g w` opens it from anywhere, and from Friday morning Home carries one quiet line to it — "Review your week" — for as long as the current week has none; the line asks once and does not return once a review exists, or grow more insistent as Sunday runs out.
 
 Goals set the direction, Focus and the Planner are where the week's hours actually go, and the weekly review is where the two are read back against each other — what moved, what didn't, and what next week should carry. Direction, execution, reflection: three slices, one loop, each closing into the next.
+
+## Data safety
+
+The database backs itself up every night, verified before it is trusted and kept for six months;
+a migration takes its own snapshot first; and one command puts any of them back without deleting
+what it replaces. Meeting audio is not part of that backup — see "Meetings and recording" above
+for its own retention, which the same nightly job runs. See `docs/superpowers/runbook.md` for
+what to run when something looks wrong — it names the one thing this does not cover: everything
+above lives on this one machine.
 
 ## Design docs
 

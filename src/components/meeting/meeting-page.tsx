@@ -39,6 +39,9 @@ export interface MeetingMeta {
   summaryError?: string;
   acceptedActions?: number[];
   calendarEventId?: number;
+  /** Design §9: set once `releaseAudio` has deleted the wav, either by the nightly pass or the
+   * "Remove the audio" action. */
+  audioReleasedAt?: string;
 }
 
 export interface MeetingPageProps {
@@ -81,6 +84,7 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
   const [acceptedHere, setAcceptedHere] = useState<number[]>([]);
   const [added, setAdded] = useState<TaskDTO[]>([]);
   const [stopError, setStopError] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const meta = item.meta as MeetingMeta;
   const recording = meta.recording;
@@ -88,6 +92,11 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
   const segments = meta.transcript ?? [];
   const finalReady = !!meta.final_transcript_ready;
   const isRecording = recording?.state === "recording";
+  // The rule that cannot be broken (design §9.1) is checked server-side at the moment of
+  // deletion; this only decides whether to offer the button at all -- against the transcript
+  // itself, not `final_transcript_ready`, which is a flag set once and proves nothing about
+  // what is on the item right now.
+  const canRemoveAudio = !!recording?.wavPath && !meta.audioReleasedAt && item.extractedText.trim().length > 0;
   // Ruling: poll while the recorder runs or the final pass is still working, and stop the
   // moment the transcript lands or the item settles either way.
   const polling = !finalReady && (isRecording || item.status === "processing");
@@ -148,6 +157,24 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
     })();
   }
 
+  /** Reclaims the audio now rather than waiting for design §9's window -- the server checks the
+   * rule that cannot be broken again itself, regardless of what `canRemoveAudio` decided here. */
+  function removeAudio() {
+    setAudioError(null);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/meetings/${initial.id}/audio`, { method: "DELETE" });
+        if (!res.ok) {
+          setAudioError("Could not remove the audio");
+          return;
+        }
+        await refresh();
+      } catch {
+        setAudioError("Could not remove the audio");
+      }
+    })();
+  }
+
   const home: TaskHome = item.container ? { label: item.container.name, href: `/c/${item.container.slug}` } : { label: "Inbox", href: "/inbox" };
   const parent = event ? { label: "Meetings", href: "/planner/meetings" } : { label: "Library", href: "/library" };
   const elapsed = recording?.startedAt ? elapsedClock(now - Date.parse(recording.startedAt)) : "00:00";
@@ -163,6 +190,9 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
         tasks={linkedTasks}
         recordingSeconds={recordedSeconds(recording, segments)}
         recordingBytes={recordingBytes}
+        audioReleasedAt={meta.audioReleasedAt ?? null}
+        canRemoveAudio={canRemoveAudio}
+        onRemoveAudio={removeAudio}
         home={home}
         onMove={() => setMovePicker(true)}
       />
@@ -179,6 +209,7 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
 
       {item.error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{item.error}</div>}
       {stopError && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{stopError}</div>}
+      {audioError && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{audioError}</div>}
       {recorder.error && <div className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-[12.5px] text-danger">{recorder.error}</div>}
 
       <input

@@ -3,20 +3,12 @@
 import Link from "next/link";
 import { Inbox as InboxIcon } from "lucide-react";
 import type { ActivityMeetingDTO, ItemDTO, TaskDTO } from "@/lib/dto";
-import { formatDate } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
 import { Chip } from "../ui";
 import { Rail, RailRow, RailSection } from "../shell/rail";
 import { KIND_ICON, StatusDot } from "../type-icon";
-import { formatClock, formatDayHeading, todayLocal } from "../activity/format";
+import { formatClock, formatDayHeading, formatUtcDay, todayLocal } from "../activity/format";
 import type { TaskHome } from "./summary-pane";
-
-/** Rounded to one decimal above a megabyte, which is the only scale a WAV of speech reaches. */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${Math.round(kb)} kB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}
 
 /** mm:ss for a span of seconds, the same shape the transcript uses. */
 export function formatSpan(seconds: number): string {
@@ -30,15 +22,23 @@ interface Props {
   tasks: TaskDTO[];
   /** Seconds the recording ran, or null when nothing has been recorded. */
   recordingSeconds: number | null;
-  /** Size of the WAV on disk, measured on the server. */
+  /** Size of the WAV on disk, measured on the server -- null once it has been released, same as
+   * before anything was ever recorded. */
   recordingBytes: number | null;
+  /** When design §9's nightly pass, or the "Remove the audio" action, released the audio, or
+   * null while it is still held. */
+  audioReleasedAt: string | null;
+  /** Whether this meeting has a transcript good enough to release the audio for right now, and
+   * a way to do it -- both must be present for the action to render. */
+  canRemoveAudio: boolean;
+  onRemoveAudio?: () => void;
   /** Where a task made from this meeting lives, for the linked-task links. */
   home: TaskHome;
   onMove: () => void;
 }
 
 /** The meeting page's context column: when it was, who was there, and what it produced. */
-export function MeetingRail({ item, event, tasks, recordingSeconds, recordingBytes, home, onMove }: Props) {
+export function MeetingRail({ item, event, tasks, recordingSeconds, recordingBytes, audioReleasedAt, canRemoveAudio, onRemoveAudio, home, onMove }: Props) {
   const attendees = event?.attendeeNames ?? [];
   return (
     <Rail>
@@ -72,10 +72,30 @@ export function MeetingRail({ item, event, tasks, recordingSeconds, recordingByt
               <span className="font-mono">{formatSpan(recordingSeconds)}</span>
             </RailRow>
           )}
-          {recordingBytes !== null && (
+          {audioReleasedAt ? (
             <RailRow label="Audio">
-              <span className="font-mono">{formatBytes(recordingBytes)}</span>
+              {/* Design §9.3: says what happened rather than silently offering nothing for a
+                  file that is no longer there -- a missing file with no explanation reads as a
+                  bug, a sentence reads as a policy. */}
+              <span className="text-fg-muted">Removed {formatUtcDay(audioReleasedAt)}; the transcript is kept</span>
             </RailRow>
+          ) : (
+            recordingBytes !== null && (
+              <RailRow label="Audio">
+                <span className="flex items-center gap-2">
+                  <span className="font-mono">{formatBytes(recordingBytes)}</span>
+                  {canRemoveAudio && onRemoveAudio && (
+                    <button
+                      type="button"
+                      onClick={onRemoveAudio}
+                      className="focus-ring rounded-sm text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline"
+                    >
+                      Remove the audio
+                    </button>
+                  )}
+                </span>
+              </RailRow>
+            )
           )}
           <RailRow label="Id">
             <span className="font-mono">#{item.id}</span>

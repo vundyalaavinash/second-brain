@@ -232,6 +232,68 @@ describe("MeetingsView", () => {
     expect(JSON.parse(String(last![1]?.body))).toEqual({ autoRecordNeedsCallLink: false });
   });
 
+  it("shows the audio retention window once settings answer, and saves a new day count on blur", async () => {
+    const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
+    mount();
+    openSettings();
+
+    const days = await screen.findByRole("spinbutton", { name: "Audio retention, in days" });
+    expect((days as HTMLInputElement).value).toBe("7");
+
+    fireEvent.change(days, { target: { value: "30" } });
+    fireEvent.blur(days);
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/settings/meetings" && init?.method === "PATCH");
+      expect(JSON.parse(String(patch![1]?.body))).toEqual({ audioRetentionDays: 30 });
+    });
+  });
+
+  it("does not save an emptied retention field as 0, the most destructive value", async () => {
+    // `Number("")` is 0, and 0 means "release the audio the moment a transcript exists" — the
+    // exact opposite of what clearing a field to look at it means. A blank field must revert to
+    // what was saved, not commit anything.
+    const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
+    mount();
+    openSettings();
+
+    const days = (await screen.findByRole("spinbutton", { name: "Audio retention, in days" })) as HTMLInputElement;
+    fireEvent.change(days, { target: { value: "" } });
+    fireEvent.blur(days);
+
+    // Give any stray save a tick to land before asserting none did.
+    await new Promise((r) => setTimeout(r, 0));
+    const patch = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/settings/meetings" && init?.method === "PATCH");
+    expect(patch).toBeUndefined();
+    expect(days.value).toBe("7");
+  });
+
+  it("switches the audio retention window to keep forever, and back", async () => {
+    const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
+    mount();
+    openSettings();
+
+    const forever = await screen.findByRole("switch", { name: "Keep forever" });
+    expect(forever.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(forever);
+    await waitFor(() => expect(forever.getAttribute("aria-checked")).toBe("true"));
+    expect(screen.queryByRole("spinbutton", { name: "Audio retention, in days" })).toBeNull();
+    let patch = fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH").at(-1);
+    expect(JSON.parse(String(patch![1]?.body))).toEqual({ audioRetentionDays: null });
+
+    fireEvent.click(forever);
+    await waitFor(() => expect(forever.getAttribute("aria-checked")).toBe("false"));
+    patch = fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH").at(-1);
+    expect(JSON.parse(String(patch![1]?.body))).toEqual({ audioRetentionDays: 7 });
+  });
+
+  it("does not render the audio retention control before settings have answered", () => {
+    stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true, audioRetentionDays: 7 });
+    mount();
+    openSettings();
+    expect(screen.queryByRole("spinbutton", { name: "Audio retention, in days" })).toBeNull();
+  });
+
   it("keeps record out of reach while another meeting is recording", async () => {
     stubRecorder({ state: "recording", itemId: 4, title: "Retro", startedAt: new Date().toISOString(), missing: [] });
     mount();
