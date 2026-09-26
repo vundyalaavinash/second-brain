@@ -4,7 +4,7 @@ import { calendarEvents, meetingSeriesDecisions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { replaceCalendarEvents } from "@/domain/activity/calendar";
 import { MeetingError } from "./errors";
-import { effectiveDecision, seriesDecisionDetailsFor, seriesDecisionsFor, setMeetingDecision } from "./decision";
+import { effectiveDecision, effectiveDecisionAsOf, seriesDecisionDetailsFor, seriesDecisionsFor, setMeetingDecision } from "./decision";
 
 const T0 = Date.parse("2026-09-16T09:00:00.000Z");
 const at = (s: number) => new Date(T0 + s * 1000).toISOString();
@@ -26,6 +26,34 @@ describe("effectiveDecision", () => {
 
   it("never infers maybe from a tentative calendar status", () => {
     expect(effectiveDecision({ status: "tentative", decision: null }, null)).toBe("going");
+  });
+});
+
+// Promoted out of `audit.ts` by the final whole-branch review's F-B: the audit was the only
+// reader that had this protection, while `getDay` and `serializeMeetings` -- both of which serve
+// past occurrences -- used the unscoped `effectiveDecision` and so contradicted it.
+describe("effectiveDecisionAsOf", () => {
+  const series = (decision: "going" | "maybe" | "not-going", decidedAt: string) => ({ decision, decidedAt });
+
+  it("a series decision governs an occurrence that starts at or after it was made", () => {
+    expect(effectiveDecisionAsOf({ status: "accepted", decision: null, startsAt: at(60) }, series("not-going", at(0)))).toBe("not-going");
+    expect(effectiveDecisionAsOf({ status: "accepted", decision: null, startsAt: at(0) }, series("not-going", at(0)))).toBe("not-going");
+  });
+
+  it("a series decision never reaches back to an occurrence that had already started", () => {
+    expect(effectiveDecisionAsOf({ status: "accepted", decision: null, startsAt: at(0) }, series("not-going", at(60)))).toBe("going");
+    expect(effectiveDecisionAsOf({ status: "declined", decision: null, startsAt: at(0) }, series("going", at(60)))).toBe("not-going");
+  });
+
+  it("an occurrence's own override wins whenever it was made -- it was made about that occurrence", () => {
+    expect(effectiveDecisionAsOf({ status: "accepted", decision: "maybe", startsAt: at(0) }, series("not-going", at(60)))).toBe("maybe");
+    expect(effectiveDecisionAsOf({ status: "accepted", decision: "maybe", startsAt: at(60) }, series("not-going", at(0)))).toBe("maybe");
+  });
+
+  it("answers exactly as effectiveDecision does when there is no series decision at all", () => {
+    for (const status of ["accepted", "tentative", "declined", "none"] as const) {
+      expect(effectiveDecisionAsOf({ status, decision: null, startsAt: at(0) }, null)).toBe(effectiveDecision({ status, decision: null }, null));
+    }
   });
 });
 

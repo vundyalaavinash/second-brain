@@ -1,11 +1,11 @@
 import { and, asc, gte, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { calendarEvents, items, tasks, type CalendarEvent, type MeetingDecision } from "@/db/schema";
+import { calendarEvents, items, tasks, type CalendarEvent } from "@/db/schema";
 import { activityBetween, addDays, capturedItemsFor, dayBounds, listMeetings, localDay, topApps, type DaySession } from "@/domain/activity";
 import { meetingCost, parseWorkHours } from "@/lib/capacity";
 import { meetingItemFlags } from "@/lib/planner";
 import { getWorkHours, getWorkingDays, isWorkingDay } from "@/lib/work-hours";
-import { seriesDecisionDetailsFor } from "./decision";
+import { effectiveDecisionAsOf, seriesDecisionDetailsFor } from "./decision";
 
 /** How many apps' worth of "what ran during it" the evidence names — the same figure
  * `activityToday` (home.ts) and `focusWhere` (domain/focus) already settled on for "the three
@@ -28,22 +28,6 @@ export interface SeriesAudit {
   hasTranscript: boolean;
   tasksSince: number;
   topActivity: { label: string; ms: number }[];
-}
-
-/**
- * `effectiveDecision`, but a series decision only ever governs occurrences at or after the moment
- * it was made. `meetingSeriesDecisions` has no time scoping of its own -- it is one row per
- * series, always current -- so reading it the way every other caller of `effectiveDecision` does
- * (unconditionally, for whatever occurrence is being asked about) would let a "Not going, every
- * time" click made today rewrite whether a person attended a meeting last month: attendance that
- * already happened cannot retroactively become non-attendance because of a decision made after
- * the fact. An occurrence's own override always applies regardless of when it was made, since it
- * was made specifically about that occurrence.
- */
-function effectiveDecisionAsOf(ev: CalendarEvent, seriesDecision: { decision: MeetingDecision; decidedAt: string } | null): MeetingDecision {
-  if (ev.decision) return ev.decision;
-  if (seriesDecision && ev.startsAt >= seriesDecision.decidedAt) return seriesDecision.decision;
-  return ev.status === "declined" ? "not-going" : "going";
 }
 
 /** The item captured from `ev`, by either path a capture can take: `calendarEvents.itemId`

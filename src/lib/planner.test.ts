@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { captureMeeting, listMeetings, replaceCalendarEvents } from "@/domain/activity";
+import { eq } from "drizzle-orm";
+import { calendarEvents } from "@/db/schema";
+import { addDays, captureMeeting, listMeetings, replaceCalendarEvents } from "@/domain/activity";
+import { setMeetingDecision } from "@/domain/meetings/decision";
+import { localDay } from "@/lib/time";
 import { createContainer } from "@/domain/containers";
 import { addBlock } from "@/domain/blocks";
 import { addToPlan } from "@/domain/plan";
@@ -376,5 +380,74 @@ describe("containerMeetings", () => {
     const spy = vi.spyOn(t.db, "select");
     containerMeetings(t.db, items);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// F-B (final whole-branch review): `serializeMeetings` -- the one serializer behind
+// `plannerMeetings`, and so behind the Meetings view's thirty-day-back window and its all-time
+// `?container=` view -- resolved each row with plain `effectiveDecision`, which reads
+// `meetingSeriesDecisions` as unconditionally current. Declining a long-running series therefore
+// re-rendered every occurrence from months ago as "Not going": opacity-dimmed, hidden behind the
+// default filter, captioned "This is your record, not a reply" on an hour that already happened,
+// while the meeting audit (reading the same rows through `effectiveDecisionAsOf`) still reported
+// the old attendance. Two surfaces asserting opposite facts about the same hour.
+describe("plannerMeetings resolves a series decision as of the occurrence, not as of now", () => {
+  let t: TestDb;
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  // `setMeetingDecision` stamps `decidedAt` from the real wall clock, not an injectable one, so
+  // these cases are anchored to real `Date.now()`: one occurrence genuinely behind it, one
+  // genuinely ahead. The windows are a day wider on each side than the occurrence they hold, for
+  // the same local-day reason `plannerMeetings`'s own block above spells out.
+  const DAY_MS = 86_400_000;
+  const past = new Date(Date.now() - 30 * DAY_MS);
+  const future = new Date(Date.now() + 30 * DAY_MS);
+  const window = (d: Date) => {
+    const day = localDay(d.toISOString());
+    return { from: addDays(day, -1), to: addDays(day, 2) };
+  };
+
+  function declineTheSeries() {
+    replaceCalendarEvents(t.db, [
+      {
+        externalId: "past-occ",
+        title: "Weekly sync",
+        startsAt: past.toISOString(),
+        endsAt: new Date(past.getTime() + 30 * 60_000).toISOString(),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:weekly",
+      },
+      {
+        externalId: "future-occ",
+        title: "Weekly sync",
+        startsAt: future.toISOString(),
+        endsAt: new Date(future.getTime() + 30 * 60_000).toISOString(),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:weekly",
+      },
+    ]);
+    const issuedFrom = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "past-occ")).get()!;
+    setMeetingDecision(t.db, issuedFrom.id, { decision: "not-going", scope: "series" });
+  }
+
+  it("leaves a past occurrence showing the decision that was actually in force when it happened", () => {
+    declineTheSeries();
+    const [m] = plannerMeetings(t.db, window(past));
+    expect(m.decision).toBe("going");
+    // The standing series decision is still reported: the row needs to know one exists at all,
+    // which is what makes it reversible -- it just does not govern an hour already sat through.
+    expect(m.seriesDecision).toBe("not-going");
+  });
+
+  it("applies the same decline immediately to an occurrence still ahead", () => {
+    declineTheSeries();
+    const [m] = plannerMeetings(t.db, window(future));
+    expect(m.decision).toBe("not-going");
+    expect(m.seriesDecision).toBe("not-going");
   });
 });

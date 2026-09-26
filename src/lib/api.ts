@@ -10,7 +10,7 @@ import { getContainer, countContainerItems, ContainerError } from "@/domain/cont
 import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { MeetingError } from "@/domain/meetings/errors";
-import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
+import { effectiveDecisionAsOf, seriesDecisionDetailsFor } from "@/domain/meetings/decision";
 import type { MeetingDecision } from "@/db/enums";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
@@ -219,10 +219,17 @@ export function serializePlanTasks(
  *
  * `seriesDecision` is the resolved answer for `ev.seriesId` (or null for a one-off meeting, or
  * when nobody has decided one) — the caller's to supply, from a single batched
- * `seriesDecisionsFor` call over a whole list, never one query per row (see `serializeMeetings`
- * below for the list case, and `serializeMeetingResolved` for a lone row).
+ * `seriesDecisionDetailsFor` call over a whole list, never one query per row (see
+ * `serializeMeetings` below for the list case, and `serializeMeetingResolved` for a lone row).
+ * It carries `decidedAt` alongside the decision because the effective answer here is resolved
+ * with `effectiveDecisionAsOf`, not plain `effectiveDecision`: every list this serializer feeds
+ * reaches into the past (the Meetings view's window runs thirty days back, and all the way back
+ * when filtered by container), and a series declined today must not re-render an hour the person
+ * genuinely sat through last month as "Not going" — which is exactly what the meeting audit,
+ * reading the same rows through `effectiveDecisionAsOf`, would then contradict. For anything from
+ * now onward the two resolutions agree, so nothing about a day still ahead changes.
  */
-export function serializeMeeting(ev: CalendarEvent, seriesDecision: MeetingDecision | null = null): ActivityMeetingDTO {
+export function serializeMeeting(ev: CalendarEvent, seriesDecision: { decision: MeetingDecision; decidedAt: string } | null = null): ActivityMeetingDTO {
   return {
     id: ev.id,
     title: ev.title,
@@ -243,9 +250,9 @@ export function serializeMeeting(ev: CalendarEvent, seriesDecision: MeetingDecis
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
     seriesId: ev.seriesId,
-    decision: effectiveDecision(ev, seriesDecision),
+    decision: effectiveDecisionAsOf(ev, seriesDecision),
     decisionNote: ev.decisionNote,
-    seriesDecision,
+    seriesDecision: seriesDecision?.decision ?? null,
   };
 }
 
@@ -253,14 +260,14 @@ export function serializeMeeting(ev: CalendarEvent, seriesDecision: MeetingDecis
  * batching rule `focusMinutesByTask` and `goalRefsByContainer` already follow for their lists. */
 export function serializeMeetings(db: DB, events: CalendarEvent[]): ActivityMeetingDTO[] {
   const seriesIds = [...new Set(events.map((e) => e.seriesId).filter((id): id is string => id !== null))];
-  const decisions = seriesDecisionsFor(db, seriesIds);
+  const decisions = seriesDecisionDetailsFor(db, seriesIds);
   return events.map((ev) => serializeMeeting(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null));
 }
 
 /** A single row's own series decision, resolved with its own one-row query — never called from
  * a loop over a list, which is what `serializeMeetings` above is for. */
 export function serializeMeetingResolved(db: DB, ev: CalendarEvent): ActivityMeetingDTO {
-  const seriesDecision = ev.seriesId ? (seriesDecisionsFor(db, [ev.seriesId]).get(ev.seriesId) ?? null) : null;
+  const seriesDecision = ev.seriesId ? (seriesDecisionDetailsFor(db, [ev.seriesId]).get(ev.seriesId) ?? null) : null;
   return serializeMeeting(ev, seriesDecision);
 }
 

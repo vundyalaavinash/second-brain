@@ -202,9 +202,12 @@ export interface ActivityMeetingDTO {
   /** Shared by every occurrence of a recurring series, null for a one-off meeting — what a
    * "just this one, or every time" choice on the row needs to know before it can even ask. */
   seriesId: string | null;
-  /** The *effective* decision (`effectiveDecision`, `@/domain/meetings/decision`), already
-   * resolved server-side: this occurrence's own override, else its series' decision, else what
-   * `status` implies. Never `"maybe"` unless a person chose it — see `effectiveDecision`. */
+  /** The *effective* decision (`effectiveDecisionAsOf`, `@/domain/meetings/decision`), already
+   * resolved server-side: this occurrence's own override, else its series' decision *if that
+   * decision was made before this occurrence started*, else what `status` implies. Never
+   * `"maybe"` unless a person chose it — see `effectiveDecision`. The `AsOf` resolution is what
+   * keeps a decision made today from re-rendering an hour already sat through as declined; for
+   * anything from now onward it answers exactly as plain `effectiveDecision` would. */
   decision: MeetingDecision;
   /** This occurrence's own note, alongside its own `decision` — not resolved through the series. */
   decisionNote: string;
@@ -213,8 +216,9 @@ export interface ActivityMeetingDTO {
    * series. This is what a row needs to know an active series decision exists at all *to reverse*:
    * `decision` above already folds a series decision into its answer, so it alone cannot tell "no
    * decision was ever made" apart from "an occurrence override happens to agree with the default".
-   * Resolved and batched the same way `decision` is, from the same `seriesDecisionsFor` call —
-   * never a second, per-row query. */
+   * Resolved and batched the same way `decision` is, from the same `seriesDecisionDetailsFor`
+   * call — never a second, per-row query. Unlike `decision` this is *not* time-scoped: it answers
+   * "does a standing series decision exist", which is true regardless of when it was made. */
   seriesDecision: MeetingDecision | null;
 }
 

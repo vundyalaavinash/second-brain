@@ -20,6 +20,38 @@ export function effectiveDecision(
 }
 
 /**
+ * `effectiveDecision`, but a series decision only ever governs occurrences at or after the moment
+ * it was made. `meetingSeriesDecisions` has no time scoping of its own -- it is one row per
+ * series, always current -- so reading it the way `effectiveDecision` does (unconditionally, for
+ * whatever occurrence is being asked about) would let a "Not going, every time" click made today
+ * rewrite whether a person attended a meeting last month: attendance that already happened cannot
+ * retroactively become non-attendance because of a decision made after the fact. An occurrence's
+ * own override always applies regardless of when it was made, since it was made specifically
+ * about that occurrence.
+ *
+ * This is what every reader that can see a *past* occurrence must use -- the meeting audit
+ * (`auditSeries`, `weeklyMeetingShare`), the Activity day report (`getDay`, which serves any day
+ * the person scrolls back to) and the Planner's own meetings list (`serializeMeetings`, whose
+ * window reaches thirty days back and, filtered by container, all the way back). Plain
+ * `effectiveDecision` stays correct for the readers that only ever ask "what does this mean right
+ * now" and never look backward at all: auto-recording (`auto-start.ts`) and the capacity and
+ * scheduler figures for a day still being planned (`freeMinutes`, `busySpans`).
+ *
+ * For an occurrence that has not started yet, `startsAt >= decidedAt` holds by construction -- a
+ * decision cannot be made after a meeting that has not happened -- so this answers identically to
+ * `effectiveDecision` for everything ahead of now. The two only ever differ on occurrences already
+ * begun, which is the whole point.
+ */
+export function effectiveDecisionAsOf(
+  event: { status: MeetingStatus; decision: MeetingDecision | null; startsAt: string },
+  seriesDecision: { decision: MeetingDecision; decidedAt: string } | null,
+): MeetingDecision {
+  if (event.decision) return event.decision;
+  if (seriesDecision && event.startsAt >= seriesDecision.decidedAt) return seriesDecision.decision;
+  return event.status === "declined" ? "not-going" : "going";
+}
+
+/**
  * Records a person's decision, either on one occurrence (`calendarEvents.decision`) or on every
  * occurrence of its series (`meetingSeriesDecisions`, keyed by `seriesId`). A series-scoped write
  * with no `seriesId` on the event has no series to apply to and is refused rather than silently
@@ -77,14 +109,14 @@ export function seriesDecisionsFor(db: DB, seriesIds: string[]): Map<string, Mee
 
 /**
  * Every series decision among `seriesIds`, alongside when it was made. `seriesDecisionsFor` on
- * its own is enough for every existing caller, because they all read a meeting as of *now* — a
- * series decision with no per-occurrence override unconditionally applies, since there is no
- * older state to protect. A caller that looks *backward* across history (the meeting audit, which
- * reports whether ninety days of past occurrences were attended) cannot use it the same way:
- * `meetingSeriesDecisions` is not itself time-scoped, so treating it as always-effective would let
- * a decision made today rewrite whether a person attended a meeting last month. `decidedAt` is
- * what lets a caller draw that line themselves. One grouped query for the whole list, same as
- * `seriesDecisionsFor`.
+ * its own is enough for a caller that reads a meeting as of *now* — a series decision with no
+ * per-occurrence override unconditionally applies, since there is no older state to protect. A
+ * caller that can see a *past* occurrence (the meeting audit over ninety days; `getDay` for any
+ * day the person scrolls back to; the Planner's meetings list, thirty days back and further by
+ * container) cannot use it the same way: `meetingSeriesDecisions` is not itself time-scoped, so
+ * treating it as always-effective would let a decision made today rewrite whether a person
+ * attended a meeting last month. `decidedAt` is what lets `effectiveDecisionAsOf` draw that line.
+ * One grouped query for the whole list, same as `seriesDecisionsFor`.
  */
 export function seriesDecisionDetailsFor(db: DB, seriesIds: string[]): Map<string, { decision: MeetingDecision; decidedAt: string }> {
   const out = new Map<string, { decision: MeetingDecision; decidedAt: string }>();

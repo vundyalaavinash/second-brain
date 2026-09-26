@@ -1,7 +1,7 @@
 import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, items, type MeetingStatus, type MeetingDecision } from "@/db/schema";
-import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
+import { effectiveDecisionAsOf, seriesDecisionDetailsFor } from "@/domain/meetings/decision";
 import { dayBounds, isInterview, parseAttendeeNames } from "./calendar";
 
 /** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
@@ -148,9 +148,14 @@ export function getDay(db: DB, day: string): ActivityDay {
     .all();
   const eventIds = events.map((ev) => ev.id);
   const capturedByEvent = capturedItemsFor(db, eventIds);
-  // One batched series-decision query for the whole day's events, not one per row.
+  // One batched series-decision query for the whole day's events, not one per row. Read with
+  // `decidedAt` (`seriesDecisionDetailsFor`) rather than the bare decision, because `getDay`
+  // serves *any* day, including one months back: a "Not going, every time" click made today must
+  // not re-render an hour the person actually sat through last month as declined. That is what
+  // `effectiveDecisionAsOf` below is for — the same time-scoped resolution the meeting audit uses,
+  // and for the same reason. Nothing changes for a day still ahead.
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
-  const decisions = seriesDecisionsFor(db, seriesIds);
+  const decisions = seriesDecisionDetailsFor(db, seriesIds);
   const meetings: ActivityMeeting[] = events.map((ev) => ({
     id: ev.id,
     title: ev.title,
@@ -171,9 +176,9 @@ export function getDay(db: DB, day: string): ActivityDay {
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
     seriesId: ev.seriesId,
-    decision: effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
+    decision: effectiveDecisionAsOf(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
     decisionNote: ev.decisionNote,
-    seriesDecision: ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null,
+    seriesDecision: (ev.seriesId ? decisions.get(ev.seriesId)?.decision : null) ?? null,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }

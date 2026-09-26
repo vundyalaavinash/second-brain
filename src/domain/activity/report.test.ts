@@ -5,6 +5,9 @@ import { ingestHeartbeat } from "./sessions";
 import { replaceCalendarEvents, captureMeeting, dayBounds } from "./calendar";
 import { listCategories } from "./rules";
 import { calendarEvents } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { setMeetingDecision } from "@/domain/meetings/decision";
+import { localDay } from "@/lib/time";
 
 describe("activity reports", () => {
   let t: TestDb;
@@ -106,5 +109,51 @@ describe("activityBetween", () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0].startedAt).toBe(at(300));
     expect(sessions[0].endedAt).toBe(at(600));
+  });
+});
+
+// F-B (final whole-branch review): `getDay` resolved a meeting's decision with plain
+// `effectiveDecision`, which reads `meetingSeriesDecisions` as unconditionally current. `getDay`
+// serves *any* day, so declining a long-running series today re-rendered every occurrence from
+// months ago as "Not going" -- directly contradicting the meeting audit, which reads the same rows
+// through `effectiveDecisionAsOf` and correctly still reports the old attendance.
+describe("getDay resolves a series decision as of the occurrence, not as of now", () => {
+  let t: TestDb;
+  beforeEach(() => { t = makeTestDb(); });
+  afterEach(() => t.cleanup());
+
+  // `setMeetingDecision` stamps `decidedAt` from the real wall clock, not an injectable one, so
+  // these cases are anchored to real `Date.now()`: one occurrence genuinely behind it, one
+  // genuinely ahead of it. Both belong to the same series and neither carries an override.
+  const DAY_MS = 86_400_000;
+  const past = new Date(Date.now() - 10 * DAY_MS);
+  const future = new Date(Date.now() + 10 * DAY_MS);
+  const halfHourAfter = (d: Date) => new Date(d.getTime() + 30 * 60_000).toISOString();
+
+  function declineTheSeries(t: TestDb) {
+    replaceCalendarEvents(t.db, [
+      { externalId: "past-occ", title: "Weekly sync", startsAt: past.toISOString(), endsAt: halfHourAfter(past), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
+      { externalId: "future-occ", title: "Weekly sync", startsAt: future.toISOString(), endsAt: halfHourAfter(future), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
+    ]);
+    const issuedFrom = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "past-occ")).get()!;
+    setMeetingDecision(t.db, issuedFrom.id, { decision: "not-going", scope: "series" });
+  }
+
+  it("leaves a past day's meeting showing the decision that was actually in force when it happened", () => {
+    declineTheSeries(t);
+    const [meeting] = getDay(t.db, localDay(past.toISOString())).meetings;
+    // The hour was genuinely sat through, under no decision at all -- the default. Before the fix
+    // this read "not-going", dimming and hiding an hour that already happened.
+    expect(meeting.decision).toBe("going");
+    // The standing series decision is still reported as such: the row needs to know one exists at
+    // all (that is what makes it reversible), it just does not govern this occurrence.
+    expect(meeting.seriesDecision).toBe("not-going");
+  });
+
+  it("applies the same decline immediately to an occurrence still ahead", () => {
+    declineTheSeries(t);
+    const [meeting] = getDay(t.db, localDay(future.toISOString())).meetings;
+    expect(meeting.decision).toBe("not-going");
+    expect(meeting.seriesDecision).toBe("not-going");
   });
 });
