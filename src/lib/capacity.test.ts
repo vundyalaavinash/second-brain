@@ -3,11 +3,10 @@ import { blockedMinutes, blockLength, unplacedMinutes, capacityTone, formatMinut
 import type { MeetingDecision } from "@/db/enums";
 
 const DAY = "2026-09-23";
-const m = (start: string, end: string, over: Partial<{ allDay: boolean; status: string; decision: MeetingDecision }> = {}) => ({
+const m = (start: string, end: string, over: Partial<{ allDay: boolean; decision: MeetingDecision }> = {}) => ({
   startsAt: `${DAY}T${start}:00`,
   endsAt: `${DAY}T${end}:00`,
   allDay: false,
-  status: "accepted",
   decision: "going" as MeetingDecision,
   ...over,
 });

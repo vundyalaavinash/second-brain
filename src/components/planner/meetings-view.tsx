@@ -31,6 +31,23 @@ interface Group {
   meetings: MeetingListDTO[];
 }
 
+/** "default" hides not-going (Step 7's own ask); the other two are the pair design §5 names:
+ * "everything" and "only the ones you are not going to". */
+type MeetingFilter = "default" | "everything" | "not-going";
+
+const FILTERS: { key: MeetingFilter; label: string }[] = [
+  { key: "default", label: "Hide declined" },
+  { key: "everything", label: "Everything" },
+  { key: "not-going", label: "Only not going" },
+];
+
+/** Which meetings a filter setting keeps. */
+function applyFilter(list: MeetingListDTO[], filter: MeetingFilter): MeetingListDTO[] {
+  if (filter === "everything") return list;
+  if (filter === "not-going") return list.filter((m) => m.decision === "not-going");
+  return list.filter((m) => m.decision !== "not-going");
+}
+
 /** Title, organizer, and attendee names, the three things the spec says the box searches. */
 function matches(m: MeetingListDTO, q: string): boolean {
   return [m.title, m.organizer, ...m.attendeeNames].join(" ").toLowerCase().includes(q);
@@ -56,10 +73,12 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   // The switches and the feed link live behind one control; with no meetings at all the panel
   // opens on its own, since connecting a calendar is then the only thing to do here.
   const [settingsOpen, setSettingsOpen] = useState(meetings.length === 0);
-  // Off by default: a meeting decided not-going stays in the record forever (nothing here ever
-  // deletes or archives it), but the default view has nothing to do with it -- this only ever
-  // hides it from this list, and re-accepting is one click away on the row itself.
-  const [showDeclined, setShowDeclined] = useState(false);
+  // Design §5 names two states -- "everything" and "only the ones you are not going to" -- and
+  // Step 7 separately wants declined meetings out of the way by default; a meeting decided
+  // not-going stays in the record forever (nothing here ever deletes or archives it), so a third,
+  // default state that simply hides it costs nothing. "default" here means neither of the two
+  // named states: not-going hidden, without narrowing down to only not-going either.
+  const [filter, setFilter] = useState<MeetingFilter>("default");
   const recorder = useRecorder();
 
   useEffect(() => {
@@ -81,7 +100,7 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
 
   const q = query.trim().toLowerCase();
   const searched = q ? meetings.filter((m) => matches(m, q)) : meetings;
-  const shown = showDeclined ? searched : searched.filter((m) => m.decision !== "not-going");
+  const shown = applyFilter(searched, filter);
   const todays = shown.filter((m) => dayOf(m.startsAt) === today);
   const upcoming = groupByDay(shown.filter((m) => dayOf(m.startsAt) > today));
   const past = groupByDay(shown.filter((m) => dayOf(m.startsAt) < today)).reverse();
@@ -215,9 +234,13 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           aria-controls="calendar-settings"
           onClick={() => setSettingsOpen((v) => !v)}
         />
-        <Chip role="switch" aria-checked={showDeclined} active={showDeclined} onClick={() => setShowDeclined((v) => !v)}>
-          Show declined meetings
-        </Chip>
+        <div role="group" aria-label="Filter meetings" className="flex items-center gap-1">
+          {FILTERS.map((f) => (
+            <Chip key={f.key} active={filter === f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)} className="h-6 px-2 text-[11.5px]">
+              {f.label}
+            </Chip>
+          ))}
+        </div>
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
         <span title={recorder.title ?? undefined} className="ml-auto">
           <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>
@@ -299,9 +322,20 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
       )}
 
       {/* With nothing to group, the groups are all empty lines saying the same thing: one line
-        * says it once. The setup card above the tabs carries the fix when there is one. */}
+        * says it once. The setup card above the tabs carries the fix when there is one. An empty
+        * `shown` can mean the window truly holds nothing, a search matched nothing, or -- once a
+        * filter can hide things -- that everything in the window was filtered out; each says the
+        * true reason rather than always claiming the window itself is empty. */}
       {shown.length === 0 ? (
-        <p className="text-[13px] text-fg-faint m-0">{q ? "No meetings match that search" : "No meetings in the next 60 days"}</p>
+        <p className="text-[13px] text-fg-faint m-0">
+          {q
+            ? "No meetings match that search"
+            : meetings.length === 0
+              ? "No meetings in the next 60 days"
+              : filter === "not-going"
+                ? "Nothing here is marked not going"
+                : 'Everything in this window is marked not going. Switch to "Everything" to see it.'}
+        </p>
       ) : (
         <>
           {group("Today", todays, "No meetings today")}

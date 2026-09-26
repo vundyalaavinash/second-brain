@@ -3,8 +3,9 @@ import type { MeetingDecision } from "@/db/enums";
 
 /** The pieces of a meeting capacity needs; both MeetingListDTO and CalendarEvent satisfy it.
  * `decision` is the *effective* decision, already resolved by the caller (`effectiveDecision` in
- * `@/domain/meetings/decision`) — this file has no business knowing about series overrides. */
-export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; status: string; decision: MeetingDecision };
+ * `@/domain/meetings/decision`) — this file has no business knowing about series overrides, and
+ * no business reading the calendar's own raw RSVP `status` either, so the type does not carry it. */
+export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; decision: MeetingDecision };
 
 const HOURS_RE = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/;
 

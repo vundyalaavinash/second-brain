@@ -24,6 +24,16 @@ export function effectiveDecision(
  * occurrence of its series (`meetingSeriesDecisions`, keyed by `seriesId`). A series-scoped write
  * with no `seriesId` on the event has no series to apply to and is refused rather than silently
  * becoming an occurrence write it was never asked to be.
+ *
+ * A series write also clears the occurrence override on the row it was issued from — the one the
+ * person was actually looking at when they chose "every time" — because `effectiveDecision` ranks
+ * an occurrence override above its series' decision, so leaving a stale one in place would make
+ * "Not going → Every time" visibly do nothing to the very row that prompted it. This never touches
+ * any *other* occurrence's own override: those are separate decisions the person made on purpose.
+ *
+ * `patch.note` is only ever applied when the caller actually sent one — an omitted `note` leaves
+ * whatever is already stored alone rather than blanking it, so a future caller that only ever
+ * sends `{ decision }` cannot silently wipe a note nobody asked to touch.
  */
 export function setMeetingDecision(
   db: DB,
@@ -32,14 +42,18 @@ export function setMeetingDecision(
 ): void {
   const ev = db.select().from(calendarEvents).where(eq(calendarEvents.id, eventId)).get();
   if (!ev) throw new MeetingError("Meeting not found", 404);
-  const note = patch.note ?? "";
   if (patch.scope === "series") {
     if (!ev.seriesId) throw new MeetingError("This meeting has no series to apply a decision to", 400);
+    const existing = db.select().from(meetingSeriesDecisions).where(eq(meetingSeriesDecisions.seriesId, ev.seriesId)).get();
+    const note = patch.note ?? existing?.note ?? "";
     const values = { seriesId: ev.seriesId, decision: patch.decision, note, decidedAt: new Date().toISOString() };
     db.insert(meetingSeriesDecisions).values(values).onConflictDoUpdate({ target: meetingSeriesDecisions.seriesId, set: values }).run();
+    db.update(calendarEvents).set({ decision: null, decisionNote: "" }).where(eq(calendarEvents.id, eventId)).run();
     return;
   }
-  db.update(calendarEvents).set({ decision: patch.decision, decisionNote: note }).where(eq(calendarEvents.id, eventId)).run();
+  const set: { decision: MeetingDecision; decisionNote?: string } = { decision: patch.decision };
+  if (patch.note !== undefined) set.decisionNote = patch.note;
+  db.update(calendarEvents).set(set).where(eq(calendarEvents.id, eventId)).run();
 }
 
 /**

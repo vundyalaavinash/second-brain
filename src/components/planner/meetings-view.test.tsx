@@ -342,17 +342,35 @@ describe("MeetingsView", () => {
   describe("decisions", () => {
     const declined = meeting({ id: 10, title: "Skipped sync", startsAt: `${TODAY}T13:00:00`, endsAt: `${TODAY}T13:30:00`, decision: "not-going" });
 
-    it("hides a not-going meeting from the default view, but the toggle brings it back -- never deleted, just hidden", () => {
+    it("hides a not-going meeting by default, and 'Everything' brings it back -- never deleted, just hidden", () => {
       stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
       render(<MeetingsView today={TODAY} meetings={[MEETINGS[0], declined]} />);
       expect(screen.queryByTestId("meeting-title")).toBeTruthy();
       expect(screen.queryByText("Skipped sync")).toBeNull();
 
-      fireEvent.click(screen.getByRole("switch", { name: "Show declined meetings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Everything" }));
       expect(screen.getByText("Skipped sync")).toBeTruthy();
 
-      fireEvent.click(screen.getByRole("switch", { name: "Show declined meetings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hide declined" }));
       expect(screen.queryByText("Skipped sync")).toBeNull();
+    });
+
+    it("shows only what is not going, the view design §5 is named for", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0], declined]} />);
+      fireEvent.click(screen.getByRole("button", { name: "Only not going" }));
+      expect(screen.getByText("Skipped sync")).toBeTruthy();
+      expect(screen.queryByText("Standup")).toBeNull();
+    });
+
+    it("says why the list is empty when every meeting in the window is not going, rather than claiming there are none", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      const onlyDeclined = meeting({ id: 11, title: "Only this one", startsAt: `${TODAY}T13:00:00`, endsAt: `${TODAY}T13:30:00`, decision: "not-going" });
+      render(<MeetingsView today={TODAY} meetings={[onlyDeclined]} />);
+      expect(screen.getByText('Everything in this window is marked not going. Switch to "Everything" to see it.')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Only not going" }));
+      expect(screen.getByText("Only this one")).toBeTruthy();
     });
 
     it("PATCHes a decision from the row control, local fact only -- never a message to a calendar server", async () => {

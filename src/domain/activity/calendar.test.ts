@@ -97,18 +97,30 @@ describe("calendar", () => {
     expect(ev.itemId).toBeNull();
   });
 
-  it("accepts seriesId on the input without erroring — calendar_events has no column for it yet", () => {
+  it("persists seriesId, refreshed on every sync like title, while a person's decision and note survive that same sync unchanged", () => {
     replaceCalendarEvents(t.db, [
       { externalId: "s1", title: "Recurring", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false, seriesId: "series-abc" },
     ]);
-    // Read the row directly, not through a day window: this is about seriesId surviving the
-    // upsert unharmed, not about day-bucketing, which localDay handles (and tests) elsewhere.
-    // There's deliberately no assertion here that the row lacks a `seriesId` property: that
-    // would be true only because the column doesn't exist yet, and would start failing the
-    // moment Task 2's migration adds it — asserting something true today for the wrong reason.
-    // Task 2 owns testing seriesId's persistence once there's a column to persist it in.
-    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!;
-    expect(ev.externalId).toBe("s1");
+    const seeded = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!;
+    expect(seeded.seriesId).toBe("series-abc");
+
+    // seriesId is calendar-owned, like title — a person's own decision and note are not, and
+    // stay off the upsert's `set` the same way itemId/noRecord already do, so a resync must
+    // leave them alone even while it changes everything the calendar actually owns.
+    t.db.update(calendarEvents).set({ decision: "maybe", decisionNote: "checking my day" }).where(eq(calendarEvents.id, seeded.id)).run();
+
+    replaceCalendarEvents(t.db, [
+      { externalId: "s1", title: "Recurring (renamed)", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false, seriesId: "series-xyz" },
+    ]);
+    const resynced = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!;
+    expect(resynced.title).toBe("Recurring (renamed)");
+    expect(resynced.seriesId).toBe("series-xyz"); // calendar-owned: refreshed, exactly like title.
+    expect(resynced.decision).toBe("maybe"); // person-owned: untouched by the sync.
+    expect(resynced.decisionNote).toBe("checking my day");
+
+    // A resync that stops sending seriesId nulls it, the same as any other calendar-owned field.
+    replaceCalendarEvents(t.db, [{ externalId: "s1", title: "Recurring (renamed)", startsAt: at(0), endsAt: at(1800), attendees: 1, hasCallLink: false }]);
+    expect(t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "s1")).get()!.seriesId).toBeNull();
   });
 
   it("lists meetings in a window with a text filter", () => {
