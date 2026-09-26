@@ -23,7 +23,7 @@ describe("PlannerMeetingsPage", () => {
     expect(el.props.initial.containerId).toBeNull();
   });
 
-  it("widens to all time and resolves the id when ?container= names one, so 'See all in Planner' genuinely means all (review F2)", async () => {
+  it("widens to all time and resolves the id when ?container= names one, so 'See calendar meetings in Planner' genuinely means all of them (review F2)", async () => {
     const el = (await PlannerMeetingsPage({ searchParams: Promise.resolve({ container: "5" }) })) as unknown as { props: ShellProps };
     expect(el.props.initial.from).toBe("0001-01-01");
     expect(el.props.initial.to).toBe("9999-12-31");

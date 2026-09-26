@@ -116,8 +116,10 @@ export function MeetingsView({ today, meetings, containerId: containerFilter = n
   // decision filter ever see it -- the same list every other control here already works from,
   // rather than a second, parallel path. `meetings` itself is already effectively unbounded in
   // this case (the page widens `from`/`to` to all time whenever `?container=` is present, review
-  // F2), so "no meetings" below can only mean none were ever filed here -- never a false claim
-  // about a window this view no longer has.
+  // F2), so an empty result here can only mean no *calendar* meetings were ever filed to this
+  // container -- a container whose only filed meetings are ad-hoc (no calendar event behind
+  // them) still lands here empty, which is why the empty-state copy says "calendar meetings"
+  // rather than a bare "meetings".
   const scoped = containerFilter === null ? meetings : meetings.filter((m) => m.item?.containerId === containerFilter);
   const q = query.trim().toLowerCase();
   const searched = q ? scoped.filter((m) => matches(m, q)) : scoped;

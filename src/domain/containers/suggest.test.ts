@@ -61,9 +61,10 @@ describe("suggestContainer", () => {
   });
 
   it("keeps each meeting's own answer at its own index in a mixed batch, matches and nulls interleaved", () => {
-    // Guards the positional return array (`suggestContainersFor`) and `plannerMeetings`'s own
-    // `uncontained.map((m, i) => [m.id, suggestions[i]])` against an index-alignment bug that a
-    // batch of uniform matches (the batching test above) can't catch (review F8).
+    // Guards the positional return array (`suggestContainersFor`) against an index-alignment bug
+    // that a batch of uniform matches (the batching test above) can't catch. `plannerMeetings`'s
+    // own `uncontained.map((m, i) => [m.id, suggestions[i]])` zip is covered separately by a
+    // mixed-batch test in planner.test.ts (review F8).
     const project = createContainer(t.db, { kind: "project", name: "Website Redesign" });
     const area = createContainer(t.db, { kind: "area", name: "Health" });
     const meetings = [
