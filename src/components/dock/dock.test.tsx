@@ -10,7 +10,7 @@ const route = vi.hoisted(() => ({ path: "/inbox" }));
 vi.mock("next/navigation", () => ({ usePathname: () => route.path, useRouter: () => ({ push }) }));
 
 const FIELD = "Ask, capture, or add a task";
-const ROWS = ["Home", "Planner", "Goals", "Review", "Inbox, 3 waiting", "Projects", "Areas", "Resources", "People", "Activity", "Library", "Archive", "Search", "Capture"];
+const ROWS = ["Home", "Planner", "Goals", "Review", "Inbox, 3 waiting", "Projects", "Areas", "Resources", "People", "Activity", "Library", "Archive", "Help", "Search", "Capture"];
 
 /** The polls the dock inherited from the sidebar, plus capture and the link it watches. */
 function stubFetch(itemStatus = "pending") {
@@ -211,6 +211,7 @@ describe("Dock", () => {
       expect.stringContaining("Activity"),
       expect.stringContaining("Library"),
       expect.stringContaining("Archive"),
+      expect.stringContaining("Help"),
     ]);
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("list", { name: "More views" })).toBeNull());

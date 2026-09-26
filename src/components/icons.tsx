@@ -1,4 +1,21 @@
-import { House, CalendarCheck, Inbox, Target, RotateCcw, Flag, Layers, BookMarked, Users, Activity, LayoutList, Archive, Search, Plus, type LucideIcon } from "lucide-react";
+import {
+  House,
+  CalendarCheck,
+  Inbox,
+  Target,
+  RotateCcw,
+  Flag,
+  Layers,
+  BookMarked,
+  Users,
+  Activity,
+  LayoutList,
+  Archive,
+  Search,
+  Plus,
+  CircleHelp,
+  type LucideIcon,
+} from "lucide-react";
 import type { IconName } from "./nav";
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -16,6 +33,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   archive: Archive,
   search: Search,
   capture: Plus,
+  help: CircleHelp,
 };
 
 export function Icon({ name, className = "w-5 h-5" }: { name: IconName; className?: string }) {

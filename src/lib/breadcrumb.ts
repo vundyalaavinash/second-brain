@@ -1,6 +1,6 @@
 export interface Crumb { label: string; href?: string }
 
-const TOP: Record<string, string> = { "/planner": "Planner", "/goals": "Goals", "/inbox": "Inbox", "/projects": "Projects", "/areas": "Areas", "/resources": "Resources", "/people": "People", "/activity": "Activity", "/library": "Library", "/archive": "Archive", "/search": "Search", "/capture": "Capture" };
+const TOP: Record<string, string> = { "/planner": "Planner", "/goals": "Goals", "/inbox": "Inbox", "/projects": "Projects", "/areas": "Areas", "/resources": "Resources", "/people": "People", "/activity": "Activity", "/library": "Library", "/archive": "Archive", "/search": "Search", "/capture": "Capture", "/help": "Help" };
 
 /**
  * The route's own trail. A crumb with an `href` is a parent the bar links to; one without

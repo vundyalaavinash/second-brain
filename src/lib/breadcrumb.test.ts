@@ -6,6 +6,7 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/inbox")).toEqual([{ label: "Inbox" }]);
     expect(crumbsFor("/planner")).toEqual([{ label: "Planner" }]);
     expect(crumbsFor("/search")).toEqual([{ label: "Search" }]);
+    expect(crumbsFor("/help")).toEqual([{ label: "Help" }]);
   });
   // The Planner's own views are routes of their own, so the bar links back to the day.
   it("nests the Planner views under the Planner", () => {

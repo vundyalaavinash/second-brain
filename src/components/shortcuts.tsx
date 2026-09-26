@@ -81,6 +81,16 @@ export function Shortcuts() {
         if (task) void start(task);
         return;
       }
+      // `?` is Shift+/ on a standard layout, so it has to be checked before the plain-letter
+      // guard below turns every shifted key away -- the same reason the focus chord above is
+      // checked on its own first. No other modifier is allowed, and it still bails on a typing
+      // target: someone asking "what does this do?" mid-sentence should get a question mark.
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "?") {
+        if (isTyping(e.target)) return;
+        e.preventDefault();
+        router.push("/help");
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || isTyping(e.target)) return;
       if (e.key === "/") {
         const input = document.getElementById("search-input") as HTMLInputElement | null;

@@ -15,6 +15,7 @@ import {
   MagnifyingGlass,
   Plus,
   Pulse,
+  Question,
   Stack,
   Target,
   Tray,
@@ -54,6 +55,7 @@ const ICONS: Record<IconName, Glyph> = {
   archive: Archive,
   search: MagnifyingGlass,
   capture: Plus,
+  help: Question,
 };
 
 const BRAIN_ITEMS = NAV_ITEMS.filter((n) => n.section === "brain");

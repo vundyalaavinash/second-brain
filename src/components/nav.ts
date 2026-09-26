@@ -1,4 +1,4 @@
-export type IconName = "home" | "planner" | "inbox" | "goal" | "review" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture";
+export type IconName = "home" | "planner" | "inbox" | "goal" | "review" | "project" | "area" | "resource" | "people" | "activity" | "library" | "archive" | "search" | "capture" | "help";
 
 export interface NavItem {
   href: string;
@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/activity", label: "Activity", shortcut: "g t", icon: "activity", badge: "activity", section: "tools" },
   { href: "/library", label: "Library", shortcut: "g l", icon: "library", section: "tools" },
   { href: "/archive", label: "Archive", shortcut: "g x", icon: "archive", section: "tools" },
+  { href: "/help", label: "Help", shortcut: "g u", icon: "help", section: "tools" },
 ];
 
 /** Search and Capture are dock buttons rather than links, and keep their shortcuts and palette entries. */

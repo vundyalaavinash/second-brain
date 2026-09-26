@@ -89,6 +89,31 @@ describe("Shortcuts", () => {
     window.removeEventListener("sb:prompt-focus", focus);
   });
 
+  it("navigates to Help on a bare ?", () => {
+    stubFocus(null);
+    render(<Shortcuts />);
+    fireEvent.keyDown(window, { key: "?", shiftKey: true });
+    expect(push).toHaveBeenCalledWith("/help");
+  });
+
+  it("stays out of a field on ?, even though it's a shifted key", () => {
+    stubFocus(null);
+    render(<Shortcuts />);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "?", shiftKey: true });
+    input.remove();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("navigates to Help on g u", () => {
+    stubFocus(null);
+    render(<Shortcuts />);
+    fireEvent.keyDown(window, { key: "g" });
+    fireEvent.keyDown(window, { key: "u" });
+    expect(push).toHaveBeenCalledWith("/help");
+  });
+
   describe("⌘⇧F", () => {
     function row(taskId: number): HTMLLIElement {
       const li = document.createElement("li");
