@@ -14,10 +14,23 @@ describe("hasGistModel / getGistProvider", () => {
     expect(getGistProvider()).toBeNull();
   });
 
-  it("is on when the model file is present", async () => {
+  it("is off when the model is present but llama-cli cannot be resolved on PATH", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
     const { hasGistModel, getGistProvider } = await import("./index");
     expect(hasGistModel()).toBe(true);
+    expect(getGistProvider()).toBeNull();
+  });
+
+  it("is on when the model file is present and llama-cli resolves to an executable", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ isFile: () => true } as fs.Stats);
+    vi.mocked(fs.accessSync).mockReturnValue(undefined);
+    const { hasGistModel, getGistProvider, gistBinary } = await import("./index");
+    expect(hasGistModel()).toBe(true);
+    expect(gistBinary()).not.toBeNull();
     expect(getGistProvider()).not.toBeNull();
   });
 });

@@ -2,10 +2,12 @@ export const MIN_QUOTES = 2;
 export const MAX_QUOTES = 5;
 export const MIN_WORDS = 40;
 
-/** A word short enough to be noise for scoring purposes -- "the", "and", "was". Mirrors the
- * threshold `significant-words.ts` uses for a different job (matching two short strings); this
- * one scores sentences within a much longer document, so it stays a private constant here rather
- * than importing that module's, which would couple two unrelated matching jobs together. */
+/** A curated list of words short enough to be noise for scoring purposes -- "the", "and", "was" --
+ * plus, below, its own separate length floor (`> 2`). Deliberately distinct from
+ * `significant-words.ts`, which answers a different question (do two short strings share a real
+ * word) with a different cutoff (`MIN_SIGNIFICANT_WORD_LENGTH = 4`, no word list at all); scoring
+ * sentences within a much longer document is not that job, so the two are not meant to track
+ * each other. */
 const STOPWORDS = new Set([
   "the", "and", "for", "that", "this", "with", "from", "have", "has", "had", "was", "were",
   "are", "will", "would", "could", "should", "about", "into", "than", "then", "them", "they",

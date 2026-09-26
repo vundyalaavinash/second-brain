@@ -30,6 +30,16 @@ describe("suggestQuotes", () => {
     expect(suggestQuotes("")).toEqual([]);
     expect(suggestQuotes("   \n  ")).toEqual([]);
   });
+
+  it("breaks a genuine tie in word-rarity score by original reading order, deterministically", () => {
+    // Every significant word here appears exactly once in the whole text, so both sentences
+    // score identically (each word's rarity is 1, averaged over the same word count).
+    const text = "Zeppelin hovered quietly. Xylophone rattled loudly.";
+    const quotes = suggestQuotes(text, { max: 2 });
+    expect(quotes).toEqual(["Zeppelin hovered quietly.", "Xylophone rattled loudly."]);
+    // Deterministic across repeated calls, not just this once.
+    expect(suggestQuotes(text, { max: 2 })).toEqual(quotes);
+  });
 });
 
 describe("verifyQuotes", () => {

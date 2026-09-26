@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { modelsDir } from "@/lib/paths";
+import { resolveTool } from "@/domain/meetings/tools";
 import { createLlamaCppGistProvider } from "./llamacpp";
 import type { GistProvider } from "./types";
 
@@ -16,7 +17,16 @@ export function hasGistModel(): boolean {
   return fs.existsSync(gistModelPath());
 }
 
-/** Null when the model is absent: every caller treats that as "this feature is off". */
+export function gistBinary(): string | null {
+  return resolveTool("llama-cli");
+}
+
+/** Null when the model or the binary is absent: every caller treats that as "this feature is
+ * off" -- a bare, unresolved `llama-cli` command name would otherwise throw ENOENT deep inside
+ * the job handler the moment a real distillation ran. */
 export function getGistProvider(): GistProvider | null {
-  return hasGistModel() ? createLlamaCppGistProvider(gistModelPath()) : null;
+  if (!hasGistModel()) return null;
+  const bin = gistBinary();
+  if (!bin) return null; // off, not broken -- same shape as a missing model file
+  return createLlamaCppGistProvider(gistModelPath(), bin);
 }

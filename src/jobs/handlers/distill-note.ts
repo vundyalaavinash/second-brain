@@ -2,7 +2,7 @@ import type { DB } from "@/db/client";
 import type { JobHandler } from "@/jobs/worker";
 import { jobPayload } from "@/jobs/payload";
 import { getItem, mergeItemMeta } from "@/domain/items";
-import { buildDistillation } from "@/domain/distill";
+import { buildDistillation, type Distillation } from "@/domain/distill";
 import { getGistProvider, type GistProvider } from "@/providers/gist";
 
 export interface DistillNoteDeps {
@@ -28,10 +28,14 @@ export function createDistillNoteHandler(deps: DistillNoteDeps): JobHandler {
       return;
     }
 
-    const distillation = await buildDistillation(item, gist);
-    // Re-read: the person may have edited the item while the model was thinking.
-    const current = getItem(db, itemId);
-    if (!current) throw new Error(`Item ${itemId} not found`);
+    let distillation: Distillation | null = null;
+    try {
+      distillation = await buildDistillation(item, gist);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log(`[distill_note] item ${itemId} could not be distilled: ${message}`);
+      distillation = null;
+    }
     mergeItemMeta(db, itemId, {
       distillation: distillation ?? { gist: "", quotes: [], generatedAt: new Date().toISOString(), status: "dismissed" },
     });

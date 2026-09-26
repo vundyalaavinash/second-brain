@@ -7,11 +7,12 @@ import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
 import { backupFilePath } from "@/jobs/handlers/backup";
 import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
 import { autoStartTick } from "@/domain/meetings/auto-start";
-import { distillSweepTick } from "@/domain/distill";
+import { distillSweepTick, QUIET_MINUTES } from "@/domain/distill";
 import { reconcileRecordings, stopForShutdown } from "@/domain/meetings/reconcile";
 import { hasChatKey } from "@/providers/chat";
 import { syncCalendarFeed } from "@/domain/activity";
 import { checkOpenDatabase, recordDbCheck, getLastDbCheck } from "@/db/safety";
+import { getGistProvider } from "@/providers/gist";
 import { getEmbedProvider } from "./providers";
 
 export { getLastDbCheck };
@@ -36,7 +37,7 @@ const BACKUP_CHECK_MS = 6 * 60 * 60 * 1000;
 const AUTO_START_CHECK_MS = 30 * 1000;
 
 /** Matches `QUIET_MINUTES`: no point checking more often than an item can newly go quiet. */
-const DISTILL_CHECK_MS = 30 * 60_000;
+const DISTILL_CHECK_MS = QUIET_MINUTES * 60_000;
 
 function ensureTodayBackupQueued(db: DB): void {
   if (!fs.existsSync(backupFilePath())) enqueueJob(db, "backup", {});
@@ -143,7 +144,15 @@ export function boot(): JobWorker {
     g.__sbAutoStartInterval = setInterval(() => void autoStartTick(db, { log: (m) => console.log(`[auto-record] ${m}`) }), AUTO_START_CHECK_MS);
   }
   if (!g.__sbDistillInterval) {
-    g.__sbDistillInterval = setInterval(() => distillSweepTick(db), DISTILL_CHECK_MS);
+    // Checked per tick, not just once at boot, so a model added later takes effect without a
+    // restart; wrapped, like every other interval here, so a thrown error never kills the timer.
+    g.__sbDistillInterval = setInterval(() => {
+      try {
+        if (getGistProvider()) distillSweepTick(db);
+      } catch (err) {
+        console.error("[distill] sweep failed:", err);
+      }
+    }, DISTILL_CHECK_MS);
   }
   console.log("[boot] job worker started");
   return worker;

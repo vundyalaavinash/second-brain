@@ -54,4 +54,13 @@ describe("createDistillNoteHandler", () => {
     const meta = parseMeta<{ distillation?: Distillation }>(updated);
     expect(meta.distillation).toEqual({ gist: "", quotes: [], generatedAt: expect.any(String), status: "dismissed" });
   });
+
+  it("records an inert, already-dismissed distillation and does not throw when the gist call fails", async () => {
+    const item = createItem(t.db, { type: "note", title: "Note", body: LONG_BODY });
+    const handler = createDistillNoteHandler({ db: t.db, gist: { gist: vi.fn().mockRejectedValue(new Error("boom")) } });
+    await expect(handler(job(item.id))).resolves.toBeUndefined();
+    const updated = getItem(t.db, item.id)!;
+    const meta = parseMeta<{ distillation?: Distillation }>(updated);
+    expect(meta.distillation).toEqual({ gist: "", quotes: [], generatedAt: expect.any(String), status: "dismissed" });
+  });
 });
