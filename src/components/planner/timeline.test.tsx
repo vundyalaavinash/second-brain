@@ -155,6 +155,16 @@ describe("Timeline", () => {
     expect(screen.queryByTitle("Transcript")).toBeNull();
   });
 
+  // A meeting under 48 minutes drops the attendee/Join row entirely (`b.height >= 48`) -- Record
+  // must not have gone with it, since it's the one control someone actually presses from here.
+  it("keeps Record on a meeting too short for the attendee/Join row", () => {
+    const short: MeetingListDTO = { ...sync, id: 4, title: "Quick standup", startsAt: `${DATE}T10:00:00`, endsAt: `${DATE}T10:20:00` };
+    render(<Timeline date={DATE} meetings={[short]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    expect(screen.getByRole("button", { name: "Record Quick standup" })).toBeTruthy();
+    // The row it used to share a fate with is still gone, on a meeting this short.
+    expect(screen.queryByRole("link", { name: /Join/ })).toBeNull();
+  });
+
   it("draws no current-time line on a day that is not today", () => {
     const { container } = render(
       <Timeline
@@ -202,6 +212,16 @@ describe("Timeline", () => {
     const block = screen.getByRole("group", { name: "Write the note, 10:30 to 11:15" });
     expect(block.style.top).toBe("90px");
     expect(block.style.height).toBe("45px");
+  });
+
+  // A session under 30 minutes drops its time-range line (the same shape the meeting block
+  // uses) -- Focus must not have gone with it, since it lived in that same row before this fix
+  // and was the one control someone actually presses from here.
+  it("keeps Focus on a session too short for its own time-range line", () => {
+    const quick: PlanTaskDTO = { ...blocked, id: 13, title: "Quick check", blocks: [{ id: 3, taskId: 13, startsAt: `${DATE}T10:30:00`, minutes: 15 }] };
+    render(<Timeline date={DATE} meetings={[]} tasks={[quick]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
+    expect(screen.getByRole("button", { name: "Focus on Quick check" })).toBeTruthy();
+    expect(screen.queryByText(/10:30.*10:45/)).toBeNull();
   });
 
   it("draws every session a task holds on the day, each marked with its place", () => {

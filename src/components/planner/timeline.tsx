@@ -393,8 +393,11 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                 width: `calc((100% - 3.5rem) / ${b.cols} - 4px)`,
               }}
             >
-              {/* The block's own click target sits behind its text, so the Join link beside it
-                * is a sibling rather than a link nested inside a button. */}
+              {/* The block's own click target sits behind its text, so the Join link and the
+                * Record button beside it are siblings rather than nested inside a button. Record
+                * lives in the title row, not the row below the time range, because that lower
+                * row disappears on any meeting under 48 minutes (`b.height >= 48` further down) --
+                * the one control someone actually needs from here must not vanish with it. */}
               <button type="button" aria-label={label(m)} onClick={() => open(b.id)} className="absolute inset-0 focus-ring rounded-md" />
               <div className="relative pointer-events-none p-2 flex flex-col gap-0.5 h-full">
                 <span className="flex items-center gap-1.5 min-w-0">
@@ -402,6 +405,19 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                   {BADGES.filter((badge) => m.item?.[badge.key]).map((badge) => (
                     <span key={badge.label} className={`w-1.5 h-1.5 rounded-full shrink-0 pointer-events-auto ${badge.dot}`} title={badge.label} />
                   ))}
+                  {/* A disabled button takes no pointer events, so the reason hangs on the wrapper. */}
+                  <span title={recorder.title ?? undefined} className="ml-auto shrink-0 pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={() => recorder.record({ calendarEventId: m.id })}
+                      disabled={!!recorder.blocked}
+                      aria-label={`Record ${m.title}`}
+                      title={recorder.title ?? undefined}
+                      className="focus-ring rounded-sm text-[11px] text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      Record
+                    </button>
+                  </span>
                 </span>
                 <span className="font-mono text-[11px] text-fg-faint">
                   {formatClock(m.startsAt)}–{formatClock(m.endsAt)}
@@ -420,20 +436,6 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                         Join
                       </a>
                     )}
-                    {/* The block itself is a button, so this one sits above it and takes back the
-                      * pointer; a disabled button takes none, so the reason hangs on the wrapper. */}
-                    <span title={recorder.title ?? undefined} className="pointer-events-auto">
-                      <button
-                        type="button"
-                        onClick={() => recorder.record({ calendarEventId: m.id })}
-                        disabled={!!recorder.blocked}
-                        aria-label={`Record ${m.title}`}
-                        title={recorder.title ?? undefined}
-                        className="focus-ring rounded-sm text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
-                      >
-                        Record
-                      </button>
-                    </span>
                   </span>
                 )}
               </div>

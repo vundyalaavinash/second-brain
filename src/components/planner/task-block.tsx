@@ -240,19 +240,23 @@ export function TaskBlock({ task, block, index, count, date, top, height, col, c
           <span className={`truncate text-[13px] ${done ? "line-through text-fg-muted" : ""}`}>{task.title}</span>
           {/* Spec §2: which of the day's sessions this one is, when the task holds more than one. */}
           {count > 1 && <span className="font-mono text-[11px] text-fg-faint shrink-0">{`${index} of ${count}`}</span>}
-        </span>
-        <span className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[11px] text-fg-faint">
-            {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
-          </span>
-          {/* The session's own length, not recomputed here: no explicit minutes, so the run
-            * takes whatever this block is already sized to. */}
+          {/* Focus lives on the title row, not the row below the time range, because that row
+            * is the first thing this block's own overflow-hidden clips away on anything shorter
+            * than about 45 minutes -- the one control someone actually presses from here must
+            * not be the thing that quietly disappears on a short session. */}
           {!done && (
-            <span className="pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+            <span className="ml-auto shrink-0 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
               <FocusButton task={{ id: task.id, title: task.title }} blockId={block.id} compact />
             </span>
           )}
         </span>
+        {height * pxPerMin >= 30 && (
+          <span className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[11px] text-fg-faint">
+              {formatClock(start)}–{formatClock(end)} · {formatMinutes(block.minutes)}
+            </span>
+          </span>
+        )}
       </div>
       {/* The keyboard resizes with Alt and the arrows on the group itself, so the handle is a
         * pointer affordance only: out of the tab order and out of the accessibility tree. */}
