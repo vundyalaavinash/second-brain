@@ -245,9 +245,13 @@ end nobody could undo without individually re-accepting every future
 occurrence. But `meetingSeriesDecisions` stores exactly one row per series,
 with one `decidedAt`, and a reversal overwrites that row rather than adding a
 new one (`setMeetingDecision`'s `onConflictDoUpdate` on `seriesId`). The
-audit's `effectiveDecisionAsOf` uses that single `decidedAt` as the boundary
-between "this occurrence is old enough to keep its own history" and "this
-occurrence is governed by the current series decision."
+`effectiveDecisionAsOf` uses that single `decidedAt` as the boundary between
+"this occurrence is old enough to keep its own history" and "this occurrence is
+governed by the current series decision." (It was the audit's own private helper
+when this was written; the final whole-branch review's F-B promoted it to
+`decision.ts` and put every backward-looking reader on it, so the consequence
+below now reaches the Activity day report and the Meetings view as well as the
+audit's attendance figure -- the same one boundary, read by more surfaces.)
 
 Concretely: decline a weekly series in October, then re-accept it in
 December. The October-to-December occurrences you genuinely skipped now have
@@ -265,3 +269,36 @@ the declined period is unaffected (its override still wins). Not fixed now
 because the real fix is keeping history on `meetingSeriesDecisions` -- one row
 per decision made, not one row per series -- which is a schema change well
 outside a fix round, not a one-line correction.
+
+## The meeting audit never says which project a series is filed to
+
+Design §6 lists three things that follow from a meeting belonging to a
+container, and the third is "the audit can say that a series belongs to a
+project that closed in July". The first two shipped -- a project page lists its
+meetings, the meetings view filters to one project -- and the third was never
+built. It was not a considered omission either: nothing in any task brief
+dropped it, which is what made it a whole-branch-review finding rather than a
+known gap.
+
+The point of the sentence is that a series' own worth is partly a question about
+what it is still for. A weekly sync filed to a project that closed two months
+ago is exactly the recurring hour §7's five questions exist to surface, and the
+audit currently reports its minutes, its attendance and its output without ever
+mentioning the one fact that would settle it.
+
+Nothing new has to be plumbed for it. `auditSeries` already calls
+`meetingItemFlags` on every occurrence's captured item, and that already returns
+`containerId` alongside the `hasNotes`/`hasTranscript` flags the audit does read
+-- the value is loaded and thrown away. Naming the container means one more
+grouped query over the distinct ids (the `inArray` shape every other batched read
+in that function already uses), a field on `SeriesAudit`, and somewhere on the
+row to put it. The container's own status is already on the row that query would
+return, so "closed in July" needs no extra read either.
+
+Left out because it is a display enhancement, not a correctness bug: no figure
+the audit currently reports is wrong without it. The fix round that found it was
+already closing three real defects across decision coherence, the scheduler and
+the retention purge, and this slice had four tasks and two review rounds behind
+it -- adding a new field and a new piece of row UI at that point is scope, not
+finishing. Recorded explicitly as a §6 deviation rather than quietly dropped,
+which is the whole reason it surfaced.
