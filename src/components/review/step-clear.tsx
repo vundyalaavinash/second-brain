@@ -30,7 +30,7 @@ export function StepClear({ inbox, leftover, carried, value, onChange, onCarry, 
   return (
     <div className="flex flex-col gap-6">
       <SectionHeading count={inbox}>Inbox</SectionHeading>
-      <InboxProcessor />
+      <InboxProcessor embedded />
 
       <section>
         <SectionHeading count={leftover.length}>Left over from this week</SectionHeading>

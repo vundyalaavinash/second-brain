@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { Target } from "lucide-react";
 import type { GoalDTO } from "@/lib/dto";
 import { GoalRow } from "../goals/goal-row";
-import { EmptyState, Input, SectionHeading } from "../ui";
+import { Button, EmptyState, Input, SectionHeading } from "../ui";
 
 /**
  * Third step: each active goal, `GoalRow` and all — the same row Goals itself shows, stalled
@@ -22,7 +22,15 @@ export function StepGoals({ goals, asOf, value, onChange }: { goals: GoalDTO[]; 
     <section>
       <SectionHeading count={goals.length}>Goals</SectionHeading>
       {goals.length === 0 ? (
-        <EmptyState icon={Target} text="No active goals to check in on." />
+        <EmptyState
+          icon={Target}
+          text="No active goals to check in on."
+          action={
+            <Button href="/goals" variant="secondary" size="sm">
+              Set a goal
+            </Button>
+          }
+        />
       ) : (
         <ul className="list-none m-0 p-0 flex flex-col">
           {goals.map((g) => {

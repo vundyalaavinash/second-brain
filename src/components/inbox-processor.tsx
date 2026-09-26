@@ -17,7 +17,17 @@ function isTyping(target: EventTarget | null): boolean {
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
 }
 
-export function InboxProcessor() {
+interface Props {
+  /**
+   * Set from the Weekly Review's Clear step, which already labels this section "Inbox" with its
+   * own count -- the standalone `/inbox` page's own title and page padding would otherwise
+   * repeat both the word and the page chrome a second time, stacked directly on top of a
+   * container that already provides them.
+   */
+  embedded?: boolean;
+}
+
+export function InboxProcessor({ embedded = false }: Props = {}) {
   const [items, setItems] = useState<ItemDTO[]>([]);
   const [total, setTotal] = useState(0);
   const [index, setIndex] = useState(0);
@@ -185,18 +195,24 @@ export function InboxProcessor() {
 
   const preview = current ? (current.body || current.extractedText).replace(/\s+/g, " ").trim().slice(0, 600) : "";
 
+  const meta = loaded ? (items.length ? `${index + 1} of ${total} to process` : "Everything is filed.") : "Loading";
+  const modeToggle = (
+    <Button variant="ghost" size="sm" icon={mode === "focus" ? ListIcon : Focus} onClick={() => setMode((m) => (m === "focus" ? "list" : "focus"))}>
+      {mode === "focus" ? "List" : "Focus"}
+      <Kbd>l</Kbd>
+    </Button>
+  );
+
   return (
-    <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
-      <PageHeader
-        title="Inbox"
-        meta={loaded ? (items.length ? `${index + 1} of ${total} to process` : "Everything is filed.") : "Loading"}
-        actions={
-          <Button variant="ghost" size="sm" icon={mode === "focus" ? ListIcon : Focus} onClick={() => setMode((m) => (m === "focus" ? "list" : "focus"))}>
-            {mode === "focus" ? "List" : "Focus"}
-            <Kbd>l</Kbd>
-          </Button>
-        }
-      />
+    <div className={embedded ? "flex flex-col gap-4" : "w-full px-6 lg:px-8 pt-8 flex flex-col gap-4"}>
+      {embedded ? (
+        <div className="flex items-center justify-between">
+          <span className="text-[12.5px] text-fg-muted">{meta}</span>
+          {modeToggle}
+        </div>
+      ) : (
+        <PageHeader title="Inbox" meta={meta} actions={modeToggle} />
+      )}
 
       {error && <div className="text-[12px] text-danger border border-danger/40 rounded-md px-3 py-2">{error}</div>}
 
@@ -246,7 +262,7 @@ export function InboxProcessor() {
             <StatusDot status={current.status} error={current.error} />
             <span className="font-mono text-[11px] text-fg-faint">{relativeTime(current.createdAt)}</span>
           </div>
-          <div className="px-4 py-4 text-[14px] leading-relaxed text-fg-muted min-h-28">
+          <div className="px-4 py-4 text-[14px] leading-relaxed text-fg-muted">
             {current.sourceUrl && (
               <a
                 href={current.sourceUrl}

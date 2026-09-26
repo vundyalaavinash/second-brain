@@ -53,4 +53,10 @@ describe("StepGoals", () => {
     expect(screen.getByText("No active goals to check in on.")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
+
+  it("offers a way to set one instead of a dead end, when there are no active goals", () => {
+    render(<StepGoals goals={[]} asOf={TODAY} value={{}} onChange={() => {}} />);
+    const link = screen.getByRole("link", { name: "Set a goal" });
+    expect(link.getAttribute("href")).toBe("/goals");
+  });
 });
