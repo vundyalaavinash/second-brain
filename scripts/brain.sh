@@ -24,6 +24,7 @@ RECORDER_SRC="$ROOT/helper/recorder"
 RECORDER_BIN="$DATA_DIR/bin/sb-recorder"
 WHISPER_DIR="$DATA_DIR/models/whisper"
 WHISPER_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+GIST_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -183,6 +184,13 @@ download_whisper_models() {
   write_model_settings "$base" "$final"
 }
 
+download_gist_model() {
+  local dir="$DATA_DIR/models/gist"
+  local target="$dir/model.gguf"
+  mkdir -p "$dir"
+  fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" || true
+}
+
 # The live and the final transcription models, as meetings.whisperBase and
 # meetings.whisperFinal. Before the first run of the app there is no database to
 # write to; the defaults in src/domain/meetings/tools.ts already name these paths.
@@ -336,6 +344,7 @@ cmd_setup() {
   if build_helper; then write_helper_plist; fi
   build_recorder || true
   download_whisper_models
+  download_gist_model
   probe_recorder
   if is_loaded; then
     say "stopping the running agent before reinstalling it"
