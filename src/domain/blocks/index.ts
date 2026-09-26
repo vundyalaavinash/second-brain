@@ -2,6 +2,7 @@ import { and, asc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { dailyPlanEntries, taskBlocks, tasks, type Task, type TaskBlock } from "@/db/schema";
 import { addDays, listMeetings } from "@/domain/activity";
+import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
 import { getTask, updateTask } from "@/domain/tasks";
 import { freeSlots, placeSessions, SESSION_GAP, sessionsFor, type Span } from "@/lib/scheduler";
 import { getWorkHours } from "@/lib/work-hours";
@@ -168,14 +169,21 @@ export function clearBlocks(db: DB, taskId: number, date?: string): number {
 }
 
 /**
- * What the day is already spoken for: timed meetings a person has not declined, and every
- * session on it a live task holds. A dropped task gives its hours back — `dropTask` takes its
+ * What the day is already spoken for: timed meetings the person is actually going to (or has not
+ * yet said otherwise about), and every session on it a live task holds. A meeting decided
+ * `not-going` in this app — regardless of what the calendar's own RSVP still says — frees its
+ * time here the same way `freeMinutes` already frees it on the capacity line; the two must never
+ * disagree about the same hour. A dropped task gives its hours back — `dropTask` takes its
  * sessions away, and this skips them besides, so a row left behind by an older write or by a
  * hand-edited database never blocks a slot.
  */
 function busySpans(db: DB, date: string): Span[] {
-  const meetings = listMeetings(db, { from: date, to: addDays(date, 1) })
-    .filter((m) => m.allDay === 0 && m.status !== "declined")
+  const events = listMeetings(db, { from: date, to: addDays(date, 1) });
+  // One batched series-decision query for the day's events, not one per meeting.
+  const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
+  const decisions = seriesDecisionsFor(db, seriesIds);
+  const meetings = events
+    .filter((m) => m.allDay === 0 && effectiveDecision(m, m.seriesId ? (decisions.get(m.seriesId) ?? null) : null) !== "not-going")
     .map((m) => ({ start: minutesInto(date, m.startsAt), end: minutesInto(date, m.endsAt) }));
   const blocks = db
     .select({ startsAt: taskBlocks.startsAt, minutes: taskBlocks.minutes })

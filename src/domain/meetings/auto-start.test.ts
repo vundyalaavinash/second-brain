@@ -6,6 +6,7 @@ import { calendarEvents, type CalendarEvent } from "@/db/schema";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { createItem, getItem, parseMeta } from "@/domain/items";
 import { replaceCalendarEvents, setMeetingNoRecord, type CalendarEventInput } from "@/domain/activity/calendar";
+import { setMeetingDecision } from "./decision";
 import { setSetting } from "@/domain/settings";
 import { Recorder, type RecordingMeta } from "./recorder";
 import { recorderStatus, keepRecording, setRecorder, startRecording } from "./index";
@@ -66,6 +67,21 @@ describe("pickAutoStart", () => {
   it("takes the meeting starting now and skips declined, all-day, linkless, recorded, no-record, and out-of-window", () => {
     seedExclusionsAndOneMatch();
     expect(pickAutoStart(t.db, NOW, ON)?.title).toBe("Weekly sync");
+  });
+
+  it("does not auto-record a meeting marked maybe -- auto-record only fires for a clear yes", () => {
+    replaceCalendarEvents(t.db, [event({ externalId: "maybe", title: "Might join", startsAt: at(0) })]);
+    setMeetingDecision(t.db, byTitle(t, "Might join").id, { decision: "maybe", scope: "occurrence" });
+    expect(pickAutoStart(t.db, NOW, ON)).toBeNull();
+  });
+
+  it("does not auto-record a meeting whose series was declined, even with no per-occurrence override", () => {
+    replaceCalendarEvents(t.db, [
+      event({ externalId: "series-a", title: "Recurring standup (last week)", startsAt: at(-1440), seriesId: "eventkit:series-1" }),
+      event({ externalId: "series-b", title: "Recurring standup (today)", startsAt: at(0), seriesId: "eventkit:series-1" }),
+    ]);
+    setMeetingDecision(t.db, byTitle(t, "Recurring standup (last week)").id, { decision: "not-going", scope: "series" });
+    expect(pickAutoStart(t.db, NOW, ON)).toBeNull();
   });
 
   it("takes a linkless meeting once the call-link rule is off", () => {

@@ -5,7 +5,10 @@ import { MeetingsView } from "./meetings-view";
 import type { MeetingListDTO, MeetingSettingsDTO, RecorderStatusDTO } from "@/lib/dto";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, refresh: () => {} }), usePathname: () => "/planner/meetings" }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: nav.push, refresh: () => {} }),
+  usePathname: () => "/planner/meetings",
+}));
 
 const TODAY = "2026-09-22";
 
@@ -25,6 +28,10 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string; st
     status: "accepted",
     calendarTitle: "Work",
     noRecord: false,
+    seriesId: null,
+    decision: "going",
+    decisionNote: "",
+    seriesDecision: null,
     ...over,
   };
 }
@@ -39,7 +46,7 @@ const MEETINGS: MeetingListDTO[] = [
     joinUrl: "https://meet.example.com/sync",
     hasCallLink: true,
     itemId: 7,
-    item: { id: 7, hasNotes: true, hasTranscript: true, hasSummary: false },
+    item: { id: 7, hasNotes: true, hasTranscript: true, hasSummary: false, containerId: null },
   }),
   meeting({ id: 3, title: "Retro", startsAt: "2026-09-15T15:00:00", endsAt: "2026-09-15T16:00:00" }),
 ];
@@ -104,6 +111,11 @@ describe("MeetingsView", () => {
     const past = screen.getByText("Past 30 days").closest("details") as HTMLDetailsElement;
     expect(past.open).toBe(false);
     expect(within(past).getByText("Retro")).toBeTruthy();
+  });
+
+  it("links to the audit from the header -- otherwise it has no way to be found in the app (F4)", () => {
+    mount();
+    expect(screen.getByRole("link", { name: "The audit" }).getAttribute("href")).toBe("/meetings/audit");
   });
 
   it("filters the rows as the search is typed", () => {
@@ -334,5 +346,146 @@ describe("MeetingsView", () => {
     render(<MeetingsView today={TODAY} meetings={[past, MEETINGS[0]]} />);
     expect(screen.queryByRole("button", { name: "Record Onam" })).toBeNull();
     expect(screen.getAllByLabelText("All day").some((el) => within(el).queryByText("Onam"))).toBe(true);
+  });
+
+  describe("decisions", () => {
+    const declined = meeting({ id: 10, title: "Skipped sync", startsAt: `${TODAY}T13:00:00`, endsAt: `${TODAY}T13:30:00`, decision: "not-going" });
+
+    it("hides a not-going meeting by default, and 'Everything' brings it back -- never deleted, just hidden", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0], declined]} />);
+      expect(screen.queryByTestId("meeting-title")).toBeTruthy();
+      expect(screen.queryByText("Skipped sync")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Everything" }));
+      expect(screen.getByText("Skipped sync")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Hide declined" }));
+      expect(screen.queryByText("Skipped sync")).toBeNull();
+    });
+
+    it("shows only what is not going, the view design §5 is named for", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0], declined]} />);
+      fireEvent.click(screen.getByRole("button", { name: "Only not going" }));
+      expect(screen.getByText("Skipped sync")).toBeTruthy();
+      expect(screen.queryByText("Standup")).toBeNull();
+    });
+
+    it("says why the list is empty when every meeting in the window is not going, rather than claiming there are none", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      const onlyDeclined = meeting({ id: 11, title: "Only this one", startsAt: `${TODAY}T13:00:00`, endsAt: `${TODAY}T13:30:00`, decision: "not-going" });
+      render(<MeetingsView today={TODAY} meetings={[onlyDeclined]} />);
+      expect(screen.getByText('Everything in this window is marked not going. Switch to "Everything" to see it.')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Only not going" }));
+      expect(screen.getByText("Only this one")).toBeTruthy();
+    });
+
+    it("PATCHes a decision from the row control, local fact only -- never a message to a calendar server", async () => {
+      const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0]]} />);
+      const row = screen.getByText("Standup").closest("li") as HTMLElement;
+      fireEvent.click(within(row).getByRole("button", { name: "Maybe" }));
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/meetings/1/decision" && (init as RequestInit)?.method === "PATCH");
+        expect(call).toBeTruthy();
+        expect(JSON.parse(String(call![1]?.body))).toEqual({ decision: "maybe", scope: "occurrence" });
+      });
+    });
+  });
+
+  describe("the container suggestion", () => {
+    const suggested = meeting({
+      id: 20,
+      title: "Kickoff",
+      startsAt: `${TODAY}T14:00:00`,
+      endsAt: `${TODAY}T14:30:00`,
+      itemId: 30,
+      item: { id: 30, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null },
+      suggestedContainer: { id: 5, name: "Q3 Platform", slug: "q3-platform", kind: "project" },
+    });
+
+    /** The PATCH the offer's accept hits, and nothing else -- no path of its own. */
+    function stubItemPatch() {
+      const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (/\/api\/items\/\d+$/.test(String(input)) && init?.method === "PATCH") return Response.json({});
+        return new Response("{}", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fn);
+      return fn;
+    }
+
+    it("offers a suggestion on an uncontained meeting, an offer only, never a write on its own", () => {
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      expect(screen.getByText("Q3 Platform")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "File Kickoff there" })).toBeTruthy();
+    });
+
+    it("shows nothing for a meeting with no suggestion", () => {
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0]]} />);
+      expect(screen.queryByRole("button", { name: "File Kickoff there" })).toBeNull();
+    });
+
+    it("accepting files the meeting's own item through the existing item PATCH, the only write this offer ever makes", async () => {
+      const fetchMock = stubItemPatch();
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      fireEvent.click(screen.getByRole("button", { name: "File Kickoff there" }));
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/items/30" && (init as RequestInit)?.method === "PATCH");
+        expect(call).toBeTruthy();
+        expect(JSON.parse(String(call![1]?.body))).toEqual({ containerId: 5 });
+      });
+    });
+
+    it("dismissing drops the offer for this session, without writing anything", () => {
+      const fetchMock = stubItemPatch();
+      render(<MeetingsView today={TODAY} meetings={[suggested]} />);
+      fireEvent.click(screen.getByRole("button", { name: "Not this one for Kickoff" }));
+      expect(screen.queryByText("Q3 Platform")).toBeNull();
+      expect(fetchMock.mock.calls.some(([url]) => /\/api\/items\/\d+$/.test(String(url)))).toBe(false);
+    });
+  });
+
+  describe("filtered to a project", () => {
+    const filed = meeting({
+      id: 21,
+      title: "Roadmap review",
+      startsAt: `${TODAY}T15:00:00`,
+      endsAt: `${TODAY}T15:30:00`,
+      itemId: 31,
+      item: { id: 31, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 5 },
+    });
+    const filedElsewhere = meeting({
+      id: 22,
+      title: "Other project sync",
+      startsAt: `${TODAY}T16:00:00`,
+      endsAt: `${TODAY}T16:30:00`,
+      itemId: 32,
+      item: { id: 32, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 9 },
+    });
+
+    it("shows only meetings filed to the containerId prop the page resolved, with neutral copy that never assumes a project (review F3)", () => {
+      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} containerId={5} />);
+      expect(screen.getByText("Roadmap review")).toBeTruthy();
+      expect(screen.queryByText("Other project sync")).toBeNull();
+      // "this project" would lie for an area's meetings -- MeetingsSection renders for both kinds.
+      expect(screen.getByText("Showing only meetings filed here.")).toBeTruthy();
+      expect(screen.getByText("Show all meetings")).toBeTruthy();
+    });
+
+    it("says no calendar meetings are filed, never a bare 'no meetings' this view can't verify (review F2 residual)", () => {
+      // This view is calendar-sourced only, so it can never see an ad hoc or audio-only meeting
+      // filed to the container -- the copy must not claim there are none of those either.
+      render(<MeetingsView today={TODAY} meetings={[filedElsewhere]} containerId={5} />);
+      expect(screen.getByText("No calendar meetings are filed here")).toBeTruthy();
+    });
+
+    it("shows everything with no containerId prop at all", () => {
+      render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
+      expect(screen.getByText("Roadmap review")).toBeTruthy();
+      expect(screen.getByText("Other project sync")).toBeTruthy();
+      expect(screen.queryByText("Show all meetings")).toBeNull();
+    });
   });
 });

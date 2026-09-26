@@ -40,6 +40,12 @@ export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 export const CALENDAR_SOURCES = ["eventkit", "feed"] as const;
 export type CalendarSource = (typeof CALENDAR_SOURCES)[number];
 
+/** The local, person-made call on a meeting — never the calendar's own RSVP, and never inferred
+ * from it: `maybe` in particular carries its own capacity arithmetic (half the meeting's clipped
+ * duration) that only means something once a person has actually chosen it. */
+export const MEETING_DECISIONS = ["going", "not-going", "maybe"] as const;
+export type MeetingDecision = (typeof MEETING_DECISIONS)[number];
+
 export const GOAL_HORIZONS = ["quarter", "year"] as const;
 export type GoalHorizon = (typeof GOAL_HORIZONS)[number];
 

@@ -5,11 +5,12 @@ import { createContainer } from "@/domain/containers";
 import { addBlock } from "@/domain/blocks";
 import { addToPlan } from "@/domain/plan";
 import { createTask, completeTask } from "@/domain/tasks";
+import { fileItem } from "@/domain/items";
 import { startFocus, finishFocus } from "@/domain/focus";
 import * as focusDomain from "@/domain/focus";
 import { setWorkingDays } from "@/lib/work-hours";
 import { DRIFT_MIN_PAIRS } from "@/lib/drift";
-import { hasUserNotes, plannerDay, plannerWeek } from "./planner";
+import { containerMeetings, hasUserNotes, plannerDay, plannerMeetings, plannerWeek } from "./planner";
 
 /** What `captureMeeting` writes into a fresh meeting item. */
 const TEMPLATE = [
@@ -71,7 +72,7 @@ describe("plannerDay", () => {
     const ev = meeting();
     expect(plannerDay(t.db, DATE).meetings[0].item).toBeUndefined();
     const item = captureMeeting(t.db, ev.id);
-    expect(plannerDay(t.db, DATE).meetings[0].item).toEqual({ id: item.id, hasNotes: false, hasTranscript: false, hasSummary: false });
+    expect(plannerDay(t.db, DATE).meetings[0].item).toEqual({ id: item.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null });
   });
 
   it("loads only the tasks the day and the week can show", () => {
@@ -252,5 +253,128 @@ describe("plannerDay", () => {
     expect(mondayDay.capacity.plannedMinutes).toBe(40);
     expect(mondayDay.capacity.forecastMinutes).toBe(80);
     expect(saturday.capacity.forecastMinutes).toBe(0);
+  });
+});
+
+describe("plannerMeetings", () => {
+  let t: TestDb;
+  // `replaceCalendarEvents` stores each event's `day` as its *local* calendar day (`localDay`),
+  // which a UTC morning timestamp can resolve a day earlier under a far-west zone like the
+  // `TZ=Pacific/Midway` run this suite is also checked under. The query window is a day wider on
+  // each side than the single day the meeting is actually on, so which of the two adjacent local
+  // days it lands on never matters — never the machine's timezone, per this repo's own test rule.
+  const EVENT_DAY = "2026-09-22";
+  const FROM = "2026-09-21";
+  const TO = "2026-09-24";
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  function meeting() {
+    replaceCalendarEvents(t.db, [
+      { externalId: "a", title: "Platform sync", startsAt: `${EVENT_DAY}T10:00:00.000Z`, endsAt: `${EVENT_DAY}T11:00:00.000Z`, attendees: 3, hasCallLink: true },
+    ]);
+    return listMeetings(t.db, { from: FROM, to: TO })[0];
+  }
+
+  it("carries no suggestion for a meeting with no captured item yet", () => {
+    meeting();
+    const [m] = plannerMeetings(t.db, { from: FROM, to: TO });
+    expect(m.suggestedContainer).toBeUndefined();
+  });
+
+  it("offers the project a captured, uncontained meeting's title points to", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Platform Migration" });
+    const ev = meeting();
+    captureMeeting(t.db, ev.id);
+    const [m] = plannerMeetings(t.db, { from: FROM, to: TO });
+    expect(m.suggestedContainer).toEqual({ id: project.id, name: project.name, slug: project.slug, kind: "project" });
+  });
+
+  it("carries no suggestion once the meeting is already filed somewhere", () => {
+    createContainer(t.db, { kind: "project", name: "Platform Migration" });
+    const ev = meeting();
+    const item = captureMeeting(t.db, ev.id);
+    const other = createContainer(t.db, { kind: "area", name: "Health" });
+    fileItem(t.db, item.id, other.id);
+    const [m] = plannerMeetings(t.db, { from: FROM, to: TO });
+    expect(m.suggestedContainer).toBeUndefined();
+  });
+
+  it("keeps each meeting's own suggestion at its own row in a mixed batch, matches and no-matches interleaved (review F8)", () => {
+    // Every other test in this block plays only one meeting at a time; none of them can catch an
+    // index-alignment bug in this function's own zip (`uncontained.map((m, i) => [m.id,
+    // suggestions[i]])`, planner.ts) the way a mixed multi-meeting batch can.
+    const project = createContainer(t.db, { kind: "project", name: "Platform Migration" });
+    const area = createContainer(t.db, { kind: "area", name: "Health" });
+    replaceCalendarEvents(t.db, [
+      { externalId: "a", title: "Platform sync", startsAt: `${EVENT_DAY}T09:00:00.000Z`, endsAt: `${EVENT_DAY}T09:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "b", title: "Random meeting", startsAt: `${EVENT_DAY}T10:00:00.000Z`, endsAt: `${EVENT_DAY}T10:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "c", title: "Health checkup", startsAt: `${EVENT_DAY}T11:00:00.000Z`, endsAt: `${EVENT_DAY}T11:30:00.000Z`, attendees: 2, hasCallLink: false },
+      { externalId: "d", title: "Already filed sync", startsAt: `${EVENT_DAY}T12:00:00.000Z`, endsAt: `${EVENT_DAY}T12:30:00.000Z`, attendees: 2, hasCallLink: false },
+    ]);
+    const events = listMeetings(t.db, { from: FROM, to: TO });
+    const byTitle = (title: string) => events.find((e) => e.title === title)!;
+    captureMeeting(t.db, byTitle("Platform sync").id);
+    captureMeeting(t.db, byTitle("Random meeting").id);
+    captureMeeting(t.db, byTitle("Health checkup").id);
+    const alreadyFiled = captureMeeting(t.db, byTitle("Already filed sync").id);
+    fileItem(t.db, alreadyFiled.id, project.id);
+
+    const result = plannerMeetings(t.db, { from: FROM, to: TO });
+    const suggestionFor = (title: string) => result.find((m) => m.title === title)!.suggestedContainer;
+    expect(suggestionFor("Platform sync")).toEqual({ id: project.id, name: project.name, slug: project.slug, kind: "project" });
+    expect(suggestionFor("Health checkup")).toEqual({ id: area.id, name: area.name, slug: area.slug, kind: "area" });
+    // Uncontained but matching nothing: the batched suggestion pass ran for it and came back
+    // null, distinct from "Already filed sync" below, which never entered that pass at all.
+    expect(suggestionFor("Random meeting")).toBeNull();
+    expect(suggestionFor("Already filed sync")).toBeUndefined();
+  });
+});
+
+describe("containerMeetings", () => {
+  let t: TestDb;
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  it("carries each item's badges and its own calendar start time, newest first", () => {
+    replaceCalendarEvents(t.db, [
+      { externalId: "a", title: "Kickoff", startsAt: "2026-09-20T10:00:00.000Z", endsAt: "2026-09-20T11:00:00.000Z", attendees: 2, hasCallLink: false },
+      { externalId: "b", title: "Retro", startsAt: "2026-09-22T10:00:00.000Z", endsAt: "2026-09-22T11:00:00.000Z", attendees: 2, hasCallLink: false },
+    ]);
+    // A day wider on each side than the two event days, for the same reason `plannerMeetings`'s
+    // own tests above widen their window: `day` is a *local* calendar day, which can fall a day
+    // earlier than the UTC morning timestamp under `TZ=Pacific/Midway`.
+    const events = listMeetings(t.db, { from: "2026-09-19", to: "2026-09-24" });
+    const kickoffEv = events.find((e) => e.title === "Kickoff")!;
+    const retroEv = events.find((e) => e.title === "Retro")!;
+    const kickoffItem = captureMeeting(t.db, kickoffEv.id);
+    const retroItem = captureMeeting(t.db, retroEv.id);
+
+    const result = containerMeetings(t.db, [kickoffItem, retroItem]);
+    expect(result.map((m) => m.title)).toEqual(["Retro", "Kickoff"]);
+    expect(result[0].startsAt).toBe("2026-09-22T10:00:00.000Z");
+    expect(result[0].item).toEqual({ id: retroItem.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null });
+  });
+
+  it("costs one query for the calendar times of the whole list, never one per meeting item", () => {
+    replaceCalendarEvents(
+      t.db,
+      Array.from({ length: 5 }, (_, i) => ({
+        externalId: `e${i}`,
+        title: `Meeting ${i}`,
+        startsAt: `2026-09-2${i}T10:00:00.000Z`,
+        endsAt: `2026-09-2${i}T11:00:00.000Z`,
+        attendees: 1,
+        hasCallLink: false,
+      })),
+    );
+    const items = listMeetings(t.db, { from: "2026-09-19", to: "2026-09-25" }).map((ev) => captureMeeting(t.db, ev.id));
+    const spy = vi.spyOn(t.db, "select");
+    containerMeetings(t.db, items);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

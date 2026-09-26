@@ -33,6 +33,7 @@ const Body = z.object({
       allDay: z.boolean().default(false),
       status: z.enum(["accepted", "tentative", "declined", "none"]).default("none"),
       calendarTitle: z.string().default(""),
+      seriesId: z.string().optional(),
     }),
   ),
   /** The local-day range `[from, to)` the payload speaks for; absent from older helpers. */

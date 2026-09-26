@@ -10,6 +10,8 @@ import { getContainer, countContainerItems, ContainerError } from "@/domain/cont
 import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { MeetingError } from "@/domain/meetings/errors";
+import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
+import type { MeetingDecision } from "@/db/enums";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
@@ -214,8 +216,13 @@ export function serializePlanTasks(
  * A calendar row as the Planner reads it. `actualMs` is 0: measuring how long a meeting was
  * actually attended means walking that day's sessions, which `getDay` does for the Activity
  * page; the Planner shows scheduled time and never asks for the measured figure.
+ *
+ * `seriesDecision` is the resolved answer for `ev.seriesId` (or null for a one-off meeting, or
+ * when nobody has decided one) — the caller's to supply, from a single batched
+ * `seriesDecisionsFor` call over a whole list, never one query per row (see `serializeMeetings`
+ * below for the list case, and `serializeMeetingResolved` for a lone row).
  */
-export function serializeMeeting(ev: CalendarEvent): ActivityMeetingDTO {
+export function serializeMeeting(ev: CalendarEvent, seriesDecision: MeetingDecision | null = null): ActivityMeetingDTO {
   return {
     id: ev.id,
     title: ev.title,
@@ -235,7 +242,26 @@ export function serializeMeeting(ev: CalendarEvent): ActivityMeetingDTO {
     status: ev.status,
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
+    seriesId: ev.seriesId,
+    decision: effectiveDecision(ev, seriesDecision),
+    decisionNote: ev.decisionNote,
+    seriesDecision,
   };
+}
+
+/** Every listed event's series decision resolved in one query, not one per row — the same
+ * batching rule `focusMinutesByTask` and `goalRefsByContainer` already follow for their lists. */
+export function serializeMeetings(db: DB, events: CalendarEvent[]): ActivityMeetingDTO[] {
+  const seriesIds = [...new Set(events.map((e) => e.seriesId).filter((id): id is string => id !== null))];
+  const decisions = seriesDecisionsFor(db, seriesIds);
+  return events.map((ev) => serializeMeeting(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null));
+}
+
+/** A single row's own series decision, resolved with its own one-row query — never called from
+ * a loop over a list, which is what `serializeMeetings` above is for. */
+export function serializeMeetingResolved(db: DB, ev: CalendarEvent): ActivityMeetingDTO {
+  const seriesDecision = ev.seriesId ? (seriesDecisionsFor(db, [ev.seriesId]).get(ev.seriesId) ?? null) : null;
+  return serializeMeeting(ev, seriesDecision);
 }
 
 export function serializeGoal(g: GoalWithMeasure): GoalDTO {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { replaceCalendarEvents } from "@/domain/activity";
 import { addToPlan } from "@/domain/plan";
+import { setMeetingDecision } from "@/domain/meetings/decision";
 import { completeTask, createTask, deleteTask, dropTask, getTask } from "@/domain/tasks";
 import { addBlock, blocksByTask, BlockError, clearBlocks, fillDay, listBlocks, placeTask, removeBlock, updateBlock } from "./index";
 
@@ -99,6 +100,31 @@ describe("blocks domain", () => {
     expect(placed.reduce((n, b) => n + b.minutes, 0)).toBe(120);
     // A declined meeting is not busy, and nothing lands inside the one that stands.
     expect(placed.some((b) => b.startsAt >= `${DAY}T10:00:00` && b.startsAt < `${DAY}T11:00:00`)).toBe(false);
+  });
+
+  // Finding 5: the scheduler must agree with `freeMinutes` about the same hour. A meeting the
+  // calendar still calls "accepted" but the person has locally marked not-going must free its
+  // time here exactly as a calendar-declined meeting already does — the local decision, not the
+  // calendar's own RSVP, is what actually governs.
+  it("frees a meeting's slot once the person marks it not-going locally, even while the calendar still calls it accepted", async () => {
+    const { calendarEvents } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    // The morning is entirely taken by another task's own sessions, so the only room left for
+    // this one is whatever 16:00-18:00 gives up -- which is either the whole two hours (meeting
+    // freed) or just the last one (meeting still counted busy).
+    replaceCalendarEvents(t.db, [meeting("m1", "16:00", "17:00")]);
+    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "m1")).get()!;
+    expect(ev.status).toBe("none");
+    setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "occurrence" });
+
+    const other = createTask(t.db, { title: "Other" });
+    addBlock(t.db, { taskId: other.id, startsAt: `${DAY}T09:00:00`, minutes: 420 });
+    const task = createTask(t.db, { title: "Write", estimateMinutes: 90 });
+    // 90 minutes splits into two 45-minute sessions with a 10-minute gap: they only both fit in
+    // the freed 16:00-18:00 window (120 min); the busy-until-17:00 reading only has room for one.
+    expect(placeTask(t.db, { taskId: task.id, date: DAY })).toEqual({ placed: 2, unplacedMinutes: 0 });
+    const placed = listBlocks(t.db, { taskId: task.id });
+    expect(placed.some((b) => b.startsAt >= `${DAY}T16:00:00` && b.startsAt < `${DAY}T17:00:00`)).toBe(true);
   });
 
   it("starts no earlier than now when the day is today", () => {

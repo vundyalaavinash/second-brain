@@ -247,7 +247,14 @@ git commit -m "fix(meetings): read the person's own RSVP, not the event's confir
     `src/db/enums.ts`.
   - Schema:
     ```ts
-    // On calendarEvents, added alongside the existing columns:
+    // On calendarEvents, added alongside the existing columns. `seriesId` is
+    // this task's to add as a real column — Task 1 deliberately threaded it
+    // through CalendarEventInput and the API route's validation with no
+    // schema column, so this is the first place it is persisted. Unlike
+    // decision/decisionNote (person-owned, excluded from the upsert's set
+    // the way itemId/noRecord already are), seriesId is calendar-owned data
+    // and belongs INSIDE the refreshed set, refreshed every sync like title.
+    seriesId: text("series_id"),
     decision: text("decision", { enum: MEETING_DECISIONS }),        // per-occurrence override, null = defer
     decisionNote: text("decision_note").notNull().default(""),
 

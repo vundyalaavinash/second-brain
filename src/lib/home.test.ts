@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "@/test/db";
 import { containers, items } from "@/db/schema";
 import { ingestHeartbeat, recordHelperSeen, replaceCalendarEvents } from "@/domain/activity";
+import { calendarEvents } from "@/db/schema";
 import { addBlock } from "@/domain/blocks";
 import { archiveContainer, createContainer } from "@/domain/containers";
 import { finishFocus, startFocus } from "@/domain/focus";
 import { createItem } from "@/domain/items";
+import { setMeetingDecision } from "@/domain/meetings/decision";
 import { addToPlan } from "@/domain/plan";
 import { openReview } from "@/domain/review";
 import { completeTask, createTask } from "@/domain/tasks";
@@ -86,6 +88,20 @@ describe("homePayload", () => {
       ["session", "Review the spec"],
     ]);
     expect(home.next.some((i) => i.blockId === running.id)).toBe(false);
+  });
+
+  it("never puts a not-going meeting in the Now slot, and shows the session placed in its freed hour instead", () => {
+    const task = createTask(t.db, { title: "Write the spec" });
+    addToPlan(t.db, DATE, task.id);
+    addBlock(t.db, { taskId: task.id, startsAt: localAt(10), minutes: 60 });
+    replaceCalendarEvents(t.db, [
+      { externalId: "m1", title: "Standup", startsAt: at(10), endsAt: at(11), attendees: 4, hasCallLink: true },
+    ]);
+    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "m1")).get()!;
+    setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "occurrence" });
+
+    const home = homePayload(t.db, NOW);
+    expect(home.now).toMatchObject({ kind: "session", title: "Write the spec", taskId: task.id });
   });
 
   it("names a session as now when no meeting is running, and its task and block with it", () => {

@@ -12,6 +12,9 @@ export function crumbsFor(pathname: string): Crumb[] {
   // The Planner's views are siblings of the day, so each names it as the parent to go back to.
   if (pathname === "/planner/week") return [{ label: "Planner", href: "/planner" }, { label: "Week" }];
   if (pathname === "/planner/meetings") return [{ label: "Planner", href: "/planner" }, { label: "Meetings" }];
+  // Reached from the Meetings view's own link, not the dock or a URL a person would type by
+  // hand — the trail still names its way back rather than falling through to "Home".
+  if (pathname === "/meetings/audit") return [{ label: "Meetings", href: "/planner/meetings" }, { label: "Audit" }];
   // A container page supplies both halves itself — `<Crumb parent title>` names the kind it
   // belongs to ("Projects", "Areas", "Resources"), so a trail here would repeat the parent.
   if (pathname.startsWith("/c/")) return [];

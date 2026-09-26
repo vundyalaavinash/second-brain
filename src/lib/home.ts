@@ -49,13 +49,22 @@ function sessionEnd(startsAt: string, minutes: number): string {
 }
 
 /**
- * Every timed thing on the day, in start order: meetings a person has not declined, and the
- * sessions of tasks still open. An all-day block holds no hour, so it names no "now", and a
- * session of a task already ticked off or dropped is not work still to do.
+ * Every timed thing on the day, in start order: meetings the person is actually going to (or
+ * has not said otherwise about), and the sessions of tasks still open. An all-day block holds no
+ * hour, so it names no "now", and a session of a task already ticked off or dropped is not work
+ * still to do.
+ *
+ * `m.decision` is the *effective* decision — this occurrence's own override, else its series',
+ * else the calendar's own status — already resolved and batched once for the whole day by
+ * `plannerMeetings`/`serializeMeetings` (`@/lib/api`), the same figure `freeMinutes` and
+ * `busySpans` key off. Reading raw `m.status` here instead would let a meeting declined at the
+ * series level still show as running "now", hiding whatever the scheduler correctly placed in
+ * that freed hour — see `busySpans` (`@/domain/blocks/index.ts`) for the same rule applied to
+ * the scheduler.
  */
 function timedItems(db: DB, day: HomeDTO["day"], date: string): HomeItemDTO[] {
   const meetings: HomeItemDTO[] = day.meetings
-    .filter((m) => !m.allDay && m.status !== "declined")
+    .filter((m) => !m.allDay && m.decision !== "not-going")
     .map((m) => ({
       kind: "meeting" as const,
       title: m.title,

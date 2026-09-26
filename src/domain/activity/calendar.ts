@@ -20,6 +20,11 @@ export interface CalendarEventInput {
   allDay?: boolean;
   status?: MeetingStatus;
   calendarTitle?: string;
+  /** `eventkit:{calendarItemIdentifier}` or `feed:{uid}` — the same value across every occurrence
+   * of a recurring series, and a harmless "series of one" for a non-recurring event. Prefixed per
+   * source so the two unrelated id spaces can never collide once something groups by this value
+   * across sources. Persisted by `replaceCalendarEvents` below, refreshed every sync like `title`. */
+  seriesId?: string;
 }
 
 /** Known meeting providers first; any https link is a usable fallback. */
@@ -80,7 +85,9 @@ export function replaceCalendarEvents(
     for (const e of events) {
       if (Date.parse(e.endsAt) <= Date.parse(e.startsAt)) continue;
       const joinUrl = e.joinUrl ?? joinUrlFrom(e.location, e.notes);
-      // item_id and no_record are ours, not the calendar's: they stay off the upsert so a refresh keeps them.
+      // item_id, no_record, decision and decision_note are ours, not the calendar's: they stay
+      // off the upsert so a refresh keeps them. e.seriesId is calendar-owned like title, so it
+      // belongs inside the upsert and is refreshed every sync.
       const values = {
         externalId: e.externalId,
         title: e.title.trim() || "Untitled event",
@@ -97,6 +104,7 @@ export function replaceCalendarEvents(
         allDay: e.allDay ? 1 : 0,
         status: e.status ?? "none",
         calendarTitle: e.calendarTitle ?? "",
+        seriesId: e.seriesId ?? null,
         source,
       };
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();
@@ -127,6 +135,26 @@ export function parseAttendeeNames(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Per captured meeting item id, the calendar event it was captured from — start and end time in
+ * particular, since neither lives on the item itself. One query for the whole list of item ids,
+ * never one per item, the same shape every other list-cost finding in this repository has
+ * already flagged.
+ */
+export function meetingTimesByItemIds(db: DB, itemIds: number[]): Map<number, { startsAt: string; endsAt: string }> {
+  const out = new Map<number, { startsAt: string; endsAt: string }>();
+  if (itemIds.length === 0) return out;
+  const rows = db
+    .select({ itemId: calendarEvents.itemId, startsAt: calendarEvents.startsAt, endsAt: calendarEvents.endsAt })
+    .from(calendarEvents)
+    .where(inArray(calendarEvents.itemId, itemIds))
+    .all();
+  for (const row of rows) {
+    if (row.itemId !== null) out.set(row.itemId, { startsAt: row.startsAt, endsAt: row.endsAt });
+  }
+  return out;
 }
 
 /** Events starting on a day in [from, to), oldest first; `q` matches title, organizer, or an attendee name. */

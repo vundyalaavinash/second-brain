@@ -1,7 +1,11 @@
 import { localDay } from "@/lib/time";
+import type { MeetingDecision } from "@/db/enums";
 
-/** The pieces of a meeting capacity needs; both MeetingListDTO and CalendarEvent satisfy it. */
-export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; status: string };
+/** The pieces of a meeting capacity needs; both MeetingListDTO and CalendarEvent satisfy it.
+ * `decision` is the *effective* decision, already resolved by the caller (`effectiveDecision` in
+ * `@/domain/meetings/decision`) — this file has no business knowing about series overrides, and
+ * no business reading the calendar's own raw RSVP `status` either, so the type does not carry it. */
+export type CapacityMeeting = { startsAt: string; endsAt: string; allDay: boolean; decision: MeetingDecision };
 
 const HOURS_RE = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/;
 
@@ -26,10 +30,62 @@ function minutesOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+type Span = { start: number; end: number };
+
+/** Sorted, non-overlapping spans covering the same minutes as `spans` — a double booking is
+ * measured once, not twice, the same rule `freeMinutes` has always followed for `going` time. */
+function mergeSpans(spans: Span[]): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const merged: Span[] = [];
+  for (const s of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else merged.push({ ...s });
+  }
+  return merged;
+}
+
+/** The parts of `spans` (already merged) that `cover` (already merged) does not already claim.
+ * Used to keep a `maybe` meeting from costing anything extra over time a `going` meeting already
+ * occupies — the going meeting already claims that minute at full weight, so an overlapping
+ * maybe on top of it adds nothing, and only the part of the maybe that stands on its own costs
+ * its own half. */
+function outsideCover(spans: Span[], cover: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const s of spans) {
+    let cursor = s.start;
+    for (const c of cover) {
+      if (c.end <= cursor || c.start >= s.end) continue;
+      if (c.start > cursor) out.push({ start: cursor, end: c.start });
+      cursor = Math.max(cursor, c.end);
+      if (cursor >= s.end) break;
+    }
+    if (cursor < s.end) out.push({ start: cursor, end: s.end });
+  }
+  return out;
+}
+
+/**
+ * What one already-clipped span of meeting time costs against capacity, on its own: nothing for
+ * `not-going` (never reaches here in practice — `freeMinutes` excludes it before any span is
+ * built — but the function is honest about it rather than assuming); half its duration for
+ * `maybe`, because a half-commitment still holds half a slot; its full duration for `going`,
+ * exactly what a meeting has always cost here. Minutes are not rounded — nothing else in this
+ * file rounds before `formatMinutes` does, at display time.
+ */
+export function meetingCost(span: { start: number; end: number; decision: MeetingDecision }): number {
+  const minutes = Math.max(0, span.end - span.start);
+  if (span.decision === "not-going") return 0;
+  return span.decision === "maybe" ? minutes / 2 : minutes;
+}
+
 /**
  * Working minutes not taken by timed meetings. Overlapping meetings are merged first so a
  * double booking is not subtracted twice; a meeting spilling past the hours only costs the
- * part inside them.
+ * part inside them. `not-going` meetings cost nothing and are dropped before any of this; a
+ * `going` meeting costs its full clipped duration; a `maybe` meeting costs half of it, except
+ * where it overlaps a `going` meeting — that time is already fully spoken for, so the overlap
+ * adds nothing on top (`outsideCover`).
  *
  * `opts.now`, when given, makes the window honest about the time: a day already gone holds
  * nothing, and the part of today that has already passed is not free time either — the
@@ -46,19 +102,26 @@ export function freeMinutes(meetings: CapacityMeeting[], workHours: string, date
     if (date === today) start = Math.max(start, minutesOfDay(opts.now));
     if (start >= hours.end) return 0;
   }
-  const busy = meetings
-    .filter((m) => !m.allDay && m.status !== "declined")
-    .map((m) => ({ start: Math.max(start, minutesInto(date, m.startsAt)), end: Math.min(hours.end, minutesInto(date, m.endsAt)) }))
-    .filter((b) => b.end > b.start)
-    .sort((a, b) => a.start - b.start);
-  let taken = 0;
-  let cursor = -Infinity;
-  for (const b of busy) {
-    const busyStart = Math.max(b.start, cursor);
-    if (b.end > busyStart) taken += b.end - busyStart;
-    cursor = Math.max(cursor, b.end);
-  }
-  return hours.end - start - taken;
+  const clip = (m: CapacityMeeting): Span => ({
+    start: Math.max(start, minutesInto(date, m.startsAt)),
+    end: Math.min(hours.end, minutesInto(date, m.endsAt)),
+  });
+  const timed = meetings.filter((m) => !m.allDay && m.decision !== "not-going");
+  const going = mergeSpans(
+    timed
+      .filter((m) => m.decision === "going")
+      .map(clip)
+      .filter((s) => s.end > s.start),
+  );
+  const maybe = mergeSpans(
+    timed
+      .filter((m) => m.decision === "maybe")
+      .map(clip)
+      .filter((s) => s.end > s.start),
+  );
+  const goingTaken = going.reduce((n, s) => n + meetingCost({ ...s, decision: "going" }), 0);
+  const maybeTaken = outsideCover(maybe, going).reduce((n, s) => n + meetingCost({ ...s, decision: "maybe" }), 0);
+  return hours.end - start - goingTaken - maybeTaken;
 }
 
 /** Open tasks' estimates added up, and how many open tasks carry none. */

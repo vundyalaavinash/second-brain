@@ -28,7 +28,11 @@ const sync: MeetingListDTO = {
   status: "accepted",
   calendarTitle: "Work",
   noRecord: false,
-  item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true },
+  seriesId: null,
+  decision: "going",
+  decisionNote: "",
+  seriesDecision: null,
+  item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: null },
 };
 
 const blocked: PlanTaskDTO = {
@@ -174,6 +178,23 @@ describe("Timeline", () => {
     const { container: c2 } = render(<Timeline date={DATE} meetings={[early]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />);
     const first = Array.from(c2.querySelectorAll("span.font-mono")).map((el) => el.textContent).find((t) => /^\d\d:00$/.test(t ?? ""));
     expect(first).toBe("07:00");
+  });
+
+  it("excludes a not-going meeting from the timed column and from widening the hour range", () => {
+    const declined = { ...sync, id: 4, decision: "not-going" as const, startsAt: `${DATE}T07:00:00`, endsAt: `${DATE}T07:30:00` };
+    const { container } = render(
+      <Timeline date={DATE} meetings={[declined]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} workHours="09:00-18:00" />,
+    );
+    expect(screen.queryByRole("button", { name: /Product sync/ })).toBeNull();
+    const labels = () => Array.from(container.querySelectorAll("span.font-mono")).map((el) => el.textContent).filter((t) => /^\d\d:00$/.test(t ?? ""));
+    // Had the declined meeting still counted, the range would have widened to 07:00.
+    expect(labels()[0]).toBe("09:00");
+  });
+
+  it("still draws a maybe meeting: it holds a claim on the time, just not a full one", () => {
+    const maybe = { ...sync, decision: "maybe" as const };
+    render(<Timeline date={DATE} meetings={[maybe]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    expect(screen.getByRole("button", { name: "Product sync, 10:00 to 11:00, 3 attendees" })).toBeTruthy();
   });
 
   it("draws a lone session as a block at its start, its own length tall, with no mark", () => {

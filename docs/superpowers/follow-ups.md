@@ -104,3 +104,164 @@ of a problem" reading the rest of the safety design already gives an unset
 value. Worth doing when the status line next changes shape: surface
 `computedAt` in the DTO and word the line as "as of last night" rather than
 letting the present tense imply something it does not measure live.
+
+## The feed source has the same RSVP bug the EventKit side just fixed, and it may not be fully fixable
+
+`src/domain/activity/feed.ts`'s `statusOf` reads `X-MICROSOFT-CDO-BUSYSTATUS` --
+whether the *block on the calendar* is busy, tentative or free -- and maps
+that onto `MeetingStatus`. It can never produce `"declined"` at all: a
+meeting the person declined in Outlook, synced through a published ICS feed,
+shows as `"accepted"` if Outlook still marks the block busy, or `"none"`
+otherwise -- and `"none" !== "declined"`, so it still counts against
+capacity, still appears in the day, and would still be eligible for
+auto-recording.
+
+Checked before writing this: no calendar feed URL is configured on this
+machine right now, so the bug is currently dormant rather than live. It
+matters the moment a feed is set up, which was the whole point of the
+calendar-feed work from an earlier session -- Outlook's own EventKit access
+only ever saw a holidays calendar, and a published feed was the workaround.
+
+**Why this is not a small fix like the EventKit side was.** Two real
+obstacles, not just more code:
+
+1. A calendar published via "Publish a Calendar to Web" (the feature behind
+   a webcal/ICS subscription link) generally does not include `ATTENDEE`
+   lines with `PARTSTAT` at all, at any of Outlook's detail levels --
+   attendee and RSVP data is treated as more sensitive than busy/free and
+   free-text details, and is typically stripped before publishing. This is
+   a property of the data Outlook actually publishes, not something this
+   app's parser is failing to read. It needs confirming against a real
+   feed once one exists, but should not be assumed fixable by more careful
+   `ical.js` reads alone.
+2. Even if `PARTSTAT` were present, there is no concept anywhere in this app
+   of "which attendee is me" -- no stored email or identity setting exists
+   to match against an `ATTENDEE` line. EventKit's fix could ask for
+   `isCurrentUser` because the local Calendar app already knows which
+   account is the person's own; a bare subscribed feed has no equivalent.
+   Building this properly means adding a real identity setting first, not
+   only a parser change.
+
+**The practical mitigation already exists, elsewhere in this same slice.**
+Task 2 of `docs/superpowers/plans/2026-09-26-meetings-worth-being-in.md`
+adds a local decision (going / not-going / maybe) that is independent of
+whatever the calendar says and survives every refresh -- exactly because
+the calendar, and especially a read-only feed, may simply not carry a
+reliable RSVP. Once that ships, a feed-sourced meeting the person wants to
+skip can be marked "not going" by hand, correctly excluded from capacity
+and auto-recording, with no dependency on `PARTSTAT` ever arriving. That
+does not fix `statusOf`'s misreading, but it removes most of the practical
+cost of leaving it unfixed for now.
+
+Worth revisiting once: (a) a feed is actually configured, so the real ICS
+can be inspected rather than guessed about, and (b) if the app ever gains a
+stored identity setting for another reason, which would make the fix
+genuinely possible rather than merely plausible.
+
+## The local meeting decision is not authoritative everywhere yet
+
+Task 2's review found the new local decision (going/maybe/not-going) is
+correctly authoritative in `capacity.ts` and, after that fix round, in the
+scheduler's busy-span calculation (`src/domain/blocks/index.ts`). The final
+whole-branch review found two more sites that had quietly regressed to raw
+calendar `status` and did carry a real functional consequence -- Home's
+"Now and next" (`src/lib/home.ts`'s `timedItems`) could show a declined
+meeting as happening now, hiding the task the scheduler correctly placed in
+that freed hour, and the Planner day timeline (`src/components/planner/timeline.tsx`)
+rendered a declined meeting in the timed column and widened the hour range to
+fit it, contradicting the capacity line one component above it. Both are
+fixed as of this round, reading the batched effective decision the same way
+`capacity.ts` and `busySpans` already do.
+
+Four places still read raw calendar `status` instead of the effective
+decision: `src/lib/review.ts:22` (`isCountableMeeting`), `src/lib/home.ts:209`
+(the `counts.meetings` figure -- distinct from `timedItems`, now fixed, in the
+same file), and `src/components/planner/planner-shell.tsx:192` and `:206` (the
+day and week capacity-line meeting counts).
+
+None of these four has the scheduler's or the timeline's functional
+consequence -- they are counts and summaries, not placement or rendering
+decisions, so nothing is silently misplaced or hidden. But left as-is they can
+disagree with each other: the weekly review counting a meeting the day view
+has already excluded, say. Worth one focused pass that migrates all four
+together, rather than fixing some now and the rest later, which would only
+trade one inconsistency for another.
+
+## `seriesId` backfill gap: older rows read as one-off meetings for a while after deploy
+
+Task 1's helper only threads `seriesId` through the fixed -30/+60 day sync
+window it has always covered. A row already in the database from before this
+deploy, outside that window but still inside the audit's 90-day (or shorter,
+per retention) lookback, keeps whatever `seriesId` it already had -- `null`,
+since the column did not exist until Task 2's migration.
+
+The practical effect is on `/meetings/audit`: those older rows group as their
+own one-off "series" (`auditSeries` keys a null `seriesId` on the event's own
+id) rather than joining the recurring series they actually belong to, so a
+recurring meeting can show as several separate single-occurrence rows for a
+while. This is self-healing, not a standing bug: a row already outside the
+helper's -30/+60 day sync window at deploy time never gets re-synced (that is
+exactly what makes it "outside the window"), so it keeps its null `seriesId`
+for the rest of its life -- the gap closes only as those rows age past the
+audit's 90-day (or shorter, per retention) lookback and drop out of the view
+entirely. Rough estimate: fully gone about 60 days after this deploys, since
+that is the outer edge of the affected set at deploy time.
+
+Not fixed now because a real fix means re-deriving series membership from
+event content (title, organizer, recurrence pattern) for old EventKit-sourced
+rows, since EventKit's own external id for an occurrence carries no series
+information on its own -- genuinely harder than a backfill script. (A partial
+backfill is mechanically possible for feed-sourced rows, whose external id is
+`feed:{uid}[:{recurrenceId}]` and so already contains its own series id --
+moot today since no calendar feed is configured on this machine, but worth
+remembering if one ever is, rather than assuming backfill is impossible for
+every source.)
+
+## `decisionNote` has no UI anywhere
+
+The column is fully plumbed end-to-end: it exists on `calendarEvents`
+(migration), survives a calendar refresh instead of being overwritten
+(`replaceCalendarEvents`'s sync-preservation), is written by
+`setMeetingDecision` (both occurrence- and series-scoped, `PATCH
+/api/meetings/[id]/decision` already accepts an optional `note`), and is
+carried on `ActivityMeetingDTO`/`MeetingListDTO` as `decisionNote`. Nothing in
+the app writes or displays it: no text field on `meeting-row.tsx`'s decision
+control or its "just this one or every time" question, nowhere it is rendered
+to read back.
+
+This is design §4's "optional line of why" for a decision -- the reasoning
+behind a Not going or Maybe, kept apart from the calendar itself. Four tasks
+and a whole-branch review built every pipe it needs; none built the faucet.
+Deferred deliberately rather than scope-crept into this fix round: it needs
+real UI thinking (where does the field go on the row, when does it show, does
+it need its own affordance versus living inline with the decision chips) that
+is a small new feature in its own right, not a bug fix.
+
+## A reversed series decision can retroactively change what the audit says about the period it covered
+
+Making a series decision reversible (the whole-branch review's F2) is
+unambiguously the right fix -- before it, declining a whole series was a dead
+end nobody could undo without individually re-accepting every future
+occurrence. But `meetingSeriesDecisions` stores exactly one row per series,
+with one `decidedAt`, and a reversal overwrites that row rather than adding a
+new one (`setMeetingDecision`'s `onConflictDoUpdate` on `seriesId`). The
+audit's `effectiveDecisionAsOf` uses that single `decidedAt` as the boundary
+between "this occurrence is old enough to keep its own history" and "this
+occurrence is governed by the current series decision."
+
+Concretely: decline a weekly series in October, then re-accept it in
+December. The October-to-December occurrences you genuinely skipped now have
+a `startsAt` before the *updated* `decidedAt`, so `effectiveDecisionAsOf`
+falls through to each occurrence's own calendar status rather than the
+declined history -- and since nothing wrote a per-occurrence override during
+the decline (a series-scoped write clears the issuing occurrence's own
+override, and no other occurrence ever had one), those occurrences default
+back to "going" and get counted as attended in the audit's "N of M attended"
+figure, when they were not.
+
+Narrow: it only surfaces after a decline-then-reverse cycle on the same
+series, and any occurrence that separately picked up its own override during
+the declined period is unaffected (its override still wins). Not fixed now
+because the real fix is keeping history on `meetingSeriesDecisions` -- one row
+per decision made, not one row per series -- which is a schema change well
+outside a fix round, not a one-line correction.

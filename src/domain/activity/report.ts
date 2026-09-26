@@ -1,6 +1,7 @@
 import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents, items, type MeetingStatus } from "@/db/schema";
+import { activitySessions, calendarEvents, items, type MeetingStatus, type MeetingDecision } from "@/db/schema";
+import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
 import { dayBounds, isInterview, parseAttendeeNames } from "./calendar";
 
 /** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
@@ -38,6 +39,13 @@ export interface ActivityMeeting {
   status: MeetingStatus;
   calendarTitle: string;
   noRecord: boolean;
+  seriesId: string | null;
+  decision: MeetingDecision;
+  decisionNote: string;
+  /** The series' own standing decision, independent of this occurrence's override — see
+   * `ActivityMeetingDTO.seriesDecision` (`@/lib/dto`) for why `decision` alone can't answer
+   * "is there one to reverse". */
+  seriesDecision: MeetingDecision | null;
 }
 
 export interface ActivityDay {
@@ -50,19 +58,29 @@ export interface ActivityDay {
   meetings: ActivityMeeting[];
 }
 
-function clippedSessions(db: DB, day: string): DaySession[] {
-  const { start, end } = dayBounds(day);
-  const lookback = new Date(Date.parse(start) - CLIP_LOOKBACK_MS).toISOString();
+/**
+ * Sessions overlapping an arbitrary UTC instant range `[from, to)`, clipped to it — a sibling of
+ * `getDay`'s own per-day query, not a copy of it: the boundary is whatever the caller passes,
+ * not a local day's midnight-to-midnight. Reuses the same overlap predicate
+ * (`lt(startedAt, to) && gt(endedAt, from)`) and the same lookback bound `clippedSessions` uses
+ * for a day, which holds just as well here — a session cannot start more than a day plus the
+ * fold gap before it ends, whatever the range's own start is, so bounding the scan by the
+ * range's start rather than by the whole table is still correct, not just fast. Built for the
+ * meeting audit (`domain/meetings/audit.ts`), which needs one occurrence's own start-to-end
+ * window, never a whole day around it.
+ */
+export function activityBetween(db: DB, from: string, to: string): DaySession[] {
+  const lookback = new Date(Date.parse(from) - CLIP_LOOKBACK_MS).toISOString();
   return db
     .select()
     .from(activitySessions)
-    .where(and(lt(activitySessions.startedAt, end), gt(activitySessions.endedAt, start), gte(activitySessions.startedAt, lookback)))
+    .where(and(lt(activitySessions.startedAt, to), gt(activitySessions.endedAt, from), gte(activitySessions.startedAt, lookback)))
     .orderBy(asc(activitySessions.startedAt))
     .all()
     .map((s) => ({
       id: s.id,
-      startedAt: s.startedAt < start ? start : s.startedAt,
-      endedAt: s.endedAt > end ? end : s.endedAt,
+      startedAt: s.startedAt < from ? from : s.startedAt,
+      endedAt: s.endedAt > to ? to : s.endedAt,
       appId: s.appId,
       appName: s.appName,
       title: s.title,
@@ -73,12 +91,39 @@ function clippedSessions(db: DB, day: string): DaySession[] {
     }));
 }
 
+/** A whole local day's sessions, clipped to it — `activityBetween` with a day's own bounds
+ * standing in for the arbitrary range. */
+function clippedSessions(db: DB, day: string): DaySession[] {
+  const { start, end } = dayBounds(day);
+  return activityBetween(db, start, end);
+}
+
 const ms = (s: DaySession) => Date.parse(s.endedAt) - Date.parse(s.startedAt);
 
 function sumBy<K>(rows: DaySession[], key: (s: DaySession) => K): Map<K, number> {
   const m = new Map<K, number>();
   for (const s of rows) m.set(key(s), (m.get(key(s)) ?? 0) + ms(s));
   return m;
+}
+
+/**
+ * The captured item id for each of `eventIds` (an item recorded through some path other than
+ * `itemId` itself, e.g. an ad-hoc recording that only ever wrote `meta.calendarEventId`), in one
+ * grouped query rather than one per event — shared by `getDay` and the meeting audit
+ * (`domain/meetings/audit.ts`), which both need the same "what got captured" answer for a whole
+ * window's worth of events at once.
+ */
+export function capturedItemsFor(db: DB, eventIds: number[]): Map<number, number> {
+  const out = new Map<number, number>();
+  if (eventIds.length === 0) return out;
+  const eventIdExpr = sql<number>`json_extract(${items.meta}, '$.calendarEventId')`;
+  const captured = db
+    .select({ id: items.id, eventId: eventIdExpr })
+    .from(items)
+    .where(inArray(eventIdExpr, eventIds))
+    .all();
+  for (const row of captured) out.set(row.eventId, row.id);
+  return out;
 }
 
 export function getDay(db: DB, day: string): ActivityDay {
@@ -102,16 +147,10 @@ export function getDay(db: DB, day: string): ActivityDay {
     .orderBy(asc(calendarEvents.startsAt))
     .all();
   const eventIds = events.map((ev) => ev.id);
-  const capturedByEvent = new Map<number, number>();
-  if (eventIds.length) {
-    const eventIdExpr = sql<number>`json_extract(${items.meta}, '$.calendarEventId')`;
-    const captured = db
-      .select({ id: items.id, eventId: eventIdExpr })
-      .from(items)
-      .where(inArray(eventIdExpr, eventIds))
-      .all();
-    for (const row of captured) capturedByEvent.set(row.eventId, row.id);
-  }
+  const capturedByEvent = capturedItemsFor(db, eventIds);
+  // One batched series-decision query for the whole day's events, not one per row.
+  const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
+  const decisions = seriesDecisionsFor(db, seriesIds);
   const meetings: ActivityMeeting[] = events.map((ev) => ({
     id: ev.id,
     title: ev.title,
@@ -131,6 +170,10 @@ export function getDay(db: DB, day: string): ActivityDay {
     status: ev.status,
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
+    seriesId: ev.seriesId,
+    decision: effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
+    decisionNote: ev.decisionNote,
+    seriesDecision: ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }

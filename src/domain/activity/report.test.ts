@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { getDay, getWeek, addDays } from "./report";
+import { getDay, getWeek, addDays, activityBetween } from "./report";
 import { ingestHeartbeat } from "./sessions";
 import { replaceCalendarEvents, captureMeeting, dayBounds } from "./calendar";
 import { listCategories } from "./rules";
@@ -66,5 +66,45 @@ describe("activity reports", () => {
     expect(w.days[0].activeMs).toBe(120_000);
     expect(w.days[6].day).toBe("2026-09-20");
     expect(w.days[6].activeMs).toBe(0);
+  });
+});
+
+describe("activityBetween", () => {
+  let t: TestDb;
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  const T0 = Date.parse("2026-09-16T09:00:00.000Z");
+  const at = (s: number) => new Date(T0 + s * 1000).toISOString();
+
+  it("returns sessions overlapping an arbitrary instant range, not bounded to one local day", () => {
+    // A meeting sitting entirely inside a day, nowhere near either midnight boundary.
+    ingestHeartbeat(t.db, { at: at(0), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    ingestHeartbeat(t.db, { at: at(600), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    const sessions = activityBetween(t.db, at(-60), at(1200));
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].appId).toBe("com.microsoft.VSCode");
+  });
+
+  it("clips a session that starts before the range to the range's own start", () => {
+    ingestHeartbeat(t.db, { at: at(-300), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    ingestHeartbeat(t.db, { at: at(300), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    const sessions = activityBetween(t.db, at(0), at(600));
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].startedAt).toBe(at(0));
+    expect(sessions[0].endedAt).toBe(at(300));
+  });
+
+  it("clips a session that ends after the range to the range's own end", () => {
+    // A meeting's window must not have its minutes attributed outside the meeting: a session
+    // that runs on past the meeting's end is clipped there, not counted a second past it.
+    ingestHeartbeat(t.db, { at: at(300), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    ingestHeartbeat(t.db, { at: at(900), appId: "com.microsoft.VSCode", appName: "Code", title: "a", url: null });
+    const sessions = activityBetween(t.db, at(0), at(600));
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].startedAt).toBe(at(300));
+    expect(sessions[0].endedAt).toBe(at(600));
   });
 });

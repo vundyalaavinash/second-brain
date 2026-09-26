@@ -136,7 +136,11 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
   }, []);
 
   const allDay = meetings.filter((m) => m.allDay);
-  const timed = meetings.filter((m) => !m.allDay);
+  // A meeting decided not-going holds no hour here, the same rule the capacity line above this
+  // component and the scheduler already apply (`freeMinutes`, `busySpans`) — `m.decision` is the
+  // effective decision, already resolved and batched once for the whole day by `plannerMeetings`.
+  // A "maybe" still renders: it still holds a claim on the time, at half cost, just not a full one.
+  const timed = meetings.filter((m) => !m.allDay && m.decision !== "not-going");
   // A dropped task keeps its sessions in the database but gives up its place on the column.
   const placed: Placed[] = tasks
     .filter((t) => t.status !== "dropped")
