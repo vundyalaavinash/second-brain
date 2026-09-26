@@ -12,6 +12,11 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/planner/week")).toEqual([{ label: "Planner", href: "/planner" }, { label: "Week" }]);
     expect(crumbsFor("/planner/meetings")).toEqual([{ label: "Planner", href: "/planner" }, { label: "Meetings" }]);
   });
+  // The audit lives outside /planner (a top-level route), but it's only ever reached from the
+  // Meetings view's own link, so the trail names its way back rather than falling through to Home.
+  it("nests the meeting audit under Meetings", () => {
+    expect(crumbsFor("/meetings/audit")).toEqual([{ label: "Meetings", href: "/planner/meetings" }, { label: "Audit" }]);
+  });
   // Only the parent: the page supplies its own title through `<Crumb>`, so a route that
   // contributed an empty tail would leave the bar showing a trailing slash and nothing after it.
   it("nests items and people under their list", () => {
