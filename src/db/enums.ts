@@ -10,6 +10,7 @@ export const JOB_TYPES = [
   "ocr_image",
   "transcribe_final",
   "summarize_meeting",
+  "distill_note",
   "embed",
   "weekly_reflect",
   "backup",

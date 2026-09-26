@@ -11,6 +11,7 @@ import { createOcrImageHandler } from "./ocr-image";
 import { createBackupHandler } from "./backup";
 import { createTranscribeFinalHandler } from "./transcribe-final";
 import { createSummarizeMeetingHandler } from "./summarize-meeting";
+import { createDistillNoteHandler } from "./distill-note";
 
 export interface HandlerDeps {
   db: DB;
@@ -39,6 +40,7 @@ export function createJobHandlers(deps: HandlerDeps): JobHandlers {
       hasChatKey: deps.hasChatKey,
     }),
     summarize_meeting: createSummarizeMeetingHandler({ db: deps.db, provider: deps.chatProvider }),
+    distill_note: createDistillNoteHandler({ db: deps.db }),
     backup: createBackupHandler({ db: deps.db }),
   };
 }

@@ -7,6 +7,7 @@ import { resetRunningJobs, enqueueJob } from "@/jobs/queue";
 import { backupFilePath } from "@/jobs/handlers/backup";
 import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
 import { autoStartTick } from "@/domain/meetings/auto-start";
+import { distillSweepTick } from "@/domain/distill";
 import { reconcileRecordings, stopForShutdown } from "@/domain/meetings/reconcile";
 import { hasChatKey } from "@/providers/chat";
 import { syncCalendarFeed } from "@/domain/activity";
@@ -20,6 +21,7 @@ const g = globalThis as unknown as {
   __sbBackupInterval?: NodeJS.Timeout;
   __sbAutoStartInterval?: NodeJS.Timeout;
   __sbFeedInterval?: NodeJS.Timeout;
+  __sbDistillInterval?: NodeJS.Timeout;
   __sbShutdownHooked?: boolean;
 };
 
@@ -32,6 +34,9 @@ const BACKUP_CHECK_MS = 6 * 60 * 60 * 1000;
 
 /** Half a minute: fine enough to catch a meeting's start inside the two-minute window. */
 const AUTO_START_CHECK_MS = 30 * 1000;
+
+/** Matches `QUIET_MINUTES`: no point checking more often than an item can newly go quiet. */
+const DISTILL_CHECK_MS = 30 * 60_000;
 
 function ensureTodayBackupQueued(db: DB): void {
   if (!fs.existsSync(backupFilePath())) enqueueJob(db, "backup", {});
@@ -136,6 +141,9 @@ export function boot(): JobWorker {
   if (!g.__sbAutoStartInterval) {
     // The tick swallows its own errors; the setting it reads decides whether it does anything.
     g.__sbAutoStartInterval = setInterval(() => void autoStartTick(db, { log: (m) => console.log(`[auto-record] ${m}`) }), AUTO_START_CHECK_MS);
+  }
+  if (!g.__sbDistillInterval) {
+    g.__sbDistillInterval = setInterval(() => distillSweepTick(db), DISTILL_CHECK_MS);
   }
   console.log("[boot] job worker started");
   return worker;
