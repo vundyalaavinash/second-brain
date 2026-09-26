@@ -57,7 +57,7 @@ function Topic({ title, children }: { title: string; children: React.ReactNode }
 
 export default function HelpPage() {
   return (
-    <div className="w-full max-w-[860px] px-6 lg:px-8 pt-8 pb-16 flex flex-col gap-6">
+    <div className="w-full max-w-3xl mx-auto px-6 lg:px-8 pt-8 pb-16 flex flex-col gap-6">
       <PageHeader title="Help" meta="What everything does, and how to get around without the mouse." />
 
       <section className="pane p-4 flex flex-col gap-3">
