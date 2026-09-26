@@ -355,3 +355,27 @@ picks this up: normalize `startsAt` to a UTC instant on ingest, or compare via
 sites. Left as a follow-up rather than fixed alongside F-B/priority-2 because
 it is not the thing that regressed -- it predates this slice's own review
 rounds and was reviewed (unnoticed) at least twice already.
+
+## Declining a series from one occurrence doesn't protect an already-started sibling
+
+`setMeetingDecision`'s fix for the second final whole-branch review's
+priority-2/6 (commit `221383b`) makes an already-started occurrence carry its
+own explicit override the moment a series decision is issued *from that
+occurrence itself*, so capacity, the scheduler, and Home all agree on it.
+
+That guarantee is scoped to the occurrence the decision was issued from. If
+two occurrences of the same series are in progress or straddled by the
+current moment at once, and the decision is made from one of them, the
+*other* already-started occurrence keeps no override -- it still splits the
+same way the fixed case used to: `effectiveDecisionAsOf` (capacity, Home)
+refuses to apply the series decision to it, since `decidedAt` falls after its
+`startsAt`, while plain `effectiveDecision` (the scheduler, auto-recording)
+applies the series decision unconditionally and disagrees with the row.
+
+Reachable in practice only when a series has two occurrences overlapping or
+close enough together that both are "in progress" at the same instant by this
+app's own definition -- narrower and rarer than the case `221383b` closed,
+which needed only one such occurrence. Left as a follow-up rather than folded
+into that fix: closing it properly means deciding what "in progress" should
+mean for every sibling of a series at once, not just the one someone is
+looking at, which is a real design question rather than a one-line change.

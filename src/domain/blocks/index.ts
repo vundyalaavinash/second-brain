@@ -194,12 +194,18 @@ export function clearBlocks(db: DB, taskId: number, date?: string): number {
  * `effectiveDecision`, not `effectiveDecisionAsOf`, and this is *not* because a day still being
  * planned has no past occurrence to protect — it can, once a meeting already under way is being
  * scheduled around, and an earlier version of this comment claimed otherwise (second final
- * whole-branch review, priority 2/6). It is safe here specifically because `setMeetingDecision`
- * guarantees an already-started occurrence always carries its own explicit `decision` override the
- * moment a series decision is made on it, rather than falling through to the series at all — so
- * `effectiveDecision` and `effectiveDecisionAsOf` read the identical value for it regardless of
- * `decidedAt`. Plain `effectiveDecision` is used here only because it needs no series-decidedAt
- * data to reach that same answer, not because the two functions could otherwise disagree.
+ * whole-branch review, priority 2/6). `setMeetingDecision` guarantees an already-started
+ * occurrence always carries its own explicit `decision` override the moment a series decision is
+ * made *from that occurrence itself* — so for the row someone actually declined from,
+ * `effectiveDecision` and `effectiveDecisionAsOf` agree regardless of `decidedAt`, which is what
+ * this file relies on. That guarantee does not reach a *sibling* occurrence of the same series
+ * that is also already under way but was not itself decided from: if the decision was made from a
+ * different, not-yet-started occurrence instead, an under-way sibling keeps no override, and the
+ * two resolvers can still disagree on it exactly as they did before this fix (recorded in
+ * `docs/superpowers/follow-ups.md`, not fixed here — narrower and rarer than the case this fix
+ * closed, since it needs two occurrences of the same series in progress or straddled by `now` at
+ * once). Plain `effectiveDecision` is used here because it needs no series-decidedAt data at all,
+ * not because the two functions are guaranteed to agree in every case.
  */
 function busySpans(db: DB, date: string): Span[] {
   const events = listMeetings(db, { from: date, to: addDays(date, 1) });

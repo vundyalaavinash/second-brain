@@ -129,6 +129,12 @@ describe("getDay resolves a series decision as of the occurrence, not as of now"
   const past = new Date(Date.now() - 10 * DAY_MS);
   const future = new Date(Date.now() + 10 * DAY_MS);
   const halfHourAfter = (d: Date) => new Date(d.getTime() + 30 * 60_000).toISOString();
+  // Pinned to local noon of `past`'s own day rather than offset from `past` itself: `past` inherits
+  // whatever time-of-day the test happens to run at, and a fixed offset from it can cross into the
+  // next local day within the last half hour of any day, dropping `untouched-occ` out of the very
+  // day `getDay` below queries. Noon is never within half an hour of midnight either direction.
+  const untouchedStart = new Date(Date.parse(dayBounds(localDay(past.toISOString())).start) + 12 * 3600_000).toISOString();
+  const untouchedEnd = new Date(Date.parse(untouchedStart) + 30 * 60_000).toISOString();
 
   // `untouched-occ` is a second occurrence on the same day and series that the series write below
   // is never issued from -- the actual case F-B's `decidedAt` scoping protects. `past-occ`, the
@@ -139,7 +145,7 @@ describe("getDay resolves a series decision as of the occurrence, not as of now"
   function declineTheSeries(t: TestDb) {
     replaceCalendarEvents(t.db, [
       { externalId: "past-occ", title: "Weekly sync", startsAt: past.toISOString(), endsAt: halfHourAfter(past), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
-      { externalId: "untouched-occ", title: "Weekly sync", startsAt: halfHourAfter(past), endsAt: halfHourAfter(new Date(past.getTime() + 30 * 60_000)), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
+      { externalId: "untouched-occ", title: "Weekly sync", startsAt: untouchedStart, endsAt: untouchedEnd, attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
       { externalId: "future-occ", title: "Weekly sync", startsAt: future.toISOString(), endsAt: halfHourAfter(future), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
     ]);
     const issuedFrom = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "past-occ")).get()!;
@@ -155,7 +161,7 @@ describe("getDay resolves a series decision as of the occurrence, not as of now"
 
   it("leaves an untouched past day's meeting showing the decision that was actually in force when it happened", () => {
     declineTheSeries(t);
-    const meeting = getDay(t.db, localDay(past.toISOString())).meetings.find((m) => m.startsAt === halfHourAfter(past))!;
+    const meeting = getDay(t.db, localDay(past.toISOString())).meetings.find((m) => m.startsAt === untouchedStart)!;
     // The hour was genuinely sat through, under no decision at all -- the default. Before the fix
     // this read "not-going", dimming and hiding an hour that already happened.
     expect(meeting.decision).toBe("going");
