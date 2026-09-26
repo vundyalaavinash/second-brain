@@ -2,23 +2,8 @@ import { eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, itemPeople, people } from "@/db/schema";
 import type { ContainerRef } from "@/domain/goals";
+import { shareWord, significantWords } from "@/lib/significant-words";
 import { listContainers } from "./index";
-
-/** A title word shorter than this is too common to say two things are related — the same
- * threshold `likeThisMinutesByTask` (`@/domain/focus`) already draws the line at, for the same
- * reason: matching on "the" or "for" would turn nearly every pair into a "match". */
-const MIN_WORD_LENGTH = 4;
-
-/** A name or title's words, lowercased and long enough to matter, deduplicated. */
-function significantWords(text: string): Set<string> {
-  const words = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  return new Set(words.filter((w) => w.length >= MIN_WORD_LENGTH));
-}
-
-function shareWord(a: Set<string>, b: Set<string>): boolean {
-  for (const w of a) if (b.has(w)) return true;
-  return false;
-}
 
 /** What a meeting brings to the match — nothing more than its own title and who was on it. */
 export interface MeetingSignal {

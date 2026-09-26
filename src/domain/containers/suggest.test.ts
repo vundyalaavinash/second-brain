@@ -59,4 +59,20 @@ describe("suggestContainer", () => {
     expect(spy).toHaveBeenCalledTimes(2);
     expect(out.every((s) => s?.id === project.id)).toBe(true);
   });
+
+  it("keeps each meeting's own answer at its own index in a mixed batch, matches and nulls interleaved", () => {
+    // Guards the positional return array (`suggestContainersFor`) and `plannerMeetings`'s own
+    // `uncontained.map((m, i) => [m.id, suggestions[i]])` against an index-alignment bug that a
+    // batch of uniform matches (the batching test above) can't catch (review F8).
+    const project = createContainer(t.db, { kind: "project", name: "Website Redesign" });
+    const area = createContainer(t.db, { kind: "area", name: "Health" });
+    const meetings = [
+      { title: "Website standup", attendeeNames: [] },
+      { title: "Nothing matches here", attendeeNames: ["Someone Else"] },
+      { title: "Health checkup", attendeeNames: [] },
+      { title: "Also nothing at all", attendeeNames: [] },
+    ];
+    const out = suggestContainersFor(t.db, meetings);
+    expect(out.map((s) => s?.id ?? null)).toEqual([project.id, null, area.id, null]);
+  });
 });

@@ -13,10 +13,11 @@ import { openMeeting } from "./open-meeting";
 import { useRecorder } from "./use-recorder";
 import { CalendarFeed } from "./calendar-feed";
 
-/** `?container=<id>` on this same route, read here rather than through a dedicated route —
- * the meetings view already reads its own filters (search, decision) as component state rather
- * than a route per state, so a project scope follows that same shape instead of inventing a
- * `/planner/meetings/c/[id]` route this app has no other example of. */
+/** `?container=<id>` on this same `/planner/meetings` route, not a dedicated
+ * `/planner/meetings/c/[id]` one — the Planner is already a route per *view* (`/planner`,
+ * `/planner/week`, `/planner/meetings`), with a query param for scope *within* a view (`?date=`
+ * on the day route, `?start=` on the week route); a project scope is that same kind of sub-state
+ * on the meetings route, not a fourth view. */
 function useContainerFilter(): number | null {
   const raw = useSearchParams().get("container");
   const n = raw === null ? NaN : Number(raw);
@@ -117,7 +118,10 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
 
   // A project scope, when one is given, narrows the whole window down before search or the
   // decision filter ever see it -- the same list every other control here already works from,
-  // rather than a second, parallel path.
+  // rather than a second, parallel path. `meetings` itself is already effectively unbounded in
+  // this case (the page widens `from`/`to` to all time whenever `?container=` is present, review
+  // F2), so "no meetings" below can only mean none were ever filed here -- never a false claim
+  // about a window this view no longer has.
   const scoped = containerFilter === null ? meetings : meetings.filter((m) => m.item?.containerId === containerFilter);
   const q = query.trim().toLowerCase();
   const searched = q ? scoped.filter((m) => matches(m, q)) : scoped;
@@ -219,14 +223,18 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     if (!m.suggestedContainer || dismissedSuggestions.has(m.id)) return null;
     const suggestion = m.suggestedContainer;
     return (
-      <li key={`${m.id}-suggestion`} className="hairline-row flex items-center gap-2 flex-wrap px-3 py-1.5 pl-[calc(6rem+0.75rem)] text-[12px] text-fg-muted">
+      <li
+        key={`${m.id}-suggestion`}
+        aria-label={`Suggested project or area for ${m.title}`}
+        className="hairline-row flex items-center gap-2 flex-wrap px-3 py-1.5 pl-[calc(6rem+0.75rem)] text-[12px] text-fg-muted"
+      >
         <span>
           Looks like <span className="text-fg">{suggestion.name}</span>?
         </span>
-        <Button size="sm" variant="ghost" onClick={() => acceptSuggestion(m)} className="shrink-0">
+        <Button size="sm" variant="ghost" onClick={() => acceptSuggestion(m)} aria-label={`File ${m.title} there`} className="shrink-0">
           File it there
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => dismissSuggestion(m.id)} className="shrink-0">
+        <Button size="sm" variant="ghost" onClick={() => dismissSuggestion(m.id)} aria-label={`Not this one for ${m.title}`} className="shrink-0">
           Not this one
         </Button>
       </li>
@@ -286,7 +294,9 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
     <div className="flex flex-col gap-4">
       {containerFilter !== null && (
         <div className="flex items-center gap-2 text-[12.5px] text-fg-muted">
-          <span>Showing only meetings filed to this project.</span>
+          {/* "This project" would lie for an area's meetings -- `MeetingsSection` renders for
+            * both kinds (review F1), and this view has no way to know which one it is. */}
+          <span>Showing only meetings filed here.</span>
           <Link href="/planner/meetings" className="focus-ring text-violet-bright hover:underline rounded-sm">
             Show all meetings
           </Link>
@@ -419,10 +429,14 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           {upcoming.map((g) => group(g.label, g.meetings))}
 
           <details className="pane p-2">
-            <summary className="micro px-1 cursor-pointer focus-ring rounded-sm">Past 30 days</summary>
+            {/* "Past 30 days" is only true of the normal window; a `?container=` filter widens
+              * the underlying fetch to all time (review F2), so this group can hold meetings well
+              * older than that here, and the heading says so rather than naming a window that no
+              * longer applies. */}
+            <summary className="micro px-1 cursor-pointer focus-ring rounded-sm">{containerFilter !== null ? "Earlier" : "Past 30 days"}</summary>
             <div className="flex flex-col gap-2 pt-2">
               {past.length === 0 ? (
-                <p className="text-[13px] text-fg-faint m-0 px-1">Nothing in the past 30 days</p>
+                <p className="text-[13px] text-fg-faint m-0 px-1">{containerFilter !== null ? "Nothing earlier" : "Nothing in the past 30 days"}</p>
               ) : (
                 past.map((g) => (
                   <div key={g.key} className="flex flex-col gap-1">

@@ -8,6 +8,7 @@ import { getSetting, setSetting } from "@/domain/settings";
 import { addDays, dayBounds, localDay } from "@/domain/activity";
 import { getDay, topApps } from "@/domain/activity/report";
 import { DRIFT_WINDOW, type Pair } from "@/lib/drift";
+import { shareWord, significantWords } from "@/lib/significant-words";
 
 export class FocusError extends Error {
   constructor(
@@ -267,21 +268,9 @@ export const LIKE_THIS_MIN_MATCHES = 3;
 /** How many of a container's newest matches feed the median — recent work says more about what
  * a task takes now than one finished a year ago. */
 const LIKE_THIS_LIMIT = 20;
-/** A title word shorter than this — "the", "fix", "for" — is too common to mean two tasks are
- * alike; matching on it would turn nearly every pair in a container into a "similar" one. */
-const LIKE_THIS_MIN_WORD_LENGTH = 4;
-
-/** A title's words, lowercased and long enough to matter, deduplicated — the set two titles are
- * compared through. */
-function significantWords(title: string): Set<string> {
-  const words = title.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  return new Set(words.filter((w) => w.length >= LIKE_THIS_MIN_WORD_LENGTH));
-}
-
-function shareWord(a: Set<string>, b: Set<string>): boolean {
-  for (const w of a) if (b.has(w)) return true;
-  return false;
-}
+// `significantWords`/`shareWord` (the four-letter-or-more shared-word rule) now live in
+// `@/lib/significant-words`, shared with `@/domain/containers/suggest` (review F4) rather than
+// copied here.
 
 /** The middle of a sorted list of minutes — one runaway session says something about that task,
  * not about the next one shaped like it. */

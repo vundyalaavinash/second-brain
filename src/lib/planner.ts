@@ -179,19 +179,30 @@ export function hasUserNotes(body: string): boolean {
   return lines.slice(actionsAt + 1).some((l) => l.trim().length > 0 && !EMPTY_ACTION.test(l.trim()));
 }
 
+/**
+ * The four `MeetingItemDTO` flags an already-fetched item row carries — read here, off the row
+ * alone, rather than in `itemFlags` and `containerMeetings` each building their own copy: a
+ * future change to what "has notes" means would otherwise have to be made twice, and could
+ * silently drift between the Planner and the project page (review F5). Pure: no query of its
+ * own, so a caller looping this over a list still costs nothing beyond the rows it already has.
+ */
+function meetingItemFlags(row: Item): MeetingItemDTO {
+  const meta = parseMeta(row);
+  return {
+    id: row.id,
+    hasNotes: hasUserNotes(row.body),
+    hasTranscript: !!meta.transcript,
+    hasSummary: !!meta.summary,
+    containerId: row.containerId,
+  };
+}
+
 /** What each linked meeting item already holds, so rows can badge without loading items. */
 function itemFlags(db: DB, ids: number[]): Map<number, MeetingItemDTO> {
   const flags = new Map<number, MeetingItemDTO>();
   if (ids.length === 0) return flags;
   for (const row of db.select().from(items).where(inArray(items.id, ids)).all()) {
-    const meta = parseMeta(row);
-    flags.set(row.id, {
-      id: row.id,
-      hasNotes: hasUserNotes(row.body),
-      hasTranscript: !!meta.transcript,
-      hasSummary: !!meta.summary,
-      containerId: row.containerId,
-    });
+    flags.set(row.id, meetingItemFlags(row));
   }
   return flags;
 }
@@ -236,13 +247,10 @@ export function containerMeetings(db: DB, meetingItems: Item[]): ContainerMeetin
     meetingItems.map((i) => i.id),
   );
   return meetingItems
-    .map((i) => {
-      const meta = parseMeta(i);
-      return {
-        title: i.title,
-        startsAt: times.get(i.id)?.startsAt ?? null,
-        item: { id: i.id, hasNotes: hasUserNotes(i.body), hasTranscript: !!meta.transcript, hasSummary: !!meta.summary, containerId: i.containerId },
-      };
-    })
+    .map((i) => ({
+      title: i.title,
+      startsAt: times.get(i.id)?.startsAt ?? null,
+      item: meetingItemFlags(i),
+    }))
     .sort((a, b) => (b.startsAt ?? "").localeCompare(a.startsAt ?? ""));
 }

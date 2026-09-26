@@ -415,18 +415,18 @@ describe("MeetingsView", () => {
     it("offers a suggestion on an uncontained meeting, an offer only, never a write on its own", () => {
       render(<MeetingsView today={TODAY} meetings={[suggested]} />);
       expect(screen.getByText("Q3 Platform")).toBeTruthy();
-      expect(screen.getByRole("button", { name: "File it there" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "File Kickoff there" })).toBeTruthy();
     });
 
     it("shows nothing for a meeting with no suggestion", () => {
       render(<MeetingsView today={TODAY} meetings={[MEETINGS[0]]} />);
-      expect(screen.queryByRole("button", { name: "File it there" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "File Kickoff there" })).toBeNull();
     });
 
     it("accepting files the meeting's own item through the existing item PATCH, the only write this offer ever makes", async () => {
       const fetchMock = stubItemPatch();
       render(<MeetingsView today={TODAY} meetings={[suggested]} />);
-      fireEvent.click(screen.getByRole("button", { name: "File it there" }));
+      fireEvent.click(screen.getByRole("button", { name: "File Kickoff there" }));
       await waitFor(() => {
         const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/items/30" && (init as RequestInit)?.method === "PATCH");
         expect(call).toBeTruthy();
@@ -437,7 +437,7 @@ describe("MeetingsView", () => {
     it("dismissing drops the offer for this session, without writing anything", () => {
       const fetchMock = stubItemPatch();
       render(<MeetingsView today={TODAY} meetings={[suggested]} />);
-      fireEvent.click(screen.getByRole("button", { name: "Not this one" }));
+      fireEvent.click(screen.getByRole("button", { name: "Not this one for Kickoff" }));
       expect(screen.queryByText("Q3 Platform")).toBeNull();
       expect(fetchMock.mock.calls.some(([url]) => /\/api\/items\/\d+$/.test(String(url)))).toBe(false);
     });
@@ -461,11 +461,13 @@ describe("MeetingsView", () => {
       item: { id: 32, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: 9 },
     });
 
-    it("shows only meetings filed to the project the ?container= param names", () => {
+    it("shows only meetings filed to the container the ?container= param names, with neutral copy that never assumes a project (review F3)", () => {
       nav.params = new URLSearchParams("container=5");
       render(<MeetingsView today={TODAY} meetings={[filed, filedElsewhere]} />);
       expect(screen.getByText("Roadmap review")).toBeTruthy();
       expect(screen.queryByText("Other project sync")).toBeNull();
+      // "this project" would lie for an area's meetings -- MeetingsSection renders for both kinds.
+      expect(screen.getByText("Showing only meetings filed here.")).toBeTruthy();
       expect(screen.getByText("Show all meetings")).toBeTruthy();
     });
 

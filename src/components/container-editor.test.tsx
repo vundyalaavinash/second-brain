@@ -4,7 +4,7 @@ import { render, act, cleanup, fireEvent, within } from "@testing-library/react"
 import type { Editor } from "@tiptap/core";
 import { useRouter } from "next/navigation";
 import { ContainerEditor } from "./container-editor";
-import type { ContainerDTO, ContainerMeetingDTO } from "@/lib/dto";
+import type { ContainerDTO, ContainerMeetingDTO, ItemDTO } from "@/lib/dto";
 
 // A single stable router object (not a fresh one per call) so tests can grab `replace` etc. up
 // front via `useRouter()` and assert on the same spy instances the component used.
@@ -246,6 +246,38 @@ describe("ContainerEditor with RichEditor", () => {
     expect((patches[0] as { name: string }).name).toBe("Wellness");
     expect(replace).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("a meeting filed to a resource (review F1)", () => {
+  const resource: ContainerDTO = { ...container, id: 9, kind: "resource", name: "Reference", slug: "reference", category: "other" };
+  const meetingItem: ItemDTO = {
+    id: 50,
+    type: "meeting",
+    title: "Ad hoc call",
+    body: "",
+    status: "ready",
+    error: null,
+    sourceUrl: null,
+    filePath: null,
+    mimeType: null,
+    extractedText: "",
+    meta: {},
+    tags: [],
+    journalDate: null,
+    reviewWeek: null,
+    containerId: 9,
+    container: null,
+    archivedAt: null,
+    pinned: false,
+    people: [],
+    createdAt: "2026-09-16T00:00:00.000Z",
+    updatedAt: "2026-09-16T00:00:00.000Z",
+  };
+
+  it("still lists it in the generic bucket, since MeetingsSection never renders for a resource", () => {
+    const { getByRole } = render(<ContainerEditor initial={resource} items={[meetingItem]} tasks={[]} today="2026-09-16" />);
+    expect(getByRole("link", { name: "Ad hoc call" })).toBeTruthy();
   });
 });
 

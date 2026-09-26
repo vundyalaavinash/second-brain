@@ -289,10 +289,13 @@ export function ContainerEditor({
 
   const links = items.filter((i) => i.type === "link");
   const notes = items.filter((i) => i.type === "note");
-  // Meetings get their own section below, drawn from `meetings` rather than `items`: they
-  // carry a date and badges the generic bucket has no room for. Filtered out here so a meeting
-  // never shows twice.
-  const others = items.filter((i) => i.type !== "link" && i.type !== "note" && i.type !== "meeting");
+  // `MeetingsSection` only renders below for a project or area (resources have no Tasks column
+  // to sit under either) — a meeting filed to a resource is reachable via the Move picker like
+  // any other container, and excluding it here regardless of kind would strand it nowhere on its
+  // own container page (review F1). So the generic bucket only lets a meeting go elsewhere when
+  // something is actually showing it elsewhere.
+  const hasMeetingsSection = c.kind === "project" || c.kind === "area";
+  const others = items.filter((i) => i.type !== "link" && i.type !== "note" && !(hasMeetingsSection && i.type === "meeting"));
 
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-4">
