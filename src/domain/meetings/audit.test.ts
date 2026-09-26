@@ -104,17 +104,32 @@ describe("auditSeries", () => {
       },
     ]);
     // The person actually showed up (no override needed -- "going" is the default); this already
-    // happened before any decision about the series existed.
+    // happened before any decision about the series existed. The write below is issued directly
+    // from this occurrence, so `setMeetingDecision` gives it its own matching override rather than
+    // clearing it (second final whole-branch review, priority 2/6) -- the row someone actually
+    // declined from must show that decision, not silently revert to "going".
     setMeetingDecision(t.db, eventBy(t, "retro-past").id, { decision: "not-going", scope: "series" });
-    // A later occurrence, timestamped after the write above -- the series decision should govern
-    // this one, since it happens (or "happens", for `auditSeries`'s own not-yet-started filter --
-    // it must be in the past relative to the `now` passed below) after the decision was made.
+    // A third occurrence, timestamped before the write too but never itself decided on -- the
+    // actual case `decidedAt` scoping protects: real past attendance that the series decision must
+    // not reach back and rewrite. And a later occurrence, timestamped after the write -- the
+    // series decision should govern this one, since it happens (or "happens", for `auditSeries`'s
+    // own not-yet-started filter -- it must be in the past relative to the `now` passed below)
+    // after the decision was made.
     replaceCalendarEvents(t.db, [
       {
         externalId: "retro-past",
         title: "Retro sync",
         startsAt: iso(-10 * DAY_MS),
         endsAt: iso(-10 * DAY_MS + 30 * 60_000),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:retro",
+      },
+      {
+        externalId: "retro-untouched",
+        title: "Retro sync",
+        startsAt: iso(-9 * DAY_MS),
+        endsAt: iso(-9 * DAY_MS + 30 * 60_000),
         attendees: 3,
         hasCallLink: true,
         seriesId: "eventkit:retro",
@@ -134,9 +149,12 @@ describe("auditSeries", () => {
     const now = new Date(realNow + 2 * 60 * 60_000); // after retro-future has "started"
     const audits = auditSeries(t.db, { since, now });
     const retro = audits.find((a) => a.seriesId === "eventkit:retro")!;
-    expect(retro.occurrences).toBe(2);
-    // If the bug were still present, this would read 0: the series decision would apply
-    // retroactively to the occurrence that already happened before it was ever made.
+    expect(retro.occurrences).toBe(3);
+    // retro-past (declined from directly) and retro-future (after decidedAt) both correctly read
+    // not-going; only retro-untouched, never itself decided on, keeps its real "going" attendance.
+    // If the bug the untouched occurrence protects against were still present, this would read 0:
+    // the series decision would apply retroactively to an occurrence that already happened before
+    // it was ever made.
     expect(retro.attendedCount).toBe(1);
   });
 
@@ -379,15 +397,18 @@ describe("weeklyMeetingShare", () => {
     const wat = (s: number) => new Date(S + s * 1000).toISOString();
     replaceCalendarEvents(t.db, [
       { externalId: "retro-week", title: "Standup", startsAt: wat(0), endsAt: wat(3600), attendees: 2, hasCallLink: true, seriesId: "eventkit:retro-week" },
+      { externalId: "retro-week-untouched", title: "Standup", startsAt: wat(7200), endsAt: wat(10800), attendees: 2, hasCallLink: true, seriesId: "eventkit:retro-week" },
     ]);
-    // The person actually attended (default "going", no per-occurrence override) -- this hour
-    // already happened, long before the decision below is made.
+    // `retro-week` is the occurrence the write below is issued from directly, so it now correctly
+    // reflects the decline (second final whole-branch review, priority 2/6) and no longer counts.
+    // `retro-week-untouched`, never itself decided on, is the actual case `decidedAt` scoping
+    // protects: real elapsed minutes the series decision must not reach back and zero out.
     setMeetingDecision(t.db, eventBy(t, "retro-week").id, { decision: "not-going", scope: "series" });
 
     const share = weeklyMeetingShare(t.db, week);
-    // If the bug were still present (plain `effectiveDecision`, with no `decidedAt` scoping) this
-    // would read 0: the series decision would apply retroactively to an hour that already
-    // happened before it was ever made.
+    // If the bug the untouched occurrence protects against were still present (plain
+    // `effectiveDecision`, with no `decidedAt` scoping) this would read 0: the series decision
+    // would apply retroactively to an hour that already happened before it was ever made.
     expect(share.minutes).toBe(60);
   });
 });

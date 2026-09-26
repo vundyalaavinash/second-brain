@@ -129,16 +129,42 @@ describe("setMeetingDecision / seriesDecisionsFor", () => {
 
   // Finding 2: an occurrence override outranks a series decision (effectiveDecision's own
   // ordering), so a series write that leaves a stale override in place on the row it was issued
-  // from would make "every time" visibly do nothing to that very meeting.
-  it("a series-scoped write clears the occurrence override on the row it was issued from", () => {
+  // from would make "every time" visibly do nothing to that very meeting. The event fixture's
+  // `startsAt` (T0) is a fixed date well in the past, so this exercises the already-started case:
+  // the row is given its own matching override rather than cleared, because effectiveDecisionAsOf
+  // (every backward-looking reader) would otherwise refuse to apply a series decision whose
+  // decidedAt is after an occurrence's own startsAt -- clearing would make the row silently
+  // resolve back to "going" for the rest of that day everywhere capacity, the scheduler and Home
+  // read it, even though the series was genuinely declined (second final review, priority 2/6).
+  it("a series-scoped write on an already-started occurrence writes its own matching override, not a clear", () => {
     const ev = event("a", "eventkit:series-1");
+    setMeetingDecision(t.db, ev.id, { decision: "maybe", note: "checking", scope: "occurrence" });
+    setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "series" });
+    const updated = t.db.select().from(calendarEvents).where(eq(calendarEvents.id, ev.id)).get()!;
+    expect(updated.decision).toBe("not-going");
+    expect(updated.decisionNote).toBe("");
+    const seriesDecision = seriesDecisionsFor(t.db, ["eventkit:series-1"]).get("eventkit:series-1") ?? null;
+    expect(effectiveDecision(updated, seriesDecision)).toBe("not-going");
+    const details = seriesDecisionDetailsFor(t.db, ["eventkit:series-1"]).get("eventkit:series-1") ?? null;
+    expect(effectiveDecisionAsOf(updated, details)).toBe("not-going");
+  });
+
+  // A not-yet-started occurrence has no such risk -- effectiveDecisionAsOf will always apply a
+  // series decision made before it starts -- so it keeps the original clear, which is what lets a
+  // later series reversal ("Going, every time") reach a fresh future occurrence with no override
+  // of its own, exercised by the test above this block.
+  it("a series-scoped write on a not-yet-started occurrence still clears its override", () => {
+    const start = new Date(Date.now() + 3600_000).toISOString();
+    const end = new Date(Date.now() + 5400_000).toISOString();
+    replaceCalendarEvents(t.db, [
+      { externalId: "a", title: "Weekly sync", startsAt: start, endsAt: end, attendees: 4, hasCallLink: false, seriesId: "eventkit:series-1" },
+    ]);
+    const ev = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "a")).get()!;
     setMeetingDecision(t.db, ev.id, { decision: "maybe", note: "checking", scope: "occurrence" });
     setMeetingDecision(t.db, ev.id, { decision: "not-going", scope: "series" });
     const updated = t.db.select().from(calendarEvents).where(eq(calendarEvents.id, ev.id)).get()!;
     expect(updated.decision).toBeNull();
     expect(updated.decisionNote).toBe("");
-    const seriesDecision = seriesDecisionsFor(t.db, ["eventkit:series-1"]).get("eventkit:series-1") ?? null;
-    expect(effectiveDecision(updated, seriesDecision)).toBe("not-going");
   });
 
   it("a series-scoped write does not touch a sibling occurrence's own override", () => {

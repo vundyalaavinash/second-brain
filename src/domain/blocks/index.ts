@@ -191,8 +191,15 @@ export function clearBlocks(db: DB, taskId: number, date?: string): number {
  * meeting's own, and `freeSlots` merges them — the same "an overlapping maybe adds nothing over
  * time already fully spoken for" rule `freeMinutes` reaches through `outsideCover`.
  *
- * `effectiveDecision`, not `effectiveDecisionAsOf`: this is a forward-looking read, always about a
- * day still being planned, so there is no past occurrence here to protect.
+ * `effectiveDecision`, not `effectiveDecisionAsOf`, and this is *not* because a day still being
+ * planned has no past occurrence to protect — it can, once a meeting already under way is being
+ * scheduled around, and an earlier version of this comment claimed otherwise (second final
+ * whole-branch review, priority 2/6). It is safe here specifically because `setMeetingDecision`
+ * guarantees an already-started occurrence always carries its own explicit `decision` override the
+ * moment a series decision is made on it, rather than falling through to the series at all — so
+ * `effectiveDecision` and `effectiveDecisionAsOf` read the identical value for it regardless of
+ * `decidedAt`. Plain `effectiveDecision` is used here only because it needs no series-decidedAt
+ * data to reach that same answer, not because the two functions could otherwise disagree.
  */
 function busySpans(db: DB, date: string): Span[] {
   const events = listMeetings(db, { from: date, to: addDays(date, 1) });

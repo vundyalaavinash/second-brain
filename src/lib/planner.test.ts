@@ -410,6 +410,12 @@ describe("plannerMeetings resolves a series decision as of the occurrence, not a
     return { from: addDays(day, -1), to: addDays(day, 2) };
   };
 
+  // `untouched-past` is a second occurrence in the same window and series that the series write
+  // below is never issued from -- the actual case F-B's `decidedAt` scoping protects. `past-occ`,
+  // the occurrence someone would genuinely be looking at when choosing "every time", is issued
+  // from directly, so `setMeetingDecision` writes its own matching override rather than clearing
+  // it (second final whole-branch review, priority 2/6) -- clearing would make the click resolve
+  // back to "going" for the very row that prompted it, which was the actual bug.
   function declineTheSeries() {
     replaceCalendarEvents(t.db, [
       {
@@ -417,6 +423,15 @@ describe("plannerMeetings resolves a series decision as of the occurrence, not a
         title: "Weekly sync",
         startsAt: past.toISOString(),
         endsAt: new Date(past.getTime() + 30 * 60_000).toISOString(),
+        attendees: 3,
+        hasCallLink: true,
+        seriesId: "eventkit:weekly",
+      },
+      {
+        externalId: "untouched-past",
+        title: "Weekly sync",
+        startsAt: new Date(past.getTime() + 3600_000).toISOString(),
+        endsAt: new Date(past.getTime() + 5400_000).toISOString(),
         attendees: 3,
         hasCallLink: true,
         seriesId: "eventkit:weekly",
@@ -435,9 +450,16 @@ describe("plannerMeetings resolves a series decision as of the occurrence, not a
     setMeetingDecision(t.db, issuedFrom.id, { decision: "not-going", scope: "series" });
   }
 
-  it("leaves a past occurrence showing the decision that was actually in force when it happened", () => {
+  it("writes the decision straight onto the past occurrence someone actually declined from", () => {
     declineTheSeries();
-    const [m] = plannerMeetings(t.db, window(past));
+    const m = plannerMeetings(t.db, window(past)).find((x) => x.title === "Weekly sync" && x.startsAt === past.toISOString())!;
+    expect(m.decision).toBe("not-going");
+    expect(m.seriesDecision).toBe("not-going");
+  });
+
+  it("leaves an untouched past occurrence showing the decision that was actually in force when it happened", () => {
+    declineTheSeries();
+    const m = plannerMeetings(t.db, window(past)).find((x) => x.startsAt === new Date(past.getTime() + 3600_000).toISOString())!;
     expect(m.decision).toBe("going");
     // The standing series decision is still reported: the row needs to know one exists at all,
     // which is what makes it reversible -- it just does not govern an hour already sat through.

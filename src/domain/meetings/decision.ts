@@ -57,11 +57,25 @@ export function effectiveDecisionAsOf(
  * with no `seriesId` on the event has no series to apply to and is refused rather than silently
  * becoming an occurrence write it was never asked to be.
  *
- * A series write also clears the occurrence override on the row it was issued from — the one the
- * person was actually looking at when they chose "every time" — because `effectiveDecision` ranks
- * an occurrence override above its series' decision, so leaving a stale one in place would make
- * "Not going → Every time" visibly do nothing to the very row that prompted it. This never touches
- * any *other* occurrence's own override: those are separate decisions the person made on purpose.
+ * A series write resolves the occurrence override on the row it was issued from one of two ways,
+ * depending on whether that occurrence has already begun:
+ *
+ * - **Not yet started:** the override is cleared. `effectiveDecisionAsOf` will always apply a
+ *   series decision made before an occurrence starts, so a fresh read already gets the new
+ *   decision; clearing (rather than writing a duplicate override) is what lets a *later* series
+ *   reversal ("Going, every time") reach this same row automatically, the same as any other
+ *   occurrence with no override of its own.
+ * - **Already begun (or past):** the override is written to match the series decision instead of
+ *   cleared. `effectiveDecisionAsOf` only applies a series decision to occurrences whose `startsAt`
+ *   is at or after the moment the decision was made — an already-started occurrence's `startsAt`
+ *   necessarily precedes `decidedAt`, so clearing its override the way a future occurrence's is
+ *   cleared would make the series decision fail to reach the very row that prompted it, resolving
+ *   back to "going" for the rest of that occurrence everywhere capacity, the scheduler and Home
+ *   read it (second final whole-branch review, priority 2/6 — a regression introduced by
+ *   `effectiveDecisionAsOf` itself, since plain `effectiveDecision` has no such time gate).
+ *
+ * Neither branch ever touches any *other* occurrence's own override: those are separate decisions
+ * the person made on purpose.
  *
  * `patch.note` is only ever applied when the caller actually sent one — an omitted `note` leaves
  * whatever is already stored alone rather than blanking it, so a future caller that only ever
@@ -78,9 +92,12 @@ export function setMeetingDecision(
     if (!ev.seriesId) throw new MeetingError("This meeting has no series to apply a decision to", 400);
     const existing = db.select().from(meetingSeriesDecisions).where(eq(meetingSeriesDecisions.seriesId, ev.seriesId)).get();
     const note = patch.note ?? existing?.note ?? "";
-    const values = { seriesId: ev.seriesId, decision: patch.decision, note, decidedAt: new Date().toISOString() };
+    const decidedAt = new Date().toISOString();
+    const values = { seriesId: ev.seriesId, decision: patch.decision, note, decidedAt };
     db.insert(meetingSeriesDecisions).values(values).onConflictDoUpdate({ target: meetingSeriesDecisions.seriesId, set: values }).run();
-    db.update(calendarEvents).set({ decision: null, decisionNote: "" }).where(eq(calendarEvents.id, eventId)).run();
+    const alreadyStarted = Date.parse(ev.startsAt) <= Date.parse(decidedAt);
+    const occurrencePatch = alreadyStarted ? { decision: patch.decision, decisionNote: "" } : { decision: null, decisionNote: "" };
+    db.update(calendarEvents).set(occurrencePatch).where(eq(calendarEvents.id, eventId)).run();
     return;
   }
   const set: { decision: MeetingDecision; decisionNote?: string } = { decision: patch.decision };

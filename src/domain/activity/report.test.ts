@@ -130,18 +130,32 @@ describe("getDay resolves a series decision as of the occurrence, not as of now"
   const future = new Date(Date.now() + 10 * DAY_MS);
   const halfHourAfter = (d: Date) => new Date(d.getTime() + 30 * 60_000).toISOString();
 
+  // `untouched-occ` is a second occurrence on the same day and series that the series write below
+  // is never issued from -- the actual case F-B's `decidedAt` scoping protects. `past-occ`, the
+  // occurrence someone would genuinely be looking at when choosing "every time", is issued from
+  // directly, so `setMeetingDecision` writes its own matching override rather than clearing it
+  // (second final whole-branch review, priority 2/6) -- clearing would make the click resolve back
+  // to "going" for the very row that prompted it, which was the actual bug.
   function declineTheSeries(t: TestDb) {
     replaceCalendarEvents(t.db, [
       { externalId: "past-occ", title: "Weekly sync", startsAt: past.toISOString(), endsAt: halfHourAfter(past), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
+      { externalId: "untouched-occ", title: "Weekly sync", startsAt: halfHourAfter(past), endsAt: halfHourAfter(new Date(past.getTime() + 30 * 60_000)), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
       { externalId: "future-occ", title: "Weekly sync", startsAt: future.toISOString(), endsAt: halfHourAfter(future), attendees: 3, hasCallLink: true, seriesId: "eventkit:weekly" },
     ]);
     const issuedFrom = t.db.select().from(calendarEvents).where(eq(calendarEvents.externalId, "past-occ")).get()!;
     setMeetingDecision(t.db, issuedFrom.id, { decision: "not-going", scope: "series" });
   }
 
-  it("leaves a past day's meeting showing the decision that was actually in force when it happened", () => {
+  it("writes the decision straight onto the past occurrence someone actually declined from", () => {
     declineTheSeries(t);
-    const [meeting] = getDay(t.db, localDay(past.toISOString())).meetings;
+    const meeting = getDay(t.db, localDay(past.toISOString())).meetings.find((m) => m.startsAt === past.toISOString())!;
+    expect(meeting.decision).toBe("not-going");
+    expect(meeting.seriesDecision).toBe("not-going");
+  });
+
+  it("leaves an untouched past day's meeting showing the decision that was actually in force when it happened", () => {
+    declineTheSeries(t);
+    const meeting = getDay(t.db, localDay(past.toISOString())).meetings.find((m) => m.startsAt === halfHourAfter(past))!;
     // The hour was genuinely sat through, under no decision at all -- the default. Before the fix
     // this read "not-going", dimming and hiding an hour that already happened.
     expect(meeting.decision).toBe("going");
