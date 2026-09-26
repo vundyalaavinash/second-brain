@@ -104,3 +104,56 @@ of a problem" reading the rest of the safety design already gives an unset
 value. Worth doing when the status line next changes shape: surface
 `computedAt` in the DTO and word the line as "as of last night" rather than
 letting the present tense imply something it does not measure live.
+
+## The feed source has the same RSVP bug the EventKit side just fixed, and it may not be fully fixable
+
+`src/domain/activity/feed.ts`'s `statusOf` reads `X-MICROSOFT-CDO-BUSYSTATUS` --
+whether the *block on the calendar* is busy, tentative or free -- and maps
+that onto `MeetingStatus`. It can never produce `"declined"` at all: a
+meeting the person declined in Outlook, synced through a published ICS feed,
+shows as `"accepted"` if Outlook still marks the block busy, or `"none"`
+otherwise -- and `"none" !== "declined"`, so it still counts against
+capacity, still appears in the day, and would still be eligible for
+auto-recording.
+
+Checked before writing this: no calendar feed URL is configured on this
+machine right now, so the bug is currently dormant rather than live. It
+matters the moment a feed is set up, which was the whole point of the
+calendar-feed work from an earlier session -- Outlook's own EventKit access
+only ever saw a holidays calendar, and a published feed was the workaround.
+
+**Why this is not a small fix like the EventKit side was.** Two real
+obstacles, not just more code:
+
+1. A calendar published via "Publish a Calendar to Web" (the feature behind
+   a webcal/ICS subscription link) generally does not include `ATTENDEE`
+   lines with `PARTSTAT` at all, at any of Outlook's detail levels --
+   attendee and RSVP data is treated as more sensitive than busy/free and
+   free-text details, and is typically stripped before publishing. This is
+   a property of the data Outlook actually publishes, not something this
+   app's parser is failing to read. It needs confirming against a real
+   feed once one exists, but should not be assumed fixable by more careful
+   `ical.js` reads alone.
+2. Even if `PARTSTAT` were present, there is no concept anywhere in this app
+   of "which attendee is me" -- no stored email or identity setting exists
+   to match against an `ATTENDEE` line. EventKit's fix could ask for
+   `isCurrentUser` because the local Calendar app already knows which
+   account is the person's own; a bare subscribed feed has no equivalent.
+   Building this properly means adding a real identity setting first, not
+   only a parser change.
+
+**The practical mitigation already exists, elsewhere in this same slice.**
+Task 2 of `docs/superpowers/plans/2026-09-26-meetings-worth-being-in.md`
+adds a local decision (going / not-going / maybe) that is independent of
+whatever the calendar says and survives every refresh -- exactly because
+the calendar, and especially a read-only feed, may simply not carry a
+reliable RSVP. Once that ships, a feed-sourced meeting the person wants to
+skip can be marked "not going" by hand, correctly excluded from capacity
+and auto-recording, with no dependency on `PARTSTAT` ever arriving. That
+does not fix `statusOf`'s misreading, but it removes most of the practical
+cost of leaving it unfixed for now.
+
+Worth revisiting once: (a) a feed is actually configured, so the real ICS
+can be inspected rather than guessed about, and (b) if the app ever gains a
+stored identity setting for another reason, which would make the fix
+genuinely possible rather than merely plausible.
