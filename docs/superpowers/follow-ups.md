@@ -157,3 +157,19 @@ Worth revisiting once: (a) a feed is actually configured, so the real ICS
 can be inspected rather than guessed about, and (b) if the app ever gains a
 stored identity setting for another reason, which would make the fix
 genuinely possible rather than merely plausible.
+
+## The local meeting decision is not authoritative everywhere yet
+
+Task 2's review found the new local decision (going/maybe/not-going) is
+correctly authoritative in `capacity.ts` and, after this fix round, in the
+scheduler's busy-span calculation (`src/domain/blocks/index.ts`). It is still
+read as raw calendar `status` in four other places: `src/lib/review.ts:22`,
+`src/lib/home.ts:58` and `:200`, and `src/components/planner/planner-shell.tsx:192`
+and `:206`.
+
+None of these has the scheduler's functional consequence -- they are counts
+and summaries, not placement decisions, so nothing is silently misplaced. But
+left as-is they can disagree with each other: the weekly review counting a
+meeting the day view has already excluded, say. Worth one focused pass that
+migrates all four together, rather than fixing three now and two later, which
+would only trade one inconsistency for another.
