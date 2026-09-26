@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, lte, count, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { items, tags, itemTags, chunks, type Item, type Chunk, type ItemType, type ItemStatus } from "@/db/schema";
 import { nowIso } from "@/lib/time";
@@ -58,6 +58,8 @@ export interface ListItemsFilter {
   onlyArchived?: boolean;
   /** Filter to pinned (true) or unpinned (false) items. Omit for either. */
   pinned?: boolean;
+  /** Only items with a kept distillation (`meta.distillation.status === "kept"`). Omit for either. */
+  distilled?: boolean;
   /**
    * What "first" means. The default is creation order, newest first, which is how every
    * existing caller reads a list; "updated" asks for the last touched instead, which is what
@@ -146,6 +148,7 @@ export function listItems(db: DB, filter: ListItemsFilter = {}): Item[] {
   if (filter.onlyArchived) conds.push(isNotNull(items.archivedAt));
   else if (!filter.includeArchived) conds.push(isNull(items.archivedAt));
   if (filter.pinned !== undefined) conds.push(eq(items.pinned, filter.pinned ? 1 : 0));
+  if (filter.distilled) conds.push(sql`json_extract(${items.meta}, '$.distillation.status') = 'kept'`);
   const by = filter.orderBy === "updated" ? items.updatedAt : items.createdAt;
   const order = filter.containerId !== undefined ? [desc(items.pinned), desc(by), desc(items.id)] : [desc(by), desc(items.id)];
   return db

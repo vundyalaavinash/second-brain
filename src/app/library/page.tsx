@@ -2,15 +2,16 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { getDb } from "@/db/client";
 import { ITEM_STATUSES, ITEM_TYPES, type ItemStatus, type ItemType } from "@/db/enums";
-import { listItems, listTagNames } from "@/domain/items";
+import { listItems, listTagNames, parseMeta } from "@/domain/items";
 import { listContainers } from "@/domain/containers";
+import type { Distillation } from "@/domain/distill";
 import { TypeIcon, StatusDot, TYPE_LABEL, KIND_LABEL } from "@/components/type-icon";
 import { relativeTime, titleCase } from "@/lib/format";
 import { Button, Chip, EmptyState, Input, List, PageHeader, Row, Select } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-type SP = { type?: string; status?: string; tag?: string; from?: string; to?: string; container?: string; archived?: string };
+type SP = { type?: string; status?: string; tag?: string; from?: string; to?: string; container?: string; archived?: string; distilled?: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -40,8 +41,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const to = isDate(sp.to) ? sp.to : undefined;
   const containerId = parseContainer(sp.container);
   const archived = sp.archived === "1";
+  const distilled = sp.distilled === "1";
   const db = getDb();
-  const items = listItems(db, { type, status, tag, from, to, containerId, includeArchived: archived, limit: 200 });
+  const items = listItems(db, { type, status, tag, from, to, containerId, includeArchived: archived, distilled, limit: 200 });
   const tags = listTagNames(db);
   const containers = listContainers(db, { status: "active" });
 
@@ -71,6 +73,10 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             {titleCase(s)}
           </Chip>
         ))}
+        <span className="w-px h-4 bg-hairline mx-1" />
+        <Chip href={href({ distilled: sp.distilled === "1" ? undefined : "1" })} active={sp.distilled === "1"}>
+          Distilled
+        </Chip>
       </div>
 
       {tags.length > 0 && (
@@ -87,6 +93,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         {type && <input type="hidden" name="type" value={type} />}
         {status && <input type="hidden" name="status" value={status} />}
         {tag && <input type="hidden" name="tag" value={tag} />}
+        {distilled && <input type="hidden" name="distilled" value="1" />}
         <div className="w-56">
           <Select name="container" defaultValue={sp.container ?? ""} size="sm" className="w-full">
             <option value="">Any home</option>
@@ -126,17 +133,23 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <EmptyState icon={Search} text="Nothing here yet." />
       ) : (
         <List>
-          {items.map((item) => (
-            <Row key={item.id}>
-              <span className="font-mono text-[11px] text-fg-faint w-8">#{item.id}</span>
-              <TypeIcon type={item.type} />
-              <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
-                {item.title}
-              </Link>
-              <StatusDot status={item.status} error={item.error} />
-              <span className="font-mono text-[11px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
-            </Row>
-          ))}
+          {items.map((item) => {
+            // `meta` is already in hand on every row `listItems` returns -- no second query per
+            // row to know whether it carries a kept distillation (spec §6's Library badge).
+            const isDistilled = parseMeta<{ distillation?: Distillation }>(item).distillation?.status === "kept";
+            return (
+              <Row key={item.id}>
+                <span className="font-mono text-[11px] text-fg-faint w-8">#{item.id}</span>
+                <TypeIcon type={item.type} />
+                <Link href={`/items/${item.id}`} className="flex-1 truncate text-[13.5px] hover:text-violet-bright">
+                  {item.title}
+                </Link>
+                {isDistilled && <Chip as="span">Distilled</Chip>}
+                <StatusDot status={item.status} error={item.error} />
+                <span className="font-mono text-[11px] text-fg-faint w-16 text-right">{relativeTime(item.createdAt)}</span>
+              </Row>
+            );
+          })}
         </List>
       )}
     </div>

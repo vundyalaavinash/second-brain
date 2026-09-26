@@ -19,10 +19,12 @@ import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type Go
 import { FocusError, focusMinutesByTask, likeThisMinutesByTask } from "@/domain/focus";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
+import type { Distillation } from "@/domain/distill";
 import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO, FocusRunDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
+  const meta = parseMeta<Record<string, unknown> & { distillation?: Distillation }>(item);
   return {
     id: item.id,
     type: item.type,
@@ -34,7 +36,8 @@ export function serializeItem(db: DB, item: Item): ItemDTO {
     filePath: item.filePath,
     mimeType: item.mimeType,
     extractedText: item.extractedText,
-    meta: parseMeta(item),
+    meta,
+    distillation: meta.distillation,
     tags: getItemTags(db, item.id),
     journalDate: item.journalDate,
     reviewWeek: item.reviewWeek,

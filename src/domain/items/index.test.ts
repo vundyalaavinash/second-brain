@@ -189,6 +189,18 @@ describe("items domain", () => {
     expect(listItems(t.db, { types: ["file"] }).map((i) => i.id)).toEqual([file.id]);
   });
 
+  it("distilled filters to items with a kept distillation, not pending or dismissed ones", () => {
+    const kept = createItem(t.db, { type: "note", title: "kept" });
+    const pending = createItem(t.db, { type: "note", title: "pending" });
+    const dismissed = createItem(t.db, { type: "note", title: "dismissed" });
+    createItem(t.db, { type: "note", title: "none" });
+    mergeItemMeta(t.db, kept.id, { distillation: { gist: "g", quotes: ["a", "b"], generatedAt: "now", status: "kept" } });
+    mergeItemMeta(t.db, pending.id, { distillation: { gist: "g", quotes: ["a", "b"], generatedAt: "now", status: "pending" } });
+    mergeItemMeta(t.db, dismissed.id, { distillation: { gist: "g", quotes: ["a", "b"], generatedAt: "now", status: "dismissed" } });
+
+    expect(listItems(t.db, { distilled: true }).map((i) => i.id)).toEqual([kept.id]);
+  });
+
   it("orders pinned items first within a container, then falls back to newest first", () => {
     const now = new Date().toISOString();
     t.db.$client

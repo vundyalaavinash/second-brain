@@ -132,4 +132,35 @@ describe("ItemEditor with RichEditor", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
+
+  it("shows a pending distillation's offer and PATCHes the distillation route, not the item's own, on Keep", async () => {
+    const withDistillation: ItemDTO = {
+      ...item,
+      distillation: { gist: "A short paragraph.", quotes: ["First quote"], generatedAt: "now", status: "pending" },
+    };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (init?.method === "PATCH") {
+          return new Response(JSON.stringify({ ...withDistillation, distillation: { ...withDistillation.distillation, status: "kept" } }), { status: 200 });
+        }
+        return new Response(JSON.stringify(withDistillation), { status: 200 });
+      }),
+    );
+    render(<ItemEditor initial={withDistillation} />);
+    expect(screen.getByText("A short paragraph.")).toBeTruthy();
+    expect(screen.getByText("First quote")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /keep/i }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const patch = calls.find((c) => c.init?.method === "PATCH");
+    expect(patch?.url).toBe(`/api/items/${item.id}/distillation`);
+    expect(JSON.parse(String(patch?.init?.body))).toEqual({ status: "kept" });
+    vi.unstubAllGlobals();
+  });
 });

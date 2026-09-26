@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/format";
 import { Button, Chip, IconButton } from "./ui";
 import { TypeIcon, StatusDot, TYPE_LABEL, KIND_ICON } from "./type-icon";
 import { ContainerPicker } from "./container-picker";
+import { DistillationOffer } from "./distillation-offer";
 import { PeoplePicker } from "./people-picker";
 import { Crumb } from "./shell/crumb";
 import { ItemRail } from "./document/item-rail";
@@ -166,6 +167,28 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
     }
   }
 
+  /** The offer's keep/dismiss, the same shape as `patchMeta` above -- a PATCH, then `setItem`
+   * from whatever comes back -- just against the distillation route instead of the item's own. */
+  async function decideDistillation(status: "kept" | "dismissed") {
+    setActionError(null);
+    try {
+      await enqueue(async () => {
+        const res = await fetch(`/api/items/${initial.id}/distillation`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (!res.ok) {
+          setActionError(await readError(res));
+          return;
+        }
+        setItem((await res.json()) as ItemDTO);
+      });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function retry() {
     const res = await fetch(`/api/items/${initial.id}/retry`, { method: "POST" });
     if (!res.ok) {
@@ -298,6 +321,16 @@ export function ItemEditor({ initial, onEditorReady }: { initial: ItemDTO; onEdi
         </MetadataStrip>
 
         <hr className="border-hairline my-4" />
+
+        {item.distillation && item.distillation.status !== "dismissed" && (
+          <div className="mb-6">
+            <DistillationOffer
+              distillation={item.distillation}
+              onKeep={() => void decideDistillation("kept")}
+              onDismiss={() => void decideDistillation("dismissed")}
+            />
+          </div>
+        )}
 
         {(item.sourceUrl || item.filePath || meta.site_name || meta.byline || meta.page_count !== undefined) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-muted mb-6">

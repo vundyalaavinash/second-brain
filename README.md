@@ -72,6 +72,12 @@ The interface is a carbon workspace: a floating dock, a breadcrumb bar, a contex
 
 Notes use a block editor. Type `/` for blocks, markdown shortcuts work as you type, and you can paste or drop images into an item's note — containers and people have nowhere to store an image, so use a note there instead. Callouts are `> [!note]`, `> [!tip]`, and `> [!warning]` blockquotes. Footnotes are not supported; the editor escapes their brackets. Everything is stored as markdown, so search and backups see plain text.
 
+### Distill
+
+A background sweep checks every note, link, and file for one that has gone quiet — untouched for 30 minutes — and long enough to be worth reading twice. When it finds one, it pulls a handful of sentences straight out of the item's own text, verifies each is genuinely present rather than paraphrased, and — only once enough real quotes survive — asks a small local model to rewrite exactly those quotes as one short paragraph, the gist. Nothing is sent anywhere: the model is a single `.gguf` file `scripts/brain.sh setup` downloads, and Distill does nothing at all until that file exists.
+
+The gist and its source quotes show up as an offer at the top of the item, never touching the item's own text — **Keep** marks the distillation permanent, and **Not useful** dismisses it for good. Either way it never runs again for that item: once decided, an item is never re-offered. A kept distillation earns a "Distilled" badge on its row in the Library, and the **Distilled** chip there filters to exactly those items — a shortcut back to whatever you've already judged worth keeping.
+
 ## Activity tracking
 
 A Swift helper (`helper/activity`, installed by `scripts/brain.sh setup` as the launch agent `com.second-brain.activity`) samples the frontmost app every 5 seconds and posts heartbeats to the local server. It records: the frontmost app and its window title, the browser URL for Chrome, Arc, Brave, Edge, and Safari, away time once you have been idle for 3 minutes, and calendar events for today and tomorrow.

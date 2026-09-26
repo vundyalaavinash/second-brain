@@ -1,5 +1,6 @@
 import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep, MeetingDecision } from "@/db/enums";
 import type { CheckResult } from "@/db/safety";
+import type { Distillation } from "@/domain/distill";
 
 export interface ContainerRefDTO {
   id: number;
@@ -36,6 +37,9 @@ export interface ItemDTO {
   people: PersonRefDTO[];
   createdAt: string;
   updatedAt: string;
+  /** The item's own pending offer, or its kept/dismissed history -- undefined when the sweep
+   * hasn't offered one yet (never re-offered once decided; `@/domain/distill`). */
+  distillation?: Distillation;
 }
 
 export interface PinnedLinkDTO {
