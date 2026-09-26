@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { HomeDTO } from "@/lib/dto";
-import { PlanPane } from "../planner/plan-pane";
 import { TopBand } from "./top-band";
 import { NowNext } from "./now-next";
 import { ProjectCards } from "./project-cards";
@@ -99,20 +98,22 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
         onWorkingDays={saveWorkingDays}
       />
 
-      {/* Two columns from 1100 px, the left wider. Below that they stack in source order, so a
-        * phone reads the band, then what is on now, then the plan — and the right column last. */}
+      <div className="flex flex-col gap-2">
+        <NowNext day={data.day} today={data.today} now={data.now} next={data.next} focus={data.focus} />
+        <div className="flex justify-end">
+          <Link href="/planner" className="focus-ring rounded-sm text-[12px] text-fg-muted hover:text-fg transition-colors duration-150">
+            Open the Planner
+          </Link>
+        </div>
+      </div>
+
+      {/* Two columns from 1100 px. Below that they stack in source order, so a phone reads the
+        * band, then what is on now, then projects, then what has recently moved. */}
       <div className="grid grid-cols-1 min-[1100px]:grid-cols-[5fr_4fr] gap-6 items-start">
-        <div className="flex flex-col gap-4 min-w-0">
-          <NowNext day={data.day} today={data.today} now={data.now} next={data.next} focus={data.focus} />
-          <PlanPane day={data.day} today={data.today} onRefresh={refresh} hideRitual label="Today's plan" />
-          <div className="flex justify-end">
-            <Link href="/planner" className="focus-ring rounded-sm text-[12px] text-fg-muted hover:text-fg transition-colors duration-150">
-              Open the Planner
-            </Link>
-          </div>
+        <div className="min-w-0">
+          <ProjectCards projects={data.projects} today={data.today} />
         </div>
         <div className="flex flex-col gap-6 min-w-0">
-          <ProjectCards projects={data.projects} today={data.today} />
           <RecentList recent={data.recent} now={Date.parse(data.generatedAt)} />
           <ActivityLine activity={data.activity} />
         </div>

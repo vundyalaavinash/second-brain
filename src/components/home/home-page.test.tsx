@@ -82,22 +82,21 @@ describe("HomePage", () => {
     stubHome(payload);
     render(<HomePage initial={payload()} />);
     expect(screen.getByRole("link", { name: "1 planned" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "Write the brief" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Add a task for today" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Launch" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Kickoff notes" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Activity" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open the Planner" }).getAttribute("href")).toBe("/planner");
   });
 
-  it("keeps the morning ritual on the Planner", async () => {
+  it("leaves the morning ritual to the Planner entirely", async () => {
     stubHome(payload);
     // A day with nothing planned and something carried over is exactly the morning the
-    // Planner would walk through; Home shows the plan and leaves the walk where it belongs.
+    // Planner would walk through; Home no longer embeds any of that walk, only the door to it.
     render(<HomePage initial={payload({ day: { ...payload().day, plan: [], unfinishedYesterday: [planTask(3, "Yesterday's thing")] } })} />);
     await settle(20);
     expect(screen.queryByRole("list", { name: "Plan the day" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Carry over" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Carry over" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open the Planner" }).getAttribute("href")).toBe("/planner");
   });
 
   it("reads Home back once when two changes land in the same interaction", async () => {
