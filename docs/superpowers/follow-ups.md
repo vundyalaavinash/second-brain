@@ -199,18 +199,23 @@ The practical effect is on `/meetings/audit`: those older rows group as their
 own one-off "series" (`auditSeries` keys a null `seriesId` on the event's own
 id) rather than joining the recurring series they actually belong to, so a
 recurring meeting can show as several separate single-occurrence rows for a
-while. This is self-healing, not a standing bug: as each affected row ages
-past the helper's own -30/+60 day window and gets re-synced with a real
-`seriesId`, or ages out of the audit/retention window entirely, the gap
-shrinks on its own. Rough estimate: fully gone about 60 days after this
-deploys, since that is the outer edge of the sync window that repopulates
-`seriesId`.
+while. This is self-healing, not a standing bug: a row already outside the
+helper's -30/+60 day sync window at deploy time never gets re-synced (that is
+exactly what makes it "outside the window"), so it keeps its null `seriesId`
+for the rest of its life -- the gap closes only as those rows age past the
+audit's 90-day (or shorter, per retention) lookback and drop out of the view
+entirely. Rough estimate: fully gone about 60 days after this deploys, since
+that is the outer edge of the affected set at deploy time.
 
-Not fixed now because a real fix means re-deriving series membership for old
-EventKit-sourced rows from event content (title, organizer, recurrence
-pattern) rather than reading a stable identifier, since EventKit's own
-external id for an occurrence carries no series information on its own --
-genuinely harder than a backfill script, and the gap closes itself regardless.
+Not fixed now because a real fix means re-deriving series membership from
+event content (title, organizer, recurrence pattern) for old EventKit-sourced
+rows, since EventKit's own external id for an occurrence carries no series
+information on its own -- genuinely harder than a backfill script. (A partial
+backfill is mechanically possible for feed-sourced rows, whose external id is
+`feed:{uid}[:{recurrenceId}]` and so already contains its own series id --
+moot today since no calendar feed is configured on this machine, but worth
+remembering if one ever is, rather than assuming backfill is impossible for
+every source.)
 
 ## `decisionNote` has no UI anywhere
 
@@ -231,3 +236,32 @@ Deferred deliberately rather than scope-crept into this fix round: it needs
 real UI thinking (where does the field go on the row, when does it show, does
 it need its own affordance versus living inline with the decision chips) that
 is a small new feature in its own right, not a bug fix.
+
+## A reversed series decision can retroactively change what the audit says about the period it covered
+
+Making a series decision reversible (the whole-branch review's F2) is
+unambiguously the right fix -- before it, declining a whole series was a dead
+end nobody could undo without individually re-accepting every future
+occurrence. But `meetingSeriesDecisions` stores exactly one row per series,
+with one `decidedAt`, and a reversal overwrites that row rather than adding a
+new one (`setMeetingDecision`'s `onConflictDoUpdate` on `seriesId`). The
+audit's `effectiveDecisionAsOf` uses that single `decidedAt` as the boundary
+between "this occurrence is old enough to keep its own history" and "this
+occurrence is governed by the current series decision."
+
+Concretely: decline a weekly series in October, then re-accept it in
+December. The October-to-December occurrences you genuinely skipped now have
+a `startsAt` before the *updated* `decidedAt`, so `effectiveDecisionAsOf`
+falls through to each occurrence's own calendar status rather than the
+declined history -- and since nothing wrote a per-occurrence override during
+the decline (a series-scoped write clears the issuing occurrence's own
+override, and no other occurrence ever had one), those occurrences default
+back to "going" and get counted as attended in the audit's "N of M attended"
+figure, when they were not.
+
+Narrow: it only surfaces after a decline-then-reverse cycle on the same
+series, and any occurrence that separately picked up its own override during
+the declined period is unaffected (its override still wins). Not fixed now
+because the real fix is keeping history on `meetingSeriesDecisions` -- one row
+per decision made, not one row per series -- which is a schema change well
+outside a fix round, not a one-line correction.
