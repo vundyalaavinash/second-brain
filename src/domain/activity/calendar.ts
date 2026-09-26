@@ -23,9 +23,7 @@ export interface CalendarEventInput {
   /** `eventkit:{calendarItemIdentifier}` or `feed:{uid}` — the same value across every occurrence
    * of a recurring series, and a harmless "series of one" for a non-recurring event. Prefixed per
    * source so the two unrelated id spaces can never collide once something groups by this value
-   * across sources. Accepted here so both ingestion paths can start sending it now;
-   * `calendar_events` has no column for it yet (that lands with the grouping feature that
-   * consumes it), so `replaceCalendarEvents` takes it but does not persist it below. */
+   * across sources. Persisted by `replaceCalendarEvents` below, refreshed every sync like `title`. */
   seriesId?: string;
 }
 
@@ -87,10 +85,9 @@ export function replaceCalendarEvents(
     for (const e of events) {
       if (Date.parse(e.endsAt) <= Date.parse(e.startsAt)) continue;
       const joinUrl = e.joinUrl ?? joinUrlFrom(e.location, e.notes);
-      // item_id and no_record are ours, not the calendar's: they stay off the upsert so a refresh keeps them.
-      // e.seriesId is calendar-owned like title below, so it belongs in this upsert once
-      // calendar_events grows the column to hold it; today it is only threaded through the input
-      // type so both ingestion paths can already send it.
+      // item_id, no_record, decision and decision_note are ours, not the calendar's: they stay
+      // off the upsert so a refresh keeps them. e.seriesId is calendar-owned like title, so it
+      // belongs inside the upsert and is refreshed every sync.
       const values = {
         externalId: e.externalId,
         title: e.title.trim() || "Untitled event",
@@ -107,6 +104,7 @@ export function replaceCalendarEvents(
         allDay: e.allDay ? 1 : 0,
         status: e.status ?? "none",
         calendarTitle: e.calendarTitle ?? "",
+        seriesId: e.seriesId ?? null,
         source,
       };
       tx.insert(calendarEvents).values(values).onConflictDoUpdate({ target: calendarEvents.externalId, set: values }).run();

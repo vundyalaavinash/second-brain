@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import type { MeetingListDTO, MeetingSettingsDTO } from "@/lib/dto";
+import type { MeetingDecision } from "@/db/enums";
 import { formatDayHeading, todayLocal } from "../activity/format";
 import { Button, Chip, IconButton, Input, List } from "../ui";
 import { MeetingRow } from "./meeting-row";
@@ -55,6 +56,10 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   // The switches and the feed link live behind one control; with no meetings at all the panel
   // opens on its own, since connecting a calendar is then the only thing to do here.
   const [settingsOpen, setSettingsOpen] = useState(meetings.length === 0);
+  // Off by default: a meeting decided not-going stays in the record forever (nothing here ever
+  // deletes or archives it), but the default view has nothing to do with it -- this only ever
+  // hides it from this list, and re-accepting is one click away on the row itself.
+  const [showDeclined, setShowDeclined] = useState(false);
   const recorder = useRecorder();
 
   useEffect(() => {
@@ -75,7 +80,8 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
   }, []);
 
   const q = query.trim().toLowerCase();
-  const shown = q ? meetings.filter((m) => matches(m, q)) : meetings;
+  const searched = q ? meetings.filter((m) => matches(m, q)) : meetings;
+  const shown = showDeclined ? searched : searched.filter((m) => m.decision !== "not-going");
   const todays = shown.filter((m) => dayOf(m.startsAt) === today);
   const upcoming = groupByDay(shown.filter((m) => dayOf(m.startsAt) > today));
   const past = groupByDay(shown.filter((m) => dayOf(m.startsAt) < today)).reverse();
@@ -102,6 +108,28 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
       setError(null);
       onRefresh?.();
     })();
+  }
+
+  /** Writes a decision -- a local fact this app keeps for itself, never a message to the
+   * calendar server (design §1.1). */
+  function setDecision(id: number, decision: MeetingDecision, scope: "occurrence" | "series") {
+    void (async () => {
+      const res = await fetch(`/api/meetings/${id}/decision`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ decision, scope }) });
+      if (!res.ok) {
+        setError("Could not save that change");
+        return;
+      }
+      setError(null);
+      onRefresh?.();
+    })();
+  }
+
+  /** The only outward action a decision ever takes: opening Calendar so the person can tell the
+   * organiser themselves, by hand. Nothing here sends anything on their behalf. */
+  function openCalendar() {
+    void fetch("/api/meetings/open-calendar", { method: "POST" }).catch(() => {
+      /* the app itself is still there to open by hand if the shell call fails */
+    });
   }
 
   /** Moves the switch under the hand straight away; the answer is what it settles on. */
@@ -131,6 +159,8 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
             onOpen={() => open(m.id)}
             onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
             onRecord={() => recorder.record({ calendarEventId: m.id })}
+            onDecision={(decision, scope) => setDecision(m.id, decision, scope)}
+            onOpenCalendar={openCalendar}
             blocked={recorder.blocked}
             recordTitle={recorder.title}
           />
@@ -185,6 +215,9 @@ export function MeetingsView({ today, meetings, onRefresh }: Props) {
           aria-controls="calendar-settings"
           onClick={() => setSettingsOpen((v) => !v)}
         />
+        <Chip role="switch" aria-checked={showDeclined} active={showDeclined} onClick={() => setShowDeclined((v) => !v)}>
+          Show declined meetings
+        </Chip>
         {/* A disabled button takes no pointer events, so the reason hangs on a wrapper. */}
         <span title={recorder.title ?? undefined} className="ml-auto">
           <Button size="sm" onClick={() => recorder.record({ adhoc: true })} disabled={!!recorder.blocked} title={recorder.title ?? undefined}>

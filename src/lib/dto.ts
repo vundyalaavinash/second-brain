@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep, MeetingDecision } from "@/db/enums";
 import type { CheckResult } from "@/db/safety";
 
 export interface ContainerRefDTO {
@@ -199,6 +199,22 @@ export interface ActivityMeetingDTO {
   scheduledMs: number; actualMs: number; itemId: number | null;
   organizer: string; attendeeNames: string[]; location: string; joinUrl: string | null; allDay: boolean;
   status: "accepted" | "tentative" | "declined" | "none"; calendarTitle: string; noRecord: boolean;
+  /** Shared by every occurrence of a recurring series, null for a one-off meeting — what a
+   * "just this one, or every time" choice on the row needs to know before it can even ask. */
+  seriesId: string | null;
+  /** The *effective* decision (`effectiveDecision`, `@/domain/meetings/decision`), already
+   * resolved server-side: this occurrence's own override, else its series' decision, else what
+   * `status` implies. Never `"maybe"` unless a person chose it — see `effectiveDecision`. */
+  decision: MeetingDecision;
+  /** This occurrence's own note, alongside its own `decision` — not resolved through the series. */
+  decisionNote: string;
+}
+
+/** The body `PATCH /api/meetings/[id]/decision` takes, and what the row's decision control sends. */
+export interface MeetingDecisionDTO {
+  decision: MeetingDecision;
+  note: string;
+  scope: "occurrence" | "series";
 }
 export interface ActivityDayDTO {
   day: string;

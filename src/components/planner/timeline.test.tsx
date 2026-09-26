@@ -28,6 +28,9 @@ const sync: MeetingListDTO = {
   status: "accepted",
   calendarTitle: "Work",
   noRecord: false,
+  seriesId: null,
+  decision: "going",
+  decisionNote: "",
   item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true },
 };
 

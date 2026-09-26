@@ -11,7 +11,7 @@ import { getReview, nextStep, reviewAnswers, reviewSavedAt, reviewSnapshot, type
 import { containerProgress, listTasks } from "@/domain/tasks";
 import { localDay } from "./time";
 import { nextWeek, weekDays, weekEnd, weekLabel, weekStart } from "./week";
-import { serializeGoal, serializeMeeting, serializePlanTasks, serializeTasks } from "./api";
+import { serializeGoal, serializeMeetings, serializePlanTasks, serializeTasks } from "./api";
 import type { ContainerRefDTO, ReviewDTO } from "./dto";
 
 /** A meeting a person is actually going to be at: not declined, and not all-day — the same rule
@@ -190,7 +190,7 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
       week: ahead,
       due: serializeTasks(db, dueSoon, aheadWindow),
       deadlines,
-      meetings: aheadMeetings.map(serializeMeeting),
+      meetings: serializeMeetings(db, aheadMeetings),
     },
     savedAt,
   };

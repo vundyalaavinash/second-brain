@@ -77,6 +77,9 @@ const EVENT: ActivityMeetingDTO = {
   status: "accepted",
   calendarTitle: "Work",
   noRecord: false,
+  seriesId: null,
+  decision: "going",
+  decisionNote: "",
 };
 
 const IDLE: RecorderStatusDTO = { state: "idle", missing: [] };

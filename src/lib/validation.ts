@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, type ReviewStep } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, MEETING_DECISIONS, type ReviewStep } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -53,6 +53,12 @@ export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.n
 export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();
 
 export const MeetingPatchBody = z.object({ noRecord: z.boolean() }).strict();
+/** `PATCH /api/meetings/[id]/decision` — `note` defaults to "" the same as the column it writes;
+ * `scope: "series"` is rejected downstream (`setMeetingDecision`, 400) when the event has no
+ * `seriesId`, not here, because that is a fact about the row, not about the shape of the body. */
+export const MeetingDecisionBody = z
+  .object({ decision: z.enum(MEETING_DECISIONS), note: z.string().optional(), scope: z.enum(["occurrence", "series"]) })
+  .strict();
 /** `0`-`365` or `null` ("keep forever") -- see `AUDIO_RETENTION_KEY` in `domain/meetings/audio-retention.ts`. */
 export const MeetingSettingsBody = z
   .object({

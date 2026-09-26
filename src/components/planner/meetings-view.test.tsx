@@ -25,6 +25,9 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string; st
     status: "accepted",
     calendarTitle: "Work",
     noRecord: false,
+    seriesId: null,
+    decision: "going",
+    decisionNote: "",
     ...over,
   };
 }
@@ -334,5 +337,34 @@ describe("MeetingsView", () => {
     render(<MeetingsView today={TODAY} meetings={[past, MEETINGS[0]]} />);
     expect(screen.queryByRole("button", { name: "Record Onam" })).toBeNull();
     expect(screen.getAllByLabelText("All day").some((el) => within(el).queryByText("Onam"))).toBe(true);
+  });
+
+  describe("decisions", () => {
+    const declined = meeting({ id: 10, title: "Skipped sync", startsAt: `${TODAY}T13:00:00`, endsAt: `${TODAY}T13:30:00`, decision: "not-going" });
+
+    it("hides a not-going meeting from the default view, but the toggle brings it back -- never deleted, just hidden", () => {
+      stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0], declined]} />);
+      expect(screen.queryByTestId("meeting-title")).toBeTruthy();
+      expect(screen.queryByText("Skipped sync")).toBeNull();
+
+      fireEvent.click(screen.getByRole("switch", { name: "Show declined meetings" }));
+      expect(screen.getByText("Skipped sync")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("switch", { name: "Show declined meetings" }));
+      expect(screen.queryByText("Skipped sync")).toBeNull();
+    });
+
+    it("PATCHes a decision from the row control, local fact only -- never a message to a calendar server", async () => {
+      const fetchMock = stubSettings({ autoRecord: false, autoRecordNeedsCallLink: true });
+      render(<MeetingsView today={TODAY} meetings={[MEETINGS[0]]} />);
+      const row = screen.getByText("Standup").closest("li") as HTMLElement;
+      fireEvent.click(within(row).getByRole("button", { name: "Maybe" }));
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find(([url, init]) => String(url) === "/api/meetings/1/decision" && (init as RequestInit)?.method === "PATCH");
+        expect(call).toBeTruthy();
+        expect(JSON.parse(String(call![1]?.body))).toEqual({ decision: "maybe", scope: "occurrence" });
+      });
+    });
   });
 });

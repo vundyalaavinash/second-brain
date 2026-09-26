@@ -11,14 +11,15 @@ import {
   TASK_STATUSES,
   TASK_PRIORITIES,
   MEETING_STATUSES,
+  MEETING_DECISIONS,
   CALENDAR_SOURCES,
   GOAL_HORIZONS,
   GOAL_STATUSES,
   FOCUS_OUTCOMES,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, CalendarSource, GoalHorizon, GoalStatus, FocusOutcome } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, MEETING_DECISIONS, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, MeetingDecision, CalendarSource, GoalHorizon, GoalStatus, FocusOutcome } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -207,9 +208,31 @@ export const calendarEvents = sqliteTable(
     itemId: integer("item_id").references(() => items.id, { onDelete: "set null" }),
     /** Person-set: do not record this meeting. Kept across calendar refreshes. */
     noRecord: integer("no_record").notNull().default(0),
+    /** `eventkit:{calendarItemIdentifier}` or `feed:{uid}` — shared by every occurrence of a
+     * recurring series, prefixed per source so the two id spaces can never collide. Calendar-owned,
+     * refreshed by every sync like `title`. */
+    seriesId: text("series_id"),
+    /** The person's own call on this occurrence, independent of the calendar's RSVP; null defers
+     * to a series decision, then to `status`. Person-owned: excluded from the sync upsert's `set`. */
+    decision: text("decision", { enum: MEETING_DECISIONS }),
+    /** Free text alongside `decision`, e.g. why. Person-owned, same as `decision`. */
+    decisionNote: text("decision_note").notNull().default(""),
   },
   (t) => [index("calendar_events_day_idx").on(t.day)],
 );
+
+/**
+ * A decision that applies to every occurrence of a recurring meeting, not just one. An
+ * occurrence's own `calendarEvents.decision` always wins over this when it is set (see
+ * `effectiveDecision`); this is what a "not going, every time" answer writes to instead.
+ */
+export const meetingSeriesDecisions = sqliteTable("meeting_series_decisions", {
+  seriesId: text("series_id").primaryKey(),
+  decision: text("decision", { enum: MEETING_DECISIONS }).notNull(),
+  note: text("note").notNull().default(""),
+  decidedAt: text("decided_at").notNull(),
+});
+export type MeetingSeriesDecision = typeof meetingSeriesDecisions.$inferSelect;
 
 export const activitySessions = sqliteTable(
   "activity_sessions",

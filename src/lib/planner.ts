@@ -8,7 +8,7 @@ import { listTasks } from "@/domain/tasks";
 import { estimateActualPairs } from "@/domain/focus";
 import { parseMeta } from "@/domain/items";
 import { driftFactor, forecastMinutes } from "@/lib/drift";
-import { serializeMeeting, serializePlanTasks, serializeTasks } from "./api";
+import { serializeMeeting, serializeMeetings, serializePlanTasks, serializeTasks } from "./api";
 import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
 import { partitionDue } from "./partition";
 import { getWorkHours, getWorkingDays, isWorkingDay } from "./work-hours";
@@ -111,11 +111,12 @@ export function plannerWeek(db: DB, start: string, now: Date = new Date()): Plan
   // The week's own seven days: a column can show nothing outside them.
   const window = { from: start, to: end };
   const byDay = new Map<string, ReturnType<typeof serializeMeeting>[]>();
-  for (const ev of listMeetings(db, { from: start, to: end })) {
-    const day = localDay(ev.startsAt);
+  // One batched series-decision query for the whole week, not one per event (`serializeMeetings`).
+  for (const meeting of serializeMeetings(db, listMeetings(db, { from: start, to: end }))) {
+    const day = localDay(meeting.startsAt);
     const list = byDay.get(day);
-    if (list) list.push(serializeMeeting(ev));
-    else byDay.set(day, [serializeMeeting(ev)]);
+    if (list) list.push(meeting);
+    else byDay.set(day, [meeting]);
   }
   // The week's last day is the latest one a column can hold; anything later is not shown.
   const open = serializeTasks(db, listTasks(db, { status: "open", dueOnOrBefore: addDays(start, 6) }), window);
@@ -195,7 +196,7 @@ function itemFlags(db: DB, ids: number[]): Map<number, MeetingItemDTO> {
 
 /** Meetings in `[from, to)`, each carrying its item's badges when it has been captured. */
 export function plannerMeetings(db: DB, opts: { from: string; to: string; q?: string }): MeetingListDTO[] {
-  const meetings = listMeetings(db, opts).map(serializeMeeting);
+  const meetings = serializeMeetings(db, listMeetings(db, opts));
   const flags = itemFlags(
     db,
     meetings.map((m) => m.itemId).filter((id): id is number => id !== null),

@@ -33,8 +33,6 @@ const Body = z.object({
       allDay: z.boolean().default(false),
       status: z.enum(["accepted", "tentative", "declined", "none"]).default("none"),
       calendarTitle: z.string().default(""),
-      // Not persisted yet (see CalendarEventInput.seriesId) — accepted now so the helper can
-      // already send calendarItemIdentifier without a coordinated later change here.
       seriesId: z.string().optional(),
     }),
   ),

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { calendarEvents, type CalendarEvent } from "@/db/schema";
 import { findCapturedMeetingItem, listMeetings, localDay } from "@/domain/activity/calendar";
+import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
 import { parseMeta } from "@/domain/items";
 import { getSetting, setSetting } from "@/domain/settings";
 import type { RecorderStatus, RecordingMeta } from "./recorder";
@@ -50,8 +51,10 @@ function alreadyRecorded(db: DB, ev: CalendarEvent): boolean {
 /**
  * The meeting the rule would start recording at `now`, or null. Only a meeting that is
  * starting counts — two minutes late through one minute early — and it must be one the
- * person would record by hand: not declined, not an all-day block, not marked no-record,
- * not already recorded, and, while the call-link rule is on, one with somewhere to join.
+ * person would record by hand: not an all-day block, not marked no-record, not already
+ * recorded, decided `going` (a clear yes — `maybe` is recordable by hand but never auto-started,
+ * and a series declined with no per-occurrence override still resolves to `not-going`), and,
+ * while the call-link rule is on, one with somewhere to join.
  */
 export function pickAutoStart(db: DB, now: Date, settings: AutoRecordSettings): CalendarEvent | null {
   if (!settings.autoRecord) return null;
@@ -62,10 +65,15 @@ export function pickAutoStart(db: DB, now: Date, settings: AutoRecordSettings): 
   // The next calendar day, not 24 h later: on the fall-back day 24 h stays on the same day.
   const last = new Date(latest);
   const to = localDay(new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1).toISOString());
-  for (const ev of listMeetings(db, { from, to })) {
+  const events = listMeetings(db, { from, to });
+  // One batched series-decision query for the whole window, not one per candidate meeting.
+  const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
+  const decisions = seriesDecisionsFor(db, seriesIds);
+  for (const ev of events) {
     const start = Date.parse(ev.startsAt);
     if (start < earliest || start > latest) continue;
-    if (ev.allDay || ev.noRecord || ev.status === "declined") continue;
+    const decision = effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null);
+    if (ev.allDay || ev.noRecord || decision !== "going") continue;
     if (settings.autoRecordNeedsCallLink && !ev.joinUrl) continue;
     if (alreadyRecorded(db, ev)) continue;
     return ev;

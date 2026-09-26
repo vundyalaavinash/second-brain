@@ -1,6 +1,7 @@
 import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { activitySessions, calendarEvents, items, type MeetingStatus } from "@/db/schema";
+import { activitySessions, calendarEvents, items, type MeetingStatus, type MeetingDecision } from "@/db/schema";
+import { effectiveDecision, seriesDecisionsFor } from "@/domain/meetings/decision";
 import { dayBounds, isInterview, parseAttendeeNames } from "./calendar";
 
 /** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
@@ -38,6 +39,9 @@ export interface ActivityMeeting {
   status: MeetingStatus;
   calendarTitle: string;
   noRecord: boolean;
+  seriesId: string | null;
+  decision: MeetingDecision;
+  decisionNote: string;
 }
 
 export interface ActivityDay {
@@ -112,6 +116,9 @@ export function getDay(db: DB, day: string): ActivityDay {
       .all();
     for (const row of captured) capturedByEvent.set(row.eventId, row.id);
   }
+  // One batched series-decision query for the whole day's events, not one per row.
+  const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
+  const decisions = seriesDecisionsFor(db, seriesIds);
   const meetings: ActivityMeeting[] = events.map((ev) => ({
     id: ev.id,
     title: ev.title,
@@ -131,6 +138,9 @@ export function getDay(db: DB, day: string): ActivityDay {
     status: ev.status,
     calendarTitle: ev.calendarTitle,
     noRecord: ev.noRecord === 1,
+    seriesId: ev.seriesId,
+    decision: effectiveDecision(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
+    decisionNote: ev.decisionNote,
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }
