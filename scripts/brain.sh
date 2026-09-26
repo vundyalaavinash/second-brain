@@ -442,6 +442,7 @@ cmd_update() {
   ensure_token
   build_helpers
   download_whisper_models
+  download_gist_model
   cmd_start --no-open
   ok "update complete"
 }
