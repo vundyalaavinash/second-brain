@@ -161,15 +161,73 @@ genuinely possible rather than merely plausible.
 ## The local meeting decision is not authoritative everywhere yet
 
 Task 2's review found the new local decision (going/maybe/not-going) is
-correctly authoritative in `capacity.ts` and, after this fix round, in the
-scheduler's busy-span calculation (`src/domain/blocks/index.ts`). It is still
-read as raw calendar `status` in four other places: `src/lib/review.ts:22`,
-`src/lib/home.ts:58` and `:200`, and `src/components/planner/planner-shell.tsx:192`
-and `:206`.
+correctly authoritative in `capacity.ts` and, after that fix round, in the
+scheduler's busy-span calculation (`src/domain/blocks/index.ts`). The final
+whole-branch review found two more sites that had quietly regressed to raw
+calendar `status` and did carry a real functional consequence -- Home's
+"Now and next" (`src/lib/home.ts`'s `timedItems`) could show a declined
+meeting as happening now, hiding the task the scheduler correctly placed in
+that freed hour, and the Planner day timeline (`src/components/planner/timeline.tsx`)
+rendered a declined meeting in the timed column and widened the hour range to
+fit it, contradicting the capacity line one component above it. Both are
+fixed as of this round, reading the batched effective decision the same way
+`capacity.ts` and `busySpans` already do.
 
-None of these has the scheduler's functional consequence -- they are counts
-and summaries, not placement decisions, so nothing is silently misplaced. But
-left as-is they can disagree with each other: the weekly review counting a
-meeting the day view has already excluded, say. Worth one focused pass that
-migrates all four together, rather than fixing three now and two later, which
-would only trade one inconsistency for another.
+Four places still read raw calendar `status` instead of the effective
+decision: `src/lib/review.ts:22` (`isCountableMeeting`), `src/lib/home.ts:209`
+(the `counts.meetings` figure -- distinct from `timedItems`, now fixed, in the
+same file), and `src/components/planner/planner-shell.tsx:192` and `:206` (the
+day and week capacity-line meeting counts).
+
+None of these four has the scheduler's or the timeline's functional
+consequence -- they are counts and summaries, not placement or rendering
+decisions, so nothing is silently misplaced or hidden. But left as-is they can
+disagree with each other: the weekly review counting a meeting the day view
+has already excluded, say. Worth one focused pass that migrates all four
+together, rather than fixing some now and the rest later, which would only
+trade one inconsistency for another.
+
+## `seriesId` backfill gap: older rows read as one-off meetings for a while after deploy
+
+Task 1's helper only threads `seriesId` through the fixed -30/+60 day sync
+window it has always covered. A row already in the database from before this
+deploy, outside that window but still inside the audit's 90-day (or shorter,
+per retention) lookback, keeps whatever `seriesId` it already had -- `null`,
+since the column did not exist until Task 2's migration.
+
+The practical effect is on `/meetings/audit`: those older rows group as their
+own one-off "series" (`auditSeries` keys a null `seriesId` on the event's own
+id) rather than joining the recurring series they actually belong to, so a
+recurring meeting can show as several separate single-occurrence rows for a
+while. This is self-healing, not a standing bug: as each affected row ages
+past the helper's own -30/+60 day window and gets re-synced with a real
+`seriesId`, or ages out of the audit/retention window entirely, the gap
+shrinks on its own. Rough estimate: fully gone about 60 days after this
+deploys, since that is the outer edge of the sync window that repopulates
+`seriesId`.
+
+Not fixed now because a real fix means re-deriving series membership for old
+EventKit-sourced rows from event content (title, organizer, recurrence
+pattern) rather than reading a stable identifier, since EventKit's own
+external id for an occurrence carries no series information on its own --
+genuinely harder than a backfill script, and the gap closes itself regardless.
+
+## `decisionNote` has no UI anywhere
+
+The column is fully plumbed end-to-end: it exists on `calendarEvents`
+(migration), survives a calendar refresh instead of being overwritten
+(`replaceCalendarEvents`'s sync-preservation), is written by
+`setMeetingDecision` (both occurrence- and series-scoped, `PATCH
+/api/meetings/[id]/decision` already accepts an optional `note`), and is
+carried on `ActivityMeetingDTO`/`MeetingListDTO` as `decisionNote`. Nothing in
+the app writes or displays it: no text field on `meeting-row.tsx`'s decision
+control or its "just this one or every time" question, nowhere it is rendered
+to read back.
+
+This is design §4's "optional line of why" for a decision -- the reasoning
+behind a Not going or Maybe, kept apart from the calendar itself. Four tasks
+and a whole-branch review built every pipe it needs; none built the faucet.
+Deferred deliberately rather than scope-crept into this fix round: it needs
+real UI thinking (where does the field go on the row, when does it show, does
+it need its own affordance versus living inline with the decision chips) that
+is a small new feature in its own right, not a bug fix.

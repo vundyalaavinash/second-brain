@@ -20,6 +20,10 @@ export interface AuditRow extends SeriesAudit {
 interface Props {
   rows: AuditRow[];
   share: { minutes: number; workingMinutes: number };
+  /** The window the page's server render actually read (`Math.min(90, retentionDays)`) — named
+   * here rather than a hardcoded "ninety days", so a retention setting below the default can
+   * never make this page claim to cover more than what still survives to be counted. */
+  windowDays: number;
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -62,27 +66,29 @@ function tasksLine(row: AuditRow): string {
 
 /**
  * The audit (design §7): one line of real argument at the top, then every recurring series that
- * ran in the last ninety days, ordered by the hours it took, each carrying the evidence a person
- * needs to ask the five questions themselves. No score, no colour, no "health" label anywhere on
- * this page -- that is the whole point, not an oversight.
+ * ran in the window read (the last ninety days, or the person's own shorter retention setting),
+ * ordered by the hours it took, each carrying the evidence a person needs to ask the five
+ * questions themselves. No score, no colour, no "health" label anywhere on this page -- that is
+ * the whole point, not an oversight.
  */
-export function AuditView({ rows, share }: Props) {
+export function AuditView({ rows, share, windowDays }: Props) {
   // `sinceLabel` only needs a rough "now" for relative wording, never a ticking clock -- read
   // once per mount, not on every render (the impure-during-render rule this repo's lint enforces),
   // the same way `break-offer.tsx` pins its own one-shot `now`.
   const [now] = useState(() => Date.now());
+  const windowLabel = count(windowDays, "day");
   return (
     <div className="w-full px-6 lg:px-8 pt-8 flex flex-col gap-5">
       <PageHeader title="The audit" meta={shareLine(share)} />
       {rows.length === 0 ? (
-        <p className="text-[13.5px] text-fg-faint">No meetings in the last ninety days to weigh yet.</p>
+        <p className="text-[13.5px] text-fg-faint">No meetings in the last {windowLabel} to weigh yet.</p>
       ) : (
         <List className="pane flex flex-col">
           {rows.map((row, i) => (
             // Index, not `row.seriesId ?? title`: two different one-off meetings (both
             // `seriesId: null`) can share a title, and the server computes a stable order for
             // this list on every render, so an index key is safe here.
-            <AuditRowView key={i} row={row} now={now} />
+            <AuditRowView key={i} row={row} now={now} windowLabel={windowLabel} />
           ))}
         </List>
       )}
@@ -90,7 +96,7 @@ export function AuditView({ rows, share }: Props) {
   );
 }
 
-function AuditRowView({ row, now }: { row: AuditRow; now: number }) {
+function AuditRowView({ row, now, windowLabel }: { row: AuditRow; now: number; windowLabel: string }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +124,7 @@ function AuditRowView({ row, now }: { row: AuditRow; now: number }) {
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <span className="text-[14px] font-medium">{row.title}</span>
         <span className="font-mono text-[11.5px] text-fg-faint whitespace-nowrap">
-          {count(row.occurrences, "occurrence")} in the last 90 days · {formatMinutes(row.totalMinutes)} total · {row.attendedCount} of {row.occurrences} attended
+          {count(row.occurrences, "occurrence")} in the last {windowLabel} · {formatMinutes(row.totalMinutes)} total · {row.attendedCount} of {row.occurrences} attended
         </span>
       </div>
       <p className="text-[12.5px] text-fg-muted m-0">

@@ -53,7 +53,9 @@ export const ReorderPlanBody = z.object({ date: DateString, taskIds: z.array(z.n
 export const CarryOverBody = z.object({ from: DateString, to: DateString }).strict();
 
 export const MeetingPatchBody = z.object({ noRecord: z.boolean() }).strict();
-/** `PATCH /api/meetings/[id]/decision` — `note` defaults to "" the same as the column it writes;
+/** `PATCH /api/meetings/[id]/decision` — `note` is optional and `undefined` when omitted, never
+ * defaulted: `setMeetingDecision` only ever touches `decisionNote` when the caller actually sent
+ * a `note`, so an omitted one leaves whatever is already stored alone rather than blanking it.
  * `scope: "series"` is rejected downstream (`setMeetingDecision`, 400) when the event has no
  * `seriesId`, not here, because that is a fact about the row, not about the shape of the body. */
 export const MeetingDecisionBody = z
