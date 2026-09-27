@@ -3,6 +3,12 @@ import type { PersonDTO } from "@/lib/dto";
 import { sinceLabel } from "./activity/format";
 import { count } from "./planner/open-meeting";
 
+/** "Staff Engineer · Acme · Platform" -- whichever of the three are actually set, in the order a
+ * person would say them out loud. Empty when nobody's filled any of them in. */
+function roleLine(person: PersonDTO): string {
+  return [person.title, person.organization, person.team].filter(Boolean).join(" · ");
+}
+
 /**
  * A person's own card: no ring, because nobody has a percent done -- the two things worth
  * leading with instead are how recently anything was linked to them and, when there is one, how
@@ -11,6 +17,7 @@ import { count } from "./planner/open-meeting";
  * there as a nudge.
  */
 export function PersonCard({ person, now }: { person: PersonDTO; now: number }) {
+  const role = roleLine(person);
   return (
     <Link
       href={`/people/${person.slug}`}
@@ -23,6 +30,7 @@ export function PersonCard({ person, now }: { person: PersonDTO; now: number }) 
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-medium leading-5 truncate">{person.name}</div>
           <div className="font-mono text-[11px] text-fg-faint truncate">@{person.slug}</div>
+          {role && <div className="text-[12px] text-fg-muted truncate mt-0.5">{role}</div>}
         </div>
       </div>
       <div className="border-t border-hairline pt-3 flex flex-col gap-1 text-[13px] min-w-0">

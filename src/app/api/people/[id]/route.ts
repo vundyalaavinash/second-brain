@@ -7,7 +7,13 @@ import { errorResponse, parseId, serializeItem, serializePerson } from "@/lib/ap
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
-const PatchBody = z.object({ name: z.string().min(1).optional(), profile: z.string().optional() });
+const PatchBody = z.object({
+  name: z.string().min(1).optional(),
+  profile: z.string().optional(),
+  organization: z.string().optional(),
+  team: z.string().optional(),
+  title: z.string().optional(),
+});
 
 export async function GET(req: Request, ctx: Ctx): Promise<Response> {
   try {

@@ -19,6 +19,9 @@ const person: PersonDTO = {
   name: "Ada",
   slug: "ada",
   profile: "Bio.\n",
+  organization: "",
+  team: "",
+  title: "",
   itemCount: 0,
   lastContact: null,
   meetingCount: 0,
@@ -52,6 +55,20 @@ describe("PersonEditor", () => {
     } finally {
       slot.remove();
     }
+  });
+
+  it("shows nothing linked yet for someone with no contact, rather than a blank line", () => {
+    const { getByText } = render(<PersonEditor initial={person} />);
+    expect(getByText("Nothing linked yet")).toBeTruthy();
+  });
+
+  it("names the last contact and how many meetings, when there are some", () => {
+    const { getByText, getByPlaceholderText } = render(
+      <PersonEditor initial={{ ...person, title: "Staff Engineer", lastContact: "2026-09-16T00:00:00.000Z", meetingCount: 3 }} />,
+    );
+    expect((getByPlaceholderText("Title") as HTMLInputElement).value).toBe("Staff Engineer");
+    expect(getByText(/Last contact/)).toBeTruthy();
+    expect(getByText("3 meetings together")).toBeTruthy();
   });
 });
 

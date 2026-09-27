@@ -20,6 +20,7 @@ export interface CreateContainerInput {
   goal?: string;
   deadline?: string | null;
   standard?: string;
+  nextSteps?: string;
   category?: ResourceCategory | null;
 }
 
@@ -29,6 +30,7 @@ export interface UpdateContainerInput {
   goal?: string;
   deadline?: string | null;
   standard?: string;
+  nextSteps?: string;
   category?: ResourceCategory | null;
   sortOrder?: number;
 }
@@ -73,6 +75,7 @@ export function createContainer(db: DB, input: CreateContainerInput): Container 
       goal: input.goal ?? "",
       deadline: input.deadline ?? null,
       standard: input.standard ?? "",
+      nextSteps: input.nextSteps ?? "",
       category: input.kind === "resource" ? (input.category ?? "other") : null,
       createdAt: now,
       updatedAt: now,
@@ -120,6 +123,7 @@ export function updateContainer(db: DB, id: number, patch: UpdateContainerInput)
   if (patch.goal !== undefined) set.goal = patch.goal;
   if (patch.deadline !== undefined) set.deadline = patch.deadline;
   if (patch.standard !== undefined) set.standard = patch.standard;
+  if (patch.nextSteps !== undefined) set.nextSteps = patch.nextSteps;
   if (patch.category !== undefined) set.category = current.kind === "resource" ? patch.category : null;
   if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
   const row = db.update(containers).set(set).where(eq(containers.id, id)).returning().get();

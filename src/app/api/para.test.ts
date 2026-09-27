@@ -55,7 +55,10 @@ describe("containers api", () => {
     const project = (await created.json()) as ContainerDTO;
     expect(project.slug).toBe("launch");
     expect(project.progress).toMatchObject({ open: 0, done: 0, total: 0, percent: 0, nextTask: null });
-    expect((await r.containers.POST(json("POST", "/api/containers", { kind: "project", name: "Bad", nextSteps: "- [ ] x" }))).status).toBe(400);
+    expect((await r.containers.POST(json("POST", "/api/containers", { kind: "project", name: "Bad", bogusField: "x" }))).status).toBe(400);
+    const withNextSteps = await r.containers.POST(json("POST", "/api/containers", { kind: "area", name: "Onboarding", nextSteps: "Call the vendor" }));
+    expect(withNextSteps.status).toBe(201);
+    expect(((await withNextSteps.json()) as ContainerDTO).nextSteps).toBe("Call the vendor");
     const areaRes = await r.containers.POST(json("POST", "/api/containers", { kind: "area", name: "Marketing" }));
     const area = (await areaRes.json()) as ContainerDTO;
     expect((await r.containers.POST(json("POST", "/api/containers", { kind: "nope", name: "x" }))).status).toBe(400);

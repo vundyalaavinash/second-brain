@@ -11,7 +11,7 @@ import { RESOURCE_CATEGORIES, type ResourceCategory } from "@/db/enums";
 import { relativeTime, titleCase, formatDate } from "@/lib/format";
 import { setCurrentContainer } from "@/lib/current-container";
 import { deadlineLabel, TONE_CLASS } from "@/lib/deadline";
-import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select } from "./ui";
+import { Button, Chip, EmptyState, IconButton, Input, List, Row, SectionHeading, Select, Textarea } from "./ui";
 import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { Crumb } from "./shell/crumb";
 import { CompleteProjectDialog } from "./complete-project-dialog";
@@ -66,6 +66,7 @@ export function ContainerEditor({
   const [goal, setGoal] = useState(initial.goal);
   const [deadline, setDeadline] = useState(initial.deadline ?? "");
   const [standard, setStandard] = useState(initial.standard);
+  const [nextSteps, setNextSteps] = useState(initial.nextSteps);
   const [category, setCategory] = useState<ResourceCategory>(initial.category ?? "other");
   const [progress, setProgress] = useState<ProgressDTO>(initial.progress);
   const [save, setSave] = useState<SaveState>("idle");
@@ -85,7 +86,7 @@ export function ContainerEditor({
   // Mirrors item-editor.tsx's `latest`: a RichEditor's ⌘S flush (rich-editor.tsx) calls its
   // onChange synchronously before this component's own ⌘S handler runs, but the resulting
   // setDescription hasn't committed yet — so persist() reads a ref instead of state.
-  const latest = useRef({ name, description, goal, deadline, standard, category });
+  const latest = useRef({ name, description, goal, deadline, standard, nextSteps, category });
   // `useRouter()` isn't guaranteed reference-stable across renders; keeping it out of persist's
   // dependency array keeps persist's identity stable too, so the unmount-flush effect below
   // doesn't tear down and fire a false flush on every render.
@@ -96,8 +97,8 @@ export function ContainerEditor({
   const announcedName = useRef(initial.name);
 
   useEffect(() => {
-    latest.current = { name, description, goal, deadline, standard, category };
-  }, [name, description, goal, deadline, standard, category]);
+    latest.current = { name, description, goal, deadline, standard, nextSteps, category };
+  }, [name, description, goal, deadline, standard, nextSteps, category]);
 
   useEffect(() => {
     routerRef.current = router;
@@ -127,11 +128,12 @@ export function ContainerEditor({
         setSave("saving");
         setSaveError(null);
         try {
-          const { name, description, goal, deadline, standard, category } = latest.current;
+          const { name, description, goal, deadline, standard, nextSteps, category } = latest.current;
           const body: Record<string, unknown> = { name, description };
           if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
           if (c.kind === "area") body.standard = standard;
           if (c.kind === "resource") body.category = category;
+          if (c.kind === "area" || c.kind === "resource") body.nextSteps = nextSteps;
           const res = await fetch(`/api/containers/${c.id}`, {
             method: "PATCH",
             keepalive: fromUnmount,
@@ -412,6 +414,18 @@ export function ContainerEditor({
             </option>
           ))}
         </Select>
+      )}
+      {(c.kind === "area" || c.kind === "resource") && (
+        <Textarea
+          value={nextSteps}
+          onChange={(e) => {
+            setNextSteps(e.target.value);
+            markDirty();
+          }}
+          onBlur={flushOnBlur}
+          placeholder="What's the next concrete step here?"
+          rows={2}
+        />
       )}
 
       {c.kind !== "project" && aboutDisclosure}

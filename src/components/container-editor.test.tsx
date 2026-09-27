@@ -28,6 +28,7 @@ const container: ContainerDTO = {
   goal: "",
   deadline: null,
   standard: "",
+  nextSteps: "",
   category: null,
   sortOrder: 0,
   archivedAt: null,
@@ -157,6 +158,40 @@ describe("ContainerEditor with RichEditor", () => {
     });
     expect(patches).toHaveLength(1);
     expect((patches[0] as { goal: string }).goal).toBe("Ship it");
+    vi.unstubAllGlobals();
+  });
+
+  it("offers a next-steps field for an area but not a project, and saves it on blur", async () => {
+    const { queryByPlaceholderText: queryProject, unmount } = render(
+      <ContainerEditor initial={project} items={[]} tasks={[]} today="2026-09-16" />,
+    );
+    expect(queryProject("What's the next concrete step here?")).toBeNull();
+    unmount();
+
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          patches.push(JSON.parse(String(init.body)));
+          return new Response(JSON.stringify({ ...container, nextSteps: "Call the physio" }), { status: 200 });
+        }
+        return new Response(JSON.stringify(container), { status: 200 });
+      }),
+    );
+    let editor: Editor | undefined;
+    const { getByPlaceholderText } = render(
+      <ContainerEditor initial={container} items={[]} tasks={[]} today="2026-09-16" onEditorReady={(e) => (editor = e)} />,
+    );
+    await waitForEditor(() => !!editor);
+    const nextStepsInput = getByPlaceholderText("What's the next concrete step here?");
+    fireEvent.change(nextStepsInput, { target: { value: "Call the physio" } });
+    await act(async () => {
+      fireEvent.blur(nextStepsInput);
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(patches).toHaveLength(1);
+    expect((patches[0] as { nextSteps: string }).nextSteps).toBe("Call the physio");
     vi.unstubAllGlobals();
   });
 

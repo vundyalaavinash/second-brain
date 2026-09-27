@@ -96,6 +96,9 @@ export const people = sqliteTable("people", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   profile: text("profile").notNull().default(""),
+  organization: text("organization").notNull().default(""),
+  team: text("team").notNull().default(""),
+  title: text("title").notNull().default(""),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

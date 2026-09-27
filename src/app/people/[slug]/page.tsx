@@ -16,10 +16,15 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
   const db = getDb();
   const person = getPersonBySlug(db, slug);
   if (!person) notFound();
-  const timeline = getPersonTimeline(db, person.id).map((i) => serializeItem(db, i));
+  const rawTimeline = getPersonTimeline(db, person.id);
+  // `getPersonTimeline` already orders newest first, so its own head is the last contact --
+  // reused rather than asked for again with a second query, the same rule `listPeople` follows.
+  const lastContact = rawTimeline[0]?.createdAt ?? null;
+  const meetingCount = rawTimeline.filter((i) => i.type === "meeting").length;
+  const timeline = rawTimeline.map((i) => serializeItem(db, i));
   return (
     <div className="w-full px-6 lg:px-8 pt-8 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-8">
-      <PersonEditor key={person.id} initial={serializePerson(person, timeline.length)} />
+      <PersonEditor key={person.id} initial={serializePerson({ ...person, lastContact, meetingCount }, timeline.length)} />
       <section className="flex flex-col gap-2">
         <SectionHeading count={timeline.length}>Timeline</SectionHeading>
         {timeline.length === 0 ? (

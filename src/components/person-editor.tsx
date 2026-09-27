@@ -9,8 +9,10 @@ import remarkGfm from "remark-gfm";
 import type { Editor } from "@tiptap/core";
 import { ArrowLeft, Eye, Pencil, Trash2, Save } from "lucide-react";
 import type { PersonDTO } from "@/lib/dto";
-import { Button, Chip, IconButton } from "./ui";
+import { Button, Chip, IconButton, Input } from "./ui";
 import { Crumb } from "./shell/crumb";
+import { sinceLabel } from "./activity/format";
+import { count } from "./planner/open-meeting";
 
 const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.RichEditor), {
   ssr: false,
@@ -19,8 +21,15 @@ const RichEditor = dynamic(() => import("./editor/rich-editor").then((m) => m.Ri
 
 export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; onEditorReady?: (editor: Editor) => void }) {
   const router = useRouter();
+  // A rough "now" for `sinceLabel`'s wording, pinned once per mount rather than read fresh on
+  // every render (the impure-during-render rule this repo's lint enforces) -- audit-view.tsx
+  // pins its own one-shot `now` the same way.
+  const [now] = useState(() => Date.now());
   const [name, setName] = useState(initial.name);
   const [profile, setProfile] = useState(initial.profile);
+  const [title, setTitle] = useState(initial.title);
+  const [organization, setOrganization] = useState(initial.organization);
+  const [team, setTeam] = useState(initial.team);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -29,19 +38,23 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
   // Mirrors item-editor.tsx's `latest`: RichEditor's ⌘S flush (rich-editor.tsx) calls this
   // host's onChange synchronously before this component's own ⌘S handler runs, but the
   // resulting setProfile hasn't committed yet — so save() reads a ref instead of state.
-  const latest = useRef({ name, profile });
+  const latest = useRef({ name, profile, title, organization, team });
 
   useEffect(() => {
-    latest.current = { name, profile };
-  }, [name, profile]);
+    latest.current = { name, profile, title, organization, team };
+  }, [name, profile, title, organization, team]);
 
   async function save() {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const { name, profile } = latest.current;
-      const res = await fetch(`/api/people/${initial.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, profile }) });
+      const { name, profile, title, organization, team } = latest.current;
+      const res = await fetch(`/api/people/${initial.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, profile, title, organization, team }),
+      });
       if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? res.statusText);
       const p = (await res.json()) as PersonDTO;
       setDirty(false);
@@ -63,7 +76,7 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, profile, saving]);
+  }, [name, profile, title, organization, team, saving]);
 
   async function remove() {
     if (!confirmDelete) {
@@ -108,6 +121,42 @@ export function PersonEditor({ initial, onEditorReady }: { initial: PersonDTO; o
         }}
         className="text-[22px] leading-7 font-medium tracking-[-0.02em] bg-transparent outline-none w-full border-b border-transparent focus:border-hairline-strong transition-colors duration-150"
       />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          size="sm"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setDirty(true);
+          }}
+          placeholder="Title"
+          className="w-40"
+        />
+        <Input
+          size="sm"
+          value={organization}
+          onChange={(e) => {
+            setOrganization(e.target.value);
+            setDirty(true);
+          }}
+          placeholder="Organization"
+          className="w-40"
+        />
+        <Input
+          size="sm"
+          value={team}
+          onChange={(e) => {
+            setTeam(e.target.value);
+            setDirty(true);
+          }}
+          placeholder="Team"
+          className="w-40"
+        />
+      </div>
+      <div className="flex items-center gap-3 text-[12.5px] text-fg-muted flex-wrap">
+        {initial.lastContact ? <span>Last contact {sinceLabel(initial.lastContact, now)}</span> : <span className="text-fg-faint">Nothing linked yet</span>}
+        {initial.meetingCount > 0 && <span>{count(initial.meetingCount, "meeting")} together</span>}
+      </div>
       {preview ? (
         <div className="pane p-6 md min-h-[200px]">
           <Markdown remarkPlugins={[remarkGfm]}>{profile || "*No profile yet.*"}</Markdown>

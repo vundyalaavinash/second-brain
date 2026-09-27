@@ -24,13 +24,22 @@ function uniqueSlug(db: DB, name: string, excludeId?: number): string {
   }
 }
 
-export function createPerson(db: DB, input: { name: string; profile?: string }): Person {
+export function createPerson(db: DB, input: { name: string; profile?: string; organization?: string; team?: string; title?: string }): Person {
   const name = input.name.trim();
   if (!name) throw new PersonError("Name is required");
   const now = nowIso();
   const row = db
     .insert(people)
-    .values({ name, slug: uniqueSlug(db, name), profile: input.profile ?? "", createdAt: now, updatedAt: now })
+    .values({
+      name,
+      slug: uniqueSlug(db, name),
+      profile: input.profile ?? "",
+      organization: input.organization ?? "",
+      team: input.team ?? "",
+      title: input.title ?? "",
+      createdAt: now,
+      updatedAt: now,
+    })
     .returning()
     .get();
   if (!row) throw new Error("Insert returned no row");
@@ -66,7 +75,11 @@ export function listPeople(db: DB): (Person & { itemCount: number; lastContact: 
   });
 }
 
-export function updatePerson(db: DB, id: number, patch: { name?: string; profile?: string }): Person {
+export function updatePerson(
+  db: DB,
+  id: number,
+  patch: { name?: string; profile?: string; organization?: string; team?: string; title?: string },
+): Person {
   const current = getPerson(db, id);
   if (!current) throw new PersonError(`Person ${id} not found`, 404);
   const set: Partial<typeof people.$inferInsert> = { updatedAt: nowIso() };
@@ -77,6 +90,9 @@ export function updatePerson(db: DB, id: number, patch: { name?: string; profile
     if (name !== current.name) set.slug = uniqueSlug(db, name, id);
   }
   if (patch.profile !== undefined) set.profile = patch.profile;
+  if (patch.organization !== undefined) set.organization = patch.organization;
+  if (patch.team !== undefined) set.team = patch.team;
+  if (patch.title !== undefined) set.title = patch.title;
   const row = db.update(people).set(set).where(eq(people.id, id)).returning().get();
   if (!row) throw new PersonError(`Person ${id} not found`, 404);
   return row;
@@ -101,7 +117,17 @@ export function addItemPerson(db: DB, itemId: number, personId: number): void {
 
 export function getItemPeople(db: DB, itemId: number): Person[] {
   return db
-    .select({ id: people.id, name: people.name, slug: people.slug, profile: people.profile, createdAt: people.createdAt, updatedAt: people.updatedAt })
+    .select({
+      id: people.id,
+      name: people.name,
+      slug: people.slug,
+      profile: people.profile,
+      organization: people.organization,
+      team: people.team,
+      title: people.title,
+      createdAt: people.createdAt,
+      updatedAt: people.updatedAt,
+    })
     .from(itemPeople)
     .innerJoin(people, eq(people.id, itemPeople.personId))
     .where(eq(itemPeople.itemId, itemId))

@@ -125,6 +125,7 @@ export interface ContainerDTO {
   goal: string;
   deadline: string | null;
   standard: string;
+  nextSteps: string;
   category: ResourceCategory | null;
   sortOrder: number;
   archivedAt: string | null;
@@ -180,6 +181,9 @@ export interface PersonDTO {
   name: string;
   slug: string;
   profile: string;
+  organization: string;
+  team: string;
+  title: string;
   itemCount: number;
   /** The most recent item linked to them, of any kind -- `null` on the single-person routes that
    * never compute it, and for someone nothing has ever been linked to. */

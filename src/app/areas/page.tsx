@@ -1,7 +1,7 @@
 import { getDb } from "@/db/client";
 import { listContainers } from "@/domain/containers";
 import { serializeContainers } from "@/lib/api";
-import { ContainerCard } from "@/components/tasks/container-card";
+import { AreaCard } from "@/components/tasks/area-card";
 import { NewContainerForm } from "@/components/new-container-form";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { KIND_ICON } from "@/components/type-icon";
@@ -28,7 +28,7 @@ export default function AreasPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5 gap-4">
           {areas.map((a) => (
-            <ContainerCard key={a.id} container={a} now={now} />
+            <AreaCard key={a.id} area={a} now={now} />
           ))}
         </div>
       )}

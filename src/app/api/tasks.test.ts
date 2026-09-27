@@ -59,7 +59,7 @@ describe("tasks api", () => {
     expect((await r.task.PATCH(json("PATCH", "/x", { sourceItemId: 1 }), params(aId))).status).toBe(400);
   });
 
-  it("reorders, exposes progress on the container DTO, and rejects nextSteps", async () => {
+  it("reorders, exposes progress on the container DTO, and lets nextSteps be set", async () => {
     const list = (await (await r.tasks.GET(json("GET", `/api/tasks?container=${projectId}`))).json()) as { tasks: { id: number; title: string }[] };
     const extra = await r.tasks.POST(json("POST", "/api/tasks", { title: "Import contacts", containerId: projectId }));
     const extraId = ((await extra.json()) as { id: number }).id;
@@ -68,7 +68,9 @@ describe("tasks api", () => {
     const c = (await (await r.container.GET(json("GET", "/x"), params(projectId))).json()) as { progress: { open: number; done: number; nextTask: { id: number } } };
     expect(c.progress).toMatchObject({ open: 2, done: 1 });
     expect(c.progress.nextTask.id).toBe(extraId);
-    expect((await r.container.PATCH(json("PATCH", "/x", { nextSteps: "- [ ] x" }), params(projectId))).status).toBe(400);
+    const patched = await r.container.PATCH(json("PATCH", "/x", { nextSteps: "Call the vendor" }), params(projectId));
+    expect(patched.status).toBe(200);
+    expect(((await patched.json()) as { nextSteps: string }).nextSteps).toBe("Call the vendor");
   });
 
   it("archiving a project drops or moves its open tasks", async () => {

@@ -6,7 +6,13 @@ import { errorResponse, serializePerson } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-const Body = z.object({ name: z.string().min(1), profile: z.string().optional() });
+const Body = z.object({
+  name: z.string().min(1),
+  profile: z.string().optional(),
+  organization: z.string().optional(),
+  team: z.string().optional(),
+  title: z.string().optional(),
+});
 
 export async function GET(): Promise<Response> {
   try {

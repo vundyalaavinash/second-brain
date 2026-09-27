@@ -23,6 +23,7 @@ export const ContainerBody = z
     goal: z.string().optional(),
     deadline: DateString.nullable().optional(),
     standard: z.string().optional(),
+    nextSteps: z.string().optional(),
     category: z.enum(RESOURCE_CATEGORIES).nullable().optional(),
   })
   .strict();

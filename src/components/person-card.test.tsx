@@ -12,6 +12,9 @@ function person(over: Partial<PersonDTO> = {}): PersonDTO {
     name: "Grace Hopper",
     slug: "grace-hopper",
     profile: "",
+    organization: "",
+    team: "",
+    title: "",
     itemCount: 3,
     lastContact: "2026-09-27T09:00:00.000Z",
     meetingCount: 2,
@@ -42,5 +45,15 @@ describe("PersonCard", () => {
   it("drops the meeting line entirely rather than naming a zero", () => {
     render(<PersonCard person={person({ meetingCount: 0 })} now={NOW} />);
     expect(screen.queryByText(/together/)).toBeNull();
+  });
+
+  it("names the role, in the order title, organization, team, whichever are set", () => {
+    render(<PersonCard person={person({ title: "Staff Engineer", organization: "Acme", team: "Platform" })} now={NOW} />);
+    expect(screen.getByText("Staff Engineer · Acme · Platform")).toBeTruthy();
+  });
+
+  it("says nothing about a role nobody has filled in", () => {
+    render(<PersonCard person={person()} now={NOW} />);
+    expect(screen.queryByText(/·/)).toBeNull();
   });
 });

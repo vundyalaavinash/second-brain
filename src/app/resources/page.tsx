@@ -2,7 +2,7 @@ import { getDb } from "@/db/client";
 import { RESOURCE_CATEGORIES } from "@/db/enums";
 import { listContainers } from "@/domain/containers";
 import { serializeContainers } from "@/lib/api";
-import { ContainerCard } from "@/components/tasks/container-card";
+import { ResourceCard } from "@/components/tasks/resource-card";
 import { NewContainerForm } from "@/components/new-container-form";
 import { PageHeader, SectionHeading, EmptyState } from "@/components/ui";
 import { KIND_ICON } from "@/components/type-icon";
@@ -34,7 +34,7 @@ export default function ResourcesPage() {
             <SectionHeading count={g.list.length}>{titleCase(g.cat)}</SectionHeading>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5 gap-4">
               {g.list.map((r) => (
-                <ContainerCard key={r.id} container={r} now={now} />
+                <ResourceCard key={r.id} resource={r} now={now} />
               ))}
             </div>
           </section>
