@@ -45,17 +45,25 @@ export function getPersonBySlug(db: DB, slug: string): Person | undefined {
   return db.select().from(people).where(eq(people.slug, slug)).get();
 }
 
-export function listPeople(db: DB): (Person & { itemCount: number })[] {
+export function listPeople(db: DB): (Person & { itemCount: number; lastContact: string | null; meetingCount: number })[] {
   const rows = db.select().from(people).orderBy(asc(people.name)).all();
   const counts = db
-    .select({ personId: itemPeople.personId, c: sql<number>`count(*)` })
+    .select({
+      personId: itemPeople.personId,
+      c: sql<number>`count(*)`,
+      lastContact: sql<string | null>`max(${items.createdAt})`,
+      meetings: sql<number>`sum(case when ${items.type} = 'meeting' then 1 else 0 end)`,
+    })
     .from(itemPeople)
     .innerJoin(items, eq(items.id, itemPeople.itemId))
     .where(isNull(items.archivedAt))
     .groupBy(itemPeople.personId)
     .all();
-  const byId = new Map(counts.map((c) => [c.personId, Number(c.c)]));
-  return rows.map((p) => ({ ...p, itemCount: byId.get(p.id) ?? 0 }));
+  const byId = new Map(counts.map((c) => [c.personId, c]));
+  return rows.map((p) => {
+    const c = byId.get(p.id);
+    return { ...p, itemCount: c ? Number(c.c) : 0, lastContact: c?.lastContact ?? null, meetingCount: c ? Number(c.meetings) : 0 };
+  });
 }
 
 export function updatePerson(db: DB, id: number, patch: { name?: string; profile?: string }): Person {

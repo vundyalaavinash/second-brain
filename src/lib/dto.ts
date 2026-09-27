@@ -181,6 +181,11 @@ export interface PersonDTO {
   slug: string;
   profile: string;
   itemCount: number;
+  /** The most recent item linked to them, of any kind -- `null` on the single-person routes that
+   * never compute it, and for someone nothing has ever been linked to. */
+  lastContact: string | null;
+  /** How many of their linked items are meetings -- 0 where it was never computed. */
+  meetingCount: number;
   createdAt: string;
   updatedAt: string;
 }

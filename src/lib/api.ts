@@ -328,13 +328,15 @@ export function serializeFocusRun(run: FocusRun, taskTitle: string): FocusRunDTO
   };
 }
 
-export function serializePerson(p: Person & { itemCount?: number }, itemCount?: number): PersonDTO {
+export function serializePerson(p: Person & { itemCount?: number; lastContact?: string | null; meetingCount?: number }, itemCount?: number): PersonDTO {
   return {
     id: p.id,
     name: p.name,
     slug: p.slug,
     profile: p.profile,
     itemCount: itemCount ?? p.itemCount ?? 0,
+    lastContact: p.lastContact ?? null,
+    meetingCount: p.meetingCount ?? 0,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };

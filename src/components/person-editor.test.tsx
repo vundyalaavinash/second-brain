@@ -20,6 +20,8 @@ const person: PersonDTO = {
   slug: "ada",
   profile: "Bio.\n",
   itemCount: 0,
+  lastContact: null,
+  meetingCount: 0,
   createdAt: "2026-09-16T00:00:00.000Z",
   updatedAt: "2026-09-16T00:00:00.000Z",
 };

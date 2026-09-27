@@ -64,6 +64,24 @@ describe("people domain", () => {
     expect(getItemPeople(t.db, a.id)).toEqual([]);
   });
 
+  it("counts meetings and remembers when anything was last linked", () => {
+    const p = createPerson(t.db, { name: "Grace" });
+    const note = createItem(t.db, { type: "note", title: "chat" });
+    addItemPerson(t.db, note.id, p.id);
+    const meeting = createItem(t.db, { type: "meeting", title: "sync" });
+    addItemPerson(t.db, meeting.id, p.id);
+    const row = listPeople(t.db).find((x) => x.id === p.id);
+    expect(row?.meetingCount).toBe(1);
+    expect(row?.lastContact).toBe([note.createdAt, meeting.createdAt].sort().at(-1));
+  });
+
+  it("says nothing was ever linked, for someone nobody has mentioned", () => {
+    const p = createPerson(t.db, { name: "Nobody" });
+    const row = listPeople(t.db).find((x) => x.id === p.id);
+    expect(row?.lastContact).toBeNull();
+    expect(row?.meetingCount).toBe(0);
+  });
+
   it("extracts and auto-links @mentions", () => {
     expect(extractMentions("met @ada-lovelace and @Grace, not email@x.com")).toEqual(["ada-lovelace", "grace"]);
     const ada = createPerson(t.db, { name: "Ada Lovelace" });
