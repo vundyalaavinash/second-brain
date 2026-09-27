@@ -6,29 +6,48 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LABEL="com.second-brain.app"
 PORT="${SB_PORT:-3141}"
-DATA_DIR="${SB_DATA_DIR:-$HOME/Library/Application Support/second-brain}"
-LOG_DIR="$DATA_DIR/logs"
-LOG_FILE="$LOG_DIR/app.log"
-DB_FILE="$DATA_DIR/brain.db"
-BACKUPS_DIR="$DATA_DIR/backups"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 URL="http://127.0.0.1:$PORT"
 HELPER_LABEL="com.second-brain.activity"
 HELPER_PLIST="$HOME/Library/LaunchAgents/$HELPER_LABEL.plist"
 HELPER_SRC="$ROOT/helper/activity"
-HELPER_BIN="$DATA_DIR/bin/sb-activity"
-HELPER_LOG="$LOG_DIR/activity.log"
-TOKEN_FILE="$DATA_DIR/activity-token"
 RECORDER_SRC="$ROOT/helper/recorder"
-RECORDER_BIN="$DATA_DIR/bin/sb-recorder"
-WHISPER_DIR="$DATA_DIR/models/whisper"
 WHISPER_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 GIST_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
 fail() { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Every DATA_DIR-derived path in one place, so moving it (set-data-dir) only ever means calling
+# this again with the new location -- never editing a scattered second copy of each path.
+set_data_dir_vars() {
+  DATA_DIR="$1"
+  LOG_DIR="$DATA_DIR/logs"
+  LOG_FILE="$LOG_DIR/app.log"
+  DB_FILE="$DATA_DIR/brain.db"
+  BACKUPS_DIR="$DATA_DIR/backups"
+  HELPER_BIN="$DATA_DIR/bin/sb-activity"
+  HELPER_LOG="$LOG_DIR/activity.log"
+  TOKEN_FILE="$DATA_DIR/activity-token"
+  RECORDER_BIN="$DATA_DIR/bin/sb-recorder"
+  WHISPER_DIR="$DATA_DIR/models/whisper"
+}
+
+# The installed launch agent's own plist is the one persisted record of where data actually
+# lives, once `setup` or `set-data-dir` has written it -- SB_DATA_DIR (or the hardcoded default)
+# only matters before that plist exists, i.e. a first-ever setup. Every other invocation of this
+# script, in any shell, reads the plist back rather than re-deriving a path that may have moved
+# since, which is what let a plain env var go stale the moment someone forgot to export it again.
+resolved_data_dir() {
+  if [ -f "$PLIST" ]; then
+    /usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:SB_DATA_DIR' "$PLIST" 2>/dev/null && return 0
+  fi
+  echo "${SB_DATA_DIR:-$HOME/Library/Application Support/second-brain}"
+}
+
+set_data_dir_vars "$(resolved_data_dir)"
 
 usage() {
   cat <<USAGE
@@ -53,8 +72,12 @@ Usage: scripts/brain.sh <command>
                    release is due -- read-only
   release-audio    run design's audio-release pass right now, rather than waiting for
                    tonight's backup job to get to it
+  set-data-dir <path>
+                   move everything in the data directory to <path>, point both launch
+                   agents at it, and restart -- no reinstall, no rebuild, no re-download
 
-Data directory: $DATA_DIR   (override with SB_DATA_DIR)
+Data directory: $DATA_DIR
+(SB_DATA_DIR only matters before the first setup; after that, run set-data-dir to move it)
 USAGE
 }
 
@@ -532,6 +555,76 @@ cmd_release_audio() {
   ok "done"
 }
 
+# Moves the whole data directory to a new location, points both plists at it, and restarts --
+# the reconfigure path `setup`/`update` never offered: those only ever read SB_DATA_DIR once, at
+# install time, and bake it into the plists, so the only way to move it before this existed was
+# a full reinstall with the new value, or hand-editing both plist files and moving the data
+# yourself. Requires an existing installation (a plist already on disk) rather than handling a
+# from-scratch setup too -- that path already exists (`SB_DATA_DIR=<path> scripts/brain.sh
+# setup`) and duplicating its install/build/download work here would just be a second way to do
+# the same thing, with more chances to drift from it.
+cmd_set_data_dir() {
+  local new_dir="${1:-}"
+  [ -n "$new_dir" ] || fail "usage: scripts/brain.sh set-data-dir <path>"
+  case "$new_dir" in
+    /*) : ;;
+    *) new_dir="$(pwd)/$new_dir" ;;
+  esac
+  # This checkout is also the live production directory (AGENTS.md); the data it serves -- notes,
+  # meeting transcripts, an activity log -- never belongs inside it, whatever .gitignore excludes.
+  case "$new_dir" in
+    "$ROOT"|"$ROOT"/*) fail "refusing: $new_dir is inside the code repo ($ROOT). Choose a path outside it." ;;
+  esac
+  [ -f "$PLIST" ] || fail "no launch agent installed yet. For a first setup, run: SB_DATA_DIR=$new_dir scripts/brain.sh setup"
+  local old_dir="$DATA_DIR"
+  [ "$new_dir" = "$old_dir" ] && fail "already the data directory: $new_dir"
+  [ -e "$new_dir" ] && fail "refusing: $new_dir already exists. Choose a path that does not exist yet, or move it out of the way first."
+
+  say "stopping the server before moving anything"
+  cmd_stop
+
+  # Recorded, not inferred, the same discipline cmd_restore's own db_moved uses: `moved` is the
+  # one thing that decides which directory the failure trap below restarts against -- set the
+  # instant the move itself succeeds, never re-derived later by asking the filesystem what's
+  # where. Without this, a failure after a successful move (writing the plist, say) would restart
+  # the server pointed at $old_dir, which the mv just emptied out from under it.
+  local moved=0 restarted=0
+  set_data_dir_failed() {
+    local ec=$?
+    set +e
+    if [ "$restarted" != 1 ]; then
+      say "set-data-dir did not finish; restarting the server so it isn't left down"
+      if [ "$moved" = 1 ]; then set_data_dir_vars "$new_dir"; else set_data_dir_vars "$old_dir"; fi
+      write_plist
+      [ -f "$HELPER_PLIST" ] && write_helper_plist
+      cmd_start --no-open
+    fi
+    exit "$ec"
+  }
+  trap set_data_dir_failed EXIT
+
+  mkdir -p "$(dirname "$new_dir")"
+  if [ -d "$old_dir" ]; then
+    say "moving $old_dir to $new_dir"
+    mv "$old_dir" "$new_dir"
+    moved=1
+    ok "data moved to $new_dir"
+  else
+    mkdir -p "$new_dir"
+    moved=1
+    say "nothing at $old_dir yet; created $new_dir fresh"
+  fi
+
+  set_data_dir_vars "$new_dir"
+  write_plist
+  [ -f "$HELPER_PLIST" ] && write_helper_plist
+  cmd_start --no-open
+  restarted=1
+
+  trap - EXIT
+  ok "data directory is now $new_dir"
+}
+
 # Resolves $1 (a bare filename or an absolute path) against the backups directory and refuses
 # anything that would land outside it -- an absolute path elsewhere, a `../` escape, or a symlink
 # that points outside (realpath resolves it before the prefix check, so a link inside the
@@ -861,6 +954,7 @@ case "${1:-}" in
   audio-status)   cmd_audio_status ;;
   release-audio)  cmd_release_audio ;;
   restore) shift; cmd_restore "$@" ;;
+  set-data-dir) shift; cmd_set_data_dir "$@" ;;
   -h|--help|help|"") usage ;;
   *) usage; fail "unknown command: $1" ;;
 esac
