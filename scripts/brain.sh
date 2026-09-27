@@ -184,10 +184,32 @@ download_whisper_models() {
   write_model_settings "$base" "$final"
 }
 
+# Distill's local gist step (src/providers/gist) needs both `llama-cli` and the model below;
+# missing either just leaves that one feature off (`getGistProvider()` returns null), so nothing
+# here is ever fatal to setup -- Homebrew missing, or the install itself failing, only means the
+# gist step stays off until it's sorted out by hand.
+ensure_llama_cli() {
+  if tool_path llama-cli >/dev/null 2>&1; then
+    ok "llama.cpp already installed"
+    return 0
+  fi
+  if ! command -v brew >/dev/null 2>&1; then
+    say "llama.cpp not installed and Homebrew isn't on PATH; the local gist model will stay off until you run: brew install llama.cpp"
+    return 0
+  fi
+  say "installing llama.cpp (brew) for the local gist model"
+  if brew install llama.cpp; then
+    ok "llama.cpp installed"
+  else
+    say "brew install llama.cpp failed; the local gist model will stay off until it succeeds"
+  fi
+}
+
 download_gist_model() {
   local dir="$DATA_DIR/models/gist"
   local target="$dir/model.gguf"
   mkdir -p "$dir"
+  ensure_llama_cli
   fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" || true
 }
 
@@ -466,6 +488,8 @@ cmd_status() {
   tool_line "recorder" "$RECORDER_BIN"
   tool_line "whisper" "$(tool_path whisper-cli || true)"
   tool_line "ffmpeg" "$(tool_path ffmpeg || true)"
+  tool_line "llama-cli" "$(tool_path llama-cli || true)"
+  if [ -s "$DATA_DIR/models/gist/model.gguf" ]; then ok "gist model: ok"; else say "gist model: missing"; fi
   helper_status
 }
 
