@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { AreaCard } from "./area-card";
+import { describe, it, expect, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import { ContainerCard } from "./container-card";
 import type { ContainerDTO } from "@/lib/dto";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 
-function area(over: Partial<ContainerDTO> = {}): ContainerDTO {
+afterEach(cleanup);
+
+function container(over: Partial<ContainerDTO> = {}): ContainerDTO {
   return {
     id: 1,
     kind: "area",
@@ -30,9 +32,9 @@ function area(over: Partial<ContainerDTO> = {}): ContainerDTO {
   };
 }
 
-describe("AreaCard", () => {
-  it("names the standard, the progress and the next thing to do, all leading to the area", () => {
-    render(<AreaCard area={area()} now={NOW} />);
+describe("ContainerCard", () => {
+  it("names the standard, the progress and the next thing to do, all leading to the container", () => {
+    render(<ContainerCard container={container()} now={NOW} />);
     const link = screen.getByRole("link", { name: /Health/ });
     expect(link.getAttribute("href")).toBe("/c/health");
     expect(screen.getByText("Move every day")).toBeTruthy();
@@ -43,12 +45,17 @@ describe("AreaCard", () => {
   });
 
   it("says nothing is open rather than naming a task that does not exist", () => {
-    render(<AreaCard area={area({ progress: { open: 0, done: 4, total: 4, percent: 100, nextTask: null } })} now={NOW} />);
+    render(<ContainerCard container={container({ progress: { open: 0, done: 4, total: 4, percent: 100, nextTask: null } })} now={NOW} />);
     expect(screen.getByText("All done")).toBeTruthy();
   });
 
-  it("says there are no open tasks yet, for an area nobody has written one for", () => {
-    render(<AreaCard area={area({ progress: { open: 0, done: 0, total: 0, percent: 0, nextTask: null } })} now={NOW} />);
+  it("says there are no open tasks yet, for a container nobody has written one for", () => {
+    render(<ContainerCard container={container({ progress: { open: 0, done: 0, total: 0, percent: 0, nextTask: null } })} now={NOW} />);
     expect(screen.getByText("No open tasks")).toBeTruthy();
+  });
+
+  it("reads the same for a resource, which carries no kind-specific field this card uses", () => {
+    render(<ContainerCard container={container({ kind: "resource", category: "reference" })} now={NOW} />);
+    expect(screen.getByRole("link", { name: /Health/ })).toBeTruthy();
   });
 });
