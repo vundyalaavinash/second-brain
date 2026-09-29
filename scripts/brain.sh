@@ -15,6 +15,7 @@ HELPER_SRC="$ROOT/helper/activity"
 RECORDER_SRC="$ROOT/helper/recorder"
 WHISPER_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 GIST_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+SUMMARY_URL="https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -236,6 +237,19 @@ download_gist_model() {
   fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" || true
 }
 
+# Meeting summaries (src/jobs/handlers/summarize-meeting.ts) used to need an Anthropic key;
+# now they need this instead -- a bigger local model than the gist one, because reasoning over
+# a whole transcript into a summary, decisions and proposed actions asks more of it than
+# paraphrasing a few quotes does. Same binary as the gist model (ensure_llama_cli installs it
+# once), same "off, not broken" shape when the ~4.4 GB download hasn't happened yet.
+download_summary_model() {
+  local dir="$DATA_DIR/models/summary"
+  local target="$dir/model.gguf"
+  mkdir -p "$dir"
+  ensure_llama_cli
+  fetch_model "$target" "$SUMMARY_URL" "summary (Qwen2.5-7B-Instruct, Q4_K_M)" || true
+}
+
 # The live and the final transcription models, as meetings.whisperBase and
 # meetings.whisperFinal. Before the first run of the app there is no database to
 # write to; the defaults in src/domain/meetings/tools.ts already name these paths.
@@ -390,6 +404,7 @@ cmd_setup() {
   build_recorder || true
   download_whisper_models
   download_gist_model
+  download_summary_model
   probe_recorder
   if is_loaded; then
     say "stopping the running agent before reinstalling it"
@@ -488,6 +503,7 @@ cmd_update() {
   build_helpers
   download_whisper_models
   download_gist_model
+  download_summary_model
   cmd_start --no-open
   ok "update complete"
 }
@@ -513,6 +529,7 @@ cmd_status() {
   tool_line "ffmpeg" "$(tool_path ffmpeg || true)"
   tool_line "llama-cli" "$(tool_path llama-cli || true)"
   if [ -s "$DATA_DIR/models/gist/model.gguf" ]; then ok "gist model: ok"; else say "gist model: missing"; fi
+  if [ -s "$DATA_DIR/models/summary/model.gguf" ]; then ok "summary model: ok"; else say "summary model: missing"; fi
   helper_status
 }
 

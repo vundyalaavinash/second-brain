@@ -50,8 +50,8 @@ export interface MeetingPageProps {
   event: ActivityMeetingDTO | null;
   /** Tasks whose `sourceItemId` is this meeting. */
   tasks: TaskDTO[];
-  /** Whether an Anthropic key resolves, which is why there may be no summary. */
-  hasKey: boolean;
+  /** Whether the local summary model is installed, which is why there may be no summary. */
+  hasSummaryModel: boolean;
   /** Size of the recorded WAV on disk, measured on the server. */
   recordingBytes: number | null;
 }
@@ -73,7 +73,7 @@ function recordedSeconds(rec: RecordingMeta | undefined, segments: Segment[]): n
  * transcript, and a summary that proposes work. This is that page — the item editor's
  * autosave for the title and the notes, and everything else the meeting itself.
  */
-export function MeetingPage({ item: initial, event, tasks, hasKey, recordingBytes }: MeetingPageProps) {
+export function MeetingPage({ item: initial, event, tasks, hasSummaryModel, recordingBytes }: MeetingPageProps) {
   const auto = useItemAutosave(initial.id, initial);
   const { item, title, body, save, saveLabel, setTitle, setBody, persist, syncFromServer } = auto;
   const recorder = useRecorder();
@@ -101,8 +101,8 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
   // moment the transcript lands or the item settles either way.
   const polling = !finalReady && (isRecording || item.status === "processing");
   // The summary is written by a job that starts after the transcript lands, so the page keeps
-  // looking a little longer, when there is a key to write one with.
-  const summaryPending = hasKey && finalReady && !meta.summary && !meta.summaryError;
+  // looking a little longer, when there is a local model to write one with.
+  const summaryPending = hasSummaryModel && finalReady && !meta.summary && !meta.summaryError;
   // Dropped-in audio is transcribed the same way, and has no recording session of its own.
   const transcribing = !isRecording && !finalReady && item.status === "processing";
 
@@ -307,7 +307,7 @@ export function MeetingPage({ item: initial, event, tasks, hasKey, recordingByte
         itemId={initial.id}
         summary={meta.summary}
         summaryError={meta.summaryError}
-        hasKey={hasKey}
+        hasSummaryModel={hasSummaryModel}
         accepted={accepted}
         home={home}
         onAccepted={(index, task) => {

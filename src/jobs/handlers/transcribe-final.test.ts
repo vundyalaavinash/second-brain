@@ -49,13 +49,13 @@ describe("transcribe_final handler", () => {
   let t: TestDb;
   let model: string;
 
-  function handler(over: { hasChatKey?: () => boolean; ffmpegBin?: string | null } = {}) {
+  function handler(over: { hasSummaryModel?: () => boolean; ffmpegBin?: string | null } = {}) {
     return createTranscribeFinalHandler({
       db: t.db,
       whisperBin: FAKE_WHISPER,
       ffmpegBin: over.ffmpegBin === undefined ? null : over.ffmpegBin,
       finalModel: model,
-      hasChatKey: over.hasChatKey ?? (() => false),
+      hasSummaryModel: over.hasSummaryModel ?? (() => false),
     });
   }
 
@@ -92,12 +92,12 @@ describe("transcribe_final handler", () => {
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final", "embed"]);
   });
 
-  it("queues a summary as well when a chat key is configured", async () => {
+  it("queues a summary as well when the local summary model is available", async () => {
     const wavPath = writeWav(path.join("meetings", "2-recording.wav"));
     const item = createItem(t.db, { type: "meeting", title: "Standup", meta: { recording: { wavPath, state: "done" } } });
     const job = enqueueJob(t.db, "transcribe_final", { itemId: item.id, source: "recording" }, item.id);
 
-    await handler({ hasChatKey: () => true })(job);
+    await handler({ hasSummaryModel: () => true })(job);
 
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final", "embed", "summarize_meeting"]);
   });
@@ -143,7 +143,7 @@ describe("transcribe_final handler", () => {
     const wavPath = writeWav(path.join("meetings", "3-recording.wav"));
     const item = createItem(t.db, { type: "meeting", title: "Standup", meta: { recording: { wavPath, state: "done" } } });
     const job = enqueueJob(t.db, "transcribe_final", { itemId: item.id, source: "recording" }, item.id);
-    const run = createTranscribeFinalHandler({ db: t.db, whisperBin: null, ffmpegBin: null, finalModel: model, hasChatKey: () => false });
+    const run = createTranscribeFinalHandler({ db: t.db, whisperBin: null, ffmpegBin: null, finalModel: model, hasSummaryModel: () => false });
     await expect(run(job)).rejects.toThrow(/whisper/i);
     expect(getItem(t.db, item.id)!.status).toBe("failed");
   });

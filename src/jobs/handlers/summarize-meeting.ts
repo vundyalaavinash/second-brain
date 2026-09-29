@@ -32,8 +32,8 @@ const SYSTEM = [
 export interface SummarizeMeetingDeps {
   db: DB;
   /**
-   * Injected by tests and by anything that already holds a provider. Left out, the key is
-   * resolved when the job runs, so a key added after boot takes effect without a restart;
+   * Injected by tests and by anything that already holds a provider. Left out, the model is
+   * resolved when the job runs, so one installed after boot takes effect without a restart;
    * passing null is a deliberate "there is none".
    */
   provider?: ChatProvider | null;
@@ -47,8 +47,8 @@ interface MeetingMeta {
 
 /**
  * The summary pass over a finished meeting: the final transcript plus whatever was typed into
- * the notes. It is the one job that is allowed to do nothing — without a key there is no
- * model to ask, and a meeting without a summary is still a meeting.
+ * the notes. It is the one job that is allowed to do nothing — without the local model
+ * installed there is nothing to ask, and a meeting without a summary is still a meeting.
  */
 export function createSummarizeMeetingHandler(deps: SummarizeMeetingDeps): JobHandler {
   const { db } = deps;
@@ -59,9 +59,9 @@ export function createSummarizeMeetingHandler(deps: SummarizeMeetingDeps): JobHa
     const item = getItem(db, itemId);
     if (!item) throw new Error(`Item ${itemId} not found`);
 
-    const provider = deps.provider !== undefined ? deps.provider : getChatProvider(db);
+    const provider = deps.provider !== undefined ? deps.provider : getChatProvider();
     if (!provider) {
-      log(`[summarize_meeting] no Anthropic key; item ${itemId} keeps its transcript without a summary`);
+      log(`[summarize_meeting] no local summary model installed; item ${itemId} keeps its transcript without a summary`);
       return;
     }
 

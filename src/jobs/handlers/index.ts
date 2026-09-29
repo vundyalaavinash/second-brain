@@ -22,8 +22,8 @@ export interface HandlerDeps {
   /** The meeting tools, injectable so tests never reach for what is installed. */
   whisperBin?: string | null;
   ffmpegBin?: string | null;
-  hasChatKey?: () => boolean;
-  /** Left out, the summary job resolves a provider from the key when it runs. */
+  hasSummaryModel?: () => boolean;
+  /** Left out, the summary job resolves a provider from the local model when it runs. */
   chatProvider?: ChatProvider | null;
 }
 
@@ -37,7 +37,7 @@ export function createJobHandlers(deps: HandlerDeps): JobHandlers {
       db: deps.db,
       whisperBin: deps.whisperBin,
       ffmpegBin: deps.ffmpegBin,
-      hasChatKey: deps.hasChatKey,
+      hasSummaryModel: deps.hasSummaryModel,
     }),
     summarize_meeting: createSummarizeMeetingHandler({ db: deps.db, provider: deps.chatProvider }),
     distill_note: createDistillNoteHandler({ db: deps.db }),

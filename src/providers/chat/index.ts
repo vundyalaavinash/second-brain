@@ -1,26 +1,33 @@
-import type { DB } from "@/db/client";
-import { getSetting } from "@/domain/settings";
-import { createAnthropicChatProvider } from "./anthropic";
+import fs from "node:fs";
+import path from "node:path";
+import { modelsDir } from "@/lib/paths";
+import { resolveTool } from "@/domain/meetings/tools";
+import { createLlamaCppChatProvider } from "./llamacpp";
 import type { ChatProvider } from "./types";
 
 export type { ChatProvider, StructuredRequest } from "./types";
-export { CHAT_MODEL } from "./anthropic";
 
-/** Where the key lives when it is not in the environment. */
-export const CHAT_KEY_SETTING = "anthropic.apiKey";
-
-/** The environment wins over the setting, so a shell can override what the app has stored. */
-export function chatApiKey(db: DB): string {
-  return process.env.ANTHROPIC_API_KEY?.trim() || getSetting(db, CHAT_KEY_SETTING, "").trim();
+/** Where `scripts/brain.sh setup`'s `download_summary_model` step puts the model file -- the
+ * same layout src/providers/gist/index.ts uses for its own, smaller model. */
+export function summaryModelPath(): string {
+  return path.join(modelsDir(), "summary", "model.gguf");
 }
 
-/** The same check as `getChatProvider`, without building a client nobody would call. */
-export function hasChatKey(db: DB): boolean {
-  return chatApiKey(db).length > 0;
+/** A missing model means this feature is off, not broken -- same shape as `hasGistModel`. */
+export function hasSummaryModel(): boolean {
+  return fs.existsSync(summaryModelPath());
 }
 
-/** Null when no key resolves: every caller treats that as "this feature is off". */
-export function getChatProvider(db: DB): ChatProvider | null {
-  const key = chatApiKey(db);
-  return key ? createAnthropicChatProvider(key) : null;
+export function summaryBinary(): string | null {
+  return resolveTool("llama-cli");
+}
+
+/** Null when the model or the binary is absent: every caller (today, just summarize-meeting.ts)
+ * already treats that as "this feature is off" -- it used to mean no Anthropic key, now it means
+ * no local model yet. */
+export function getChatProvider(): ChatProvider | null {
+  if (!hasSummaryModel()) return null;
+  const bin = summaryBinary();
+  if (!bin) return null;
+  return createLlamaCppChatProvider(summaryModelPath(), bin);
 }

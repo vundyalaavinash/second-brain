@@ -21,7 +21,6 @@
     "release-audio": "scripts/brain.sh release-audio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.127.0",
     "@floating-ui/dom": "1.8.0",
     "@huggingface/transformers": "^4.2.0",
     "@mozilla/readability": "^0.6.0",

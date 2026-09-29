@@ -5,7 +5,7 @@ import { getDb, type DB } from "@/db/client";
 import { calendarEvents, type CalendarEvent, type Item } from "@/db/schema";
 import { getItem, parseMeta } from "@/domain/items";
 import { listTasks } from "@/domain/tasks";
-import { hasChatKey } from "@/providers/chat";
+import { hasSummaryModel } from "@/providers/chat";
 import { absoluteFilePath } from "@/lib/files";
 import { serializeItem, serializeMeetingResolved, serializeTasks } from "@/lib/api";
 import { ItemEditor } from "@/components/item-editor";
@@ -50,7 +50,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         item={serializeItem(db, item)}
         event={event ? serializeMeetingResolved(db, event) : null}
         tasks={serializeTasks(db, listTasks(db, { sourceItemId: item.id, status: "all" }))}
-        hasKey={hasChatKey(db)}
+        hasSummaryModel={hasSummaryModel()}
         recordingBytes={recordingBytes(item)}
       />
     );

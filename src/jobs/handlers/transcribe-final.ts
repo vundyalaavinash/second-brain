@@ -8,7 +8,7 @@ import type { JobHandler } from "@/jobs/worker";
 import { jobPayload } from "@/jobs/payload";
 import { enqueueJob } from "@/jobs/queue";
 import { getItem, parseMeta, rechunkItem, updateItem } from "@/domain/items";
-import { hasChatKey } from "@/providers/chat";
+import { hasSummaryModel } from "@/providers/chat";
 import { checkTools } from "@/domain/meetings/tools";
 import { parseWhisperJson, segmentsToText, type Segment } from "@/domain/meetings/transcript";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
@@ -27,8 +27,8 @@ export interface TranscribeFinalDeps {
   whisperBin?: string | null;
   ffmpegBin?: string | null;
   finalModel?: string | null;
-  /** Without a key there is nothing to summarise with; injectable so tests never look. */
-  hasChatKey?: () => boolean;
+  /** Without the local model there is nothing to summarise with; injectable so tests never look. */
+  hasSummaryModel?: () => boolean;
 }
 
 interface MeetingMeta {
@@ -112,8 +112,8 @@ export function createTranscribeFinalHandler(deps: TranscribeFinalDeps): JobHand
       updateItem(db, itemId, { extractedText: segmentsToText(segments), status: "ready", error: null, meta: next as Record<string, unknown> });
       rechunkItem(db, itemId);
       enqueueJob(db, "embed", { itemId }, itemId);
-      const keyed = deps.hasChatKey ?? (() => hasChatKey(db));
-      if (keyed()) enqueueJob(db, "summarize_meeting", { itemId }, itemId);
+      const modelReady = deps.hasSummaryModel ?? hasSummaryModel;
+      if (modelReady()) enqueueJob(db, "summarize_meeting", { itemId }, itemId);
     } catch (err) {
       if (err instanceof TranscriptFailure) throw err;
       fail(itemId, err instanceof Error ? err.message : String(err));

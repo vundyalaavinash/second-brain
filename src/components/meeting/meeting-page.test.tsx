@@ -135,13 +135,13 @@ const TASK: TaskDTO = {
   updatedAt: "2026-09-22T11:05:00.000Z",
 };
 
-function mount(dto: ItemDTO, over: { event?: ActivityMeetingDTO | null; tasks?: TaskDTO[]; hasKey?: boolean; recordingBytes?: number | null } = {}) {
+function mount(dto: ItemDTO, over: { event?: ActivityMeetingDTO | null; tasks?: TaskDTO[]; hasSummaryModel?: boolean; recordingBytes?: number | null } = {}) {
   render(
     <MeetingPage
       item={dto}
       event={over.event === undefined ? EVENT : over.event}
       tasks={over.tasks ?? []}
-      hasKey={over.hasKey ?? true}
+      hasSummaryModel={over.hasSummaryModel ?? true}
       recordingBytes={over.recordingBytes ?? null}
     />,
   );
@@ -254,17 +254,17 @@ describe("MeetingPage", () => {
     expect(screen.getByRole("link", { name: "Inbox" }).getAttribute("href")).toBe("/inbox");
   });
 
-  it("points at Settings when there is no key and no summary", () => {
+  it("points at setup when the local summary model isn't installed and there is no summary", () => {
     stubFetch();
-    mount(item({}), { hasKey: false });
-    expect(screen.getByText("Add an Anthropic key in Settings to get summaries")).toBeTruthy();
+    mount(item({}), { hasSummaryModel: false });
+    expect(screen.getByText("Run scripts/brain.sh setup to install the local summary model")).toBeTruthy();
   });
 
-  it("keeps polling for the summary after the transcript lands while a key is set", async () => {
+  it("keeps polling for the summary after the transcript lands while the model is installed", async () => {
     vi.useFakeTimers();
     try {
       const { fn } = stubFetch();
-      mount(item({ final_transcript_ready: true, transcript: [] }), { hasKey: true });
+      mount(item({ final_transcript_ready: true, transcript: [] }), { hasSummaryModel: true });
       await vi.advanceTimersByTimeAsync(3100);
       expect(fn.mock.calls.some(([u]) => String(u) === "/api/items/7")).toBe(true);
     } finally {
@@ -276,7 +276,7 @@ describe("MeetingPage", () => {
     vi.useFakeTimers();
     try {
       const { fn } = stubFetch();
-      mount(item({ final_transcript_ready: true, transcript: [], summary: { summary: "s", decisions: [], proposed_actions: [] } }), { hasKey: true });
+      mount(item({ final_transcript_ready: true, transcript: [], summary: { summary: "s", decisions: [], proposed_actions: [] } }), { hasSummaryModel: true });
       await vi.advanceTimersByTimeAsync(6500);
       expect(fn.mock.calls.some(([u]) => String(u) === "/api/items/7")).toBe(false);
     } finally {

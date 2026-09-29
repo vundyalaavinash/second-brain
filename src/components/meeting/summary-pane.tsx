@@ -23,8 +23,8 @@ interface Props {
   itemId: number;
   summary: MeetingSummaryMeta | undefined;
   summaryError: string | undefined;
-  /** False when no Anthropic key resolves, which is why there may be no summary. */
-  hasKey: boolean;
+  /** False when the local summary model isn't installed yet, which is why there may be no summary. */
+  hasSummaryModel: boolean;
   /** Indices of the proposed actions already turned into tasks. */
   accepted: number[];
   home: TaskHome;
@@ -36,7 +36,7 @@ interface Props {
  * somebody now owns. Each action is a row the person can reword before accepting; accepting
  * one creates a task that remembers this meeting.
  */
-export function SummaryPane({ itemId, summary, summaryError, hasKey, accepted, home, onAccepted }: Props) {
+export function SummaryPane({ itemId, summary, summaryError, hasSummaryModel, accepted, home, onAccepted }: Props) {
   const [titles, setTitles] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export function SummaryPane({ itemId, summary, summaryError, hasKey, accepted, h
           <p className="text-[13.5px] leading-relaxed">{summary.summary}</p>
         ) : (
           <p className="text-[13px] text-fg-faint">
-            {hasKey ? "No summary yet. One is written once the final transcript lands" : "Add an Anthropic key in Settings to get summaries"}
+            {hasSummaryModel ? "No summary yet. One is written once the final transcript lands" : "Run scripts/brain.sh setup to install the local summary model"}
           </p>
         )}
 

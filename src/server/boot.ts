@@ -9,7 +9,7 @@ import { migrateNextSteps } from "@/domain/tasks/migrate-next-steps";
 import { autoStartTick } from "@/domain/meetings/auto-start";
 import { distillSweepTick, QUIET_MINUTES } from "@/domain/distill";
 import { reconcileRecordings, stopForShutdown } from "@/domain/meetings/reconcile";
-import { hasChatKey } from "@/providers/chat";
+import { hasSummaryModel } from "@/providers/chat";
 import { syncCalendarFeed } from "@/domain/activity";
 import { checkOpenDatabase, recordDbCheck, getLastDbCheck } from "@/db/safety";
 import { getGistProvider } from "@/providers/gist";
@@ -116,9 +116,9 @@ export function boot(): JobWorker {
   }
   const embed = getEmbedProvider();
   if (!embed) console.warn("[boot] SB_EMBED=off: semantic search disabled");
-  // Read once for the log line; the handlers ask again per job, so a key added later works.
-  if (!hasChatKey(db)) console.log("[boot] no Anthropic key: meeting summaries are off");
-  const worker = new JobWorker(db, createJobHandlers({ db, embed, hasChatKey: () => hasChatKey(db) }), {
+  // Read once for the log line; the handlers ask again per job, so a model installed later works.
+  if (!hasSummaryModel()) console.log("[boot] no local summary model: meeting summaries are off");
+  const worker = new JobWorker(db, createJobHandlers({ db, embed, hasSummaryModel }), {
     log: (m) => console.log(`[worker] ${m}`),
   });
   worker.start();

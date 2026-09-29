@@ -12,7 +12,7 @@ export function gistModelPath(): string {
   return path.join(modelsDir(), "gist", "model.gguf");
 }
 
-/** Same on/off shape as `hasChatKey`: a missing model means this feature is off, not broken. */
+/** Same on/off shape as `hasSummaryModel`: a missing model means this feature is off, not broken. */
 export function hasGistModel(): boolean {
   return fs.existsSync(gistModelPath());
 }

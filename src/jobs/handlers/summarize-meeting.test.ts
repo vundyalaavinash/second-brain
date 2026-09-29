@@ -84,10 +84,10 @@ describe("summarize_meeting handler", () => {
     expect(meta.summary).toBeUndefined();
     expect(meta.summaryError).toBeUndefined();
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatch(/key/i);
+    expect(logs[0]).toMatch(/local summary model/i);
   });
 
-  it("skips when no key resolves and no provider was injected", async () => {
+  it("skips when no local model resolves and no provider was injected", async () => {
     const item = meeting();
     const logs: string[] = [];
     const handler = createSummarizeMeetingHandler({ db: t.db, log: (m) => logs.push(m) });
