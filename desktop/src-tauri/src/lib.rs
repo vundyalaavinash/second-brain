@@ -124,6 +124,79 @@ fn run_prepare(app: &AppHandle, dir: &Path) -> std::io::Result<bool> {
     Ok(status.success())
 }
 
+/// A GUI-launched app (double-clicked from Finder / opened at login) inherits `launchd`'s minimal
+/// `PATH`, not the user's shell `PATH` -- so a `node` installed via nvm, Homebrew, or similar (all
+/// of which only extend `PATH` from shell startup files like `.zshrc`) is invisible to us even
+/// though it works fine from Terminal. Both `brain.sh`'s own `command -v node` check and our own
+/// `node server.js` spawn below would fail identically without this. Resolve the user's real PATH
+/// once, by asking their actual login shell for it (`-ilc`, not just `-lc`: nvm's installer adds
+/// its `PATH` line to `.zshrc`, which only an *interactive* shell sources), and adopt it for the
+/// rest of this process so every child process we spawn inherits it.
+fn adopt_user_shell_path() {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    const START: &str = "__SB_PATH_START__";
+    const END: &str = "__SB_PATH_END__";
+    let output = Command::new(&shell)
+        .arg("-ilc")
+        .arg(format!("echo {START}$PATH{END}"))
+        .stdin(Stdio::null())
+        .output();
+    let mut path = std::env::var("PATH").unwrap_or_default();
+    if let Ok(output) = output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(start) = stdout.find(START) {
+            let rest = &stdout[start + START.len()..];
+            if let Some(end) = rest.find(END) {
+                let resolved = rest[..end].trim();
+                if !resolved.is_empty() {
+                    path = resolved.to_string();
+                }
+            }
+        }
+    }
+    // Belt and suspenders: a broken shell startup file (a bad plugin, a failing update check
+    // that `exit`s early) can make the resolution above come back empty or short. Directly check
+    // the handful of places Node actually lives on a Mac and append any that exist and aren't
+    // already covered, rather than depending entirely on shell startup succeeding cleanly.
+    for extra in common_node_dirs() {
+        if !path.split(':').any(|p| p == extra) {
+            path = format!("{path}:{extra}");
+        }
+    }
+    std::env::set_var("PATH", path);
+}
+
+fn common_node_dirs() -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut candidates = vec![
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+    ];
+    if !home.is_empty() {
+        // nvm doesn't symlink a stable "current" path -- each version gets its own directory, so
+        // pick the newest installed one rather than needing to parse its alias/default file.
+        let nvm_versions = Path::new(&home).join(".nvm/versions/node");
+        if let Ok(mut versions) = std::fs::read_dir(&nvm_versions).map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .collect::<Vec<_>>()
+        }) {
+            versions.sort();
+            if let Some(latest) = versions.last() {
+                candidates.push(latest.join("bin").to_string_lossy().to_string());
+            }
+        }
+        candidates.push(format!("{home}/.volta/bin"));
+        candidates.push(format!("{home}/.fnm"));
+    }
+    candidates
+        .into_iter()
+        .filter(|p| Path::new(p).is_dir())
+        .collect()
+}
+
 fn port_is_open(port: &str) -> bool {
     TcpStream::connect_timeout(
         &format!("127.0.0.1:{port}").parse().expect("valid addr"),
@@ -219,6 +292,8 @@ fn frontend_ready(app: AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    adopt_user_shell_path();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second launch (double-clicking the app again, or a login-item relaunch racing
