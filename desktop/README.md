@@ -68,10 +68,31 @@ npm run build                           # produces .next/standalone/ (output: "s
 cp -r public .next/standalone/
 cp -r .next/static .next/standalone/.next/
 cp scripts/brain.sh .next/standalone/scripts/brain.sh
+rm -rf .next/standalone/helper
+mkdir -p .next/standalone/helper
+rsync -a --exclude='.build' helper/ .next/standalone/helper/
+rm -rf .next/standalone/desktop           # see note below -- not optional
 
 cd desktop
 cargo tauri build                       # .app + .dmg under src-tauri/target/release/bundle/
 ```
+
+The `rm -rf .next/standalone/desktop` step is required, not cleanup. `next build` defaults to
+Turbopack, whose file tracer swept this entire directory (including `src-tauri/target/`, a
+multi-GB Rust build directory) into the standalone bundle wholesale -- `outputFileTracingExcludes`
+in `next.config.ts` correctly filters the `.nft.json` trace files themselves (verifiable after a
+build), but the actual standalone copy step doesn't consult that filtered result for Turbopack
+builds, so the exclude is effectively a no-op here despite looking like it worked. Confirmed by
+directly deleting the directory after a build and it not reappearing on its own -- it's a one-time
+copy during `next build`, not a live process, so removing it after every build is safe and
+sufficient. Ballooned a release from ~120MB to over 5GB before this was caught.
+
+The `helper/` copy above exists for the same reason in reverse: the tracer includes only some of
+`helper/`'s files (never `Package.swift`), so a build relying on the tracer alone ships a broken,
+partial copy that fails `swift build` with "could not find Package.swift in this directory or any
+of its parent". Copying it explicitly and completely, the same way `public/` and `.next/static`
+already are, sidesteps the tracer for a directory it was never meant to reason about in the first
+place -- it isn't part of the server's module graph at all.
 
 `tauri.conf.json`'s `bundle.resources` maps `../../.next/standalone/` to `server/` inside the app
 bundle — `ensure_code_installed` in `src-tauri/src/lib.rs` is what extracts it on first run, and

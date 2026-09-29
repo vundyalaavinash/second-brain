@@ -12,14 +12,25 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["node_modules/onnxruntime-node/bin/**/*"],
   },
-  // `instrumentation.ts` -> boot() -> db/client.ts's `path.join(process.cwd(), "drizzle")` is a
-  // dynamic path nft can't statically resolve, so it falls back to sweeping the whole project root
-  // into the "instrumentation" entry's trace. Exclude keys match the trace *entry name* (no leading
-  // slash for non-route entries like this one, unlike the page-route "/*" glob above) -- caught this
-  // when a standalone build ballooned to 4GB+, then 20GB+ on a second pass (desktop/src-tauri/target/
-  // being swept in wholesale, then re-swept from its own prior build's nested copy).
+  // `db/client.ts`'s `path.join(process.cwd(), "drizzle")` is a dynamic path nft can't statically
+  // resolve, so the tracer falls back to sweeping in large swaths of the project root (desktop/,
+  // including its multi-GB Rust build directory; helper/, but only partially -- see below) for
+  // entries that transitively import it. This config is kept because it correctly filters the
+  // *.nft.json trace files themselves (verifiable after a build: grep them for "desktop/"), but
+  // -- found the hard way, after it silently stopped mattering -- `next build` defaults to
+  // Turbopack, and Turbopack's standalone copy step does not consult this filtered result, so it
+  // is NOT sufficient by itself to keep desktop/ out of .next/standalone. The actual fix is the
+  // mandatory `rm -rf .next/standalone/desktop` in desktop/README.md's build steps, run after
+  // every build. Ballooned a shipped release from ~120MB to over 5GB before that was caught.
+  //
+  // `helper/` (the Swift activity tracker and meeting recorder) isn't part of the server's module
+  // graph at all -- it's built and invoked by scripts/brain.sh as separate binaries -- yet the same
+  // fallback picked up its .swift source files (never Package.swift, never .build). Rather than
+  // depend on tracer behavior for a directory it was never meant to reason about, desktop/README.md
+  // copies it explicitly and completely instead, alongside public/ and .next/static. The partial
+  // copy this left behind is exactly what broke `swift build`: "could not find Package.swift".
   outputFileTracingExcludes: {
-    instrumentation: ["desktop/**", ".git/**"],
+    "**": ["desktop/**", ".git/**", "helper/**"],
   },
   serverExternalPackages: [
     "better-sqlite3",
