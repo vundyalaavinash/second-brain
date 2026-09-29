@@ -380,6 +380,11 @@ PLIST
 
 download_model() {
   # Same model and dtype as src/providers/embed/transformers.ts; keep them in sync.
+  # Never fatal, same as the other three models below -- a failure here should leave semantic
+  # search off, not take the rest of setup (llama.cpp, whisper, gist, summary, the helper, the
+  # recorder) down with it under `set -e`. That was a real bug: this used to be the one download
+  # of the four with no `|| true`, so a single failed embedding download silently aborted
+  # everything after it in the same run.
   say "downloading the embedding model into $DATA_DIR/models (first time only)"
   mkdir -p "$DATA_DIR/models"
   SB_MODELS="$DATA_DIR/models" node -e '
@@ -388,8 +393,14 @@ download_model() {
     pipeline("feature-extraction", "Xenova/bge-small-en-v1.5", { dtype: "q8" })
       .then((p) => p(["warmup"], { pooling: "cls", normalize: true }))
       .then(() => console.log("model ready"))
-      .catch((e) => { console.error("model download failed:", e.message); process.exit(1); });
-  '
+      .catch((e) => {
+        // e.message alone is just "fetch failed" for a network-layer error -- the actual reason
+        // (DNS failure, TLS interception, connection reset) is on e.cause, which is otherwise
+        // silently dropped.
+        console.error("model download failed:", e.message, e.cause ? `(cause: ${e.cause})` : "");
+        process.exit(1);
+      });
+  ' || say "embedding model download failed; semantic search will stay off until it succeeds (rerun setup/prepare to retry)"
 }
 
 cmd_setup() {
