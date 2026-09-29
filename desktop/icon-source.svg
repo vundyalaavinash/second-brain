@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#16121f"/>
+      <stop offset="100%" stop-color="#0b0b0f"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7c5cff" stop-opacity="0.5"/>
+      <stop offset="60%" stop-color="#7c5cff" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#7c5cff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Flat gradient across the ring's own plane, not a radial "sphere" shade: a shaded orb
+         with a dark centre reads as an eye almost immediately, a flat ring with a directional
+         gradient doesn't. -->
+    <linearGradient id="ring" x1="12%" y1="6%" x2="88%" y2="94%">
+      <stop offset="0%" stop-color="#e3dbff"/>
+      <stop offset="32%" stop-color="#b7a6ff"/>
+      <stop offset="68%" stop-color="#7c5cff"/>
+      <stop offset="100%" stop-color="#4527a6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- full-bleed square background; macOS applies the rounded-square mask itself -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- soft ambient glow the ring appears to cast -->
+  <circle cx="512" cy="512" r="400" fill="url(#glow)"/>
+
+  <!-- the ring itself: a true flat annulus (stroke, not a shaded fill), so it reads as a ring
+       and not a lit sphere. Thickness is deliberately bold for legibility at small sizes. -->
+  <circle cx="512" cy="512" r="196" fill="none" stroke="url(#ring)" stroke-width="128"/>
+</svg>
