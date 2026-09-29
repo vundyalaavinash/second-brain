@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Second Brain</title>
+<style>
+  body { background: #0b0b0f; color: #e8e6f0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  #wrap { max-width: 560px; padding: 24px; }
+  h1 { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 12px; }
+  #log { font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.6; color: #9b97ad; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <h1>Setting up Second Brain&hellip;</h1>
+    <div id="log">Starting.</div>
+  </div>
+  <script>
+    // No bundler here on purpose -- dist/ is a hand-written static page with nothing to build,
+    // so this uses Tauri's global `window.__TAURI__` (app.withGlobalTauri in tauri.conf.json)
+    // instead of the npm package's bare-specifier imports, which a plain browser <script> can't
+    // resolve at all.
+    const { listen } = window.__TAURI__.event;
+    const { invoke } = window.__TAURI__.core;
+    const log = document.getElementById("log");
+
+    Promise.all([
+      listen("setup-log", (e) => {
+        log.textContent += "\n" + e.payload;
+        log.scrollTop = log.scrollHeight;
+      }),
+      listen("setup-ready", (e) => {
+        window.location.href = e.payload;
+      }),
+    ]).then(() => {
+      // Only once both listeners are actually registered does the Rust side get told it is safe
+      // to start emitting -- see frontend_ready in src-tauri/src/lib.rs for why this order
+      // matters (an event emitted before this point would simply never be received).
+      invoke("frontend_ready");
+    });
+  </script>
+</body>
+</html>

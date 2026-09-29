@@ -76,6 +76,9 @@ Usage: scripts/brain.sh <command>
   set-data-dir <path>
                    move everything in the data directory to <path>, point both launch
                    agents at it, and restart -- no reinstall, no rebuild, no re-download
+  prepare          everything setup does except building the app and installing its own
+                   launch agent -- what the desktop app (desktop/) runs on first launch,
+                   since it ships pre-built and owns its own server process instead
 
 Data directory: $DATA_DIR
 (SB_DATA_DIR only matters before the first setup; after that, run set-data-dir to move it)
@@ -414,6 +417,30 @@ cmd_setup() {
   write_plist
   cmd_start
   ok "setup complete. Data lives in $DATA_DIR"
+}
+
+# Everything cmd_setup does for a machine that needs binaries and models, minus the two things
+# only cmd_setup itself is right for: `npm ci`/`npm run build` (the desktop app ships a
+# pre-built standalone server -- see desktop/README.md -- so there is no source to build) and
+# installing/starting this app's own launch agent (the desktop app owns that process directly,
+# so a second, independent background copy of the server is exactly the thing it exists to not
+# have). Everything else -- Homebrew's llama.cpp, the embedding/whisper/gist/summary models, the
+# Swift helper and recorder, the activity token -- is identical either way, so it stays one
+# function neither path duplicates.
+cmd_prepare() {
+  require_node
+  cd "$ROOT"
+  mkdir -p "$DATA_DIR/files" "$LOG_DIR"
+  download_model
+  helper_stop
+  ensure_token
+  if build_helper; then write_helper_plist; fi
+  build_recorder || true
+  download_whisper_models
+  download_gist_model
+  download_summary_model
+  probe_recorder
+  ok "prepare complete. Data lives in $DATA_DIR"
 }
 
 cmd_start() {
@@ -972,6 +999,7 @@ case "${1:-}" in
   release-audio)  cmd_release_audio ;;
   restore) shift; cmd_restore "$@" ;;
   set-data-dir) shift; cmd_set_data_dir "$@" ;;
+  prepare) cmd_prepare ;;
   -h|--help|help|"") usage ;;
   *) usage; fail "unknown command: $1" ;;
 esac
