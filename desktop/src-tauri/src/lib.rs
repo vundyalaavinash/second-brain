@@ -208,16 +208,40 @@ fn port_is_open(port: &str) -> bool {
 /// Spawns the standalone server as this app's own child process -- not through launchd, not
 /// detached: `ServerProcess` holds the handle for as long as the app runs, and Quit kills it by
 /// that handle rather than leaving it to keep running on its own.
+///
+/// Draining stdout/stderr isn't optional here: piped output nobody reads eventually fills the
+/// pipe buffer and blocks the child's writes, and without this a server-side error (a stack
+/// trace, an uncaught exception) was simply invisible -- neither we nor whoever's debugging a
+/// report of "internal server error" had anywhere to look. Both streams go through `emit_log`,
+/// same as `run_prepare`'s, so they land in the app's own log file even after the loading screen
+/// has already navigated away and stopped listening for `setup-log` events.
 fn spawn_server(app: &AppHandle, dir: &Path) -> std::io::Result<Child> {
     emit_log(app, "Starting the server...");
-    Command::new("node")
+    let mut child = Command::new("node")
         .arg("server.js")
         .current_dir(dir)
         .env("PORT", PORT)
         .env("HOSTNAME", "127.0.0.1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
+        .spawn()?;
+    if let Some(stdout) = child.stdout.take() {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                emit_log(&app, format!("[server] {line}"));
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                emit_log(&app, format!("[server] {line}"));
+            }
+        });
+    }
+    Ok(child)
 }
 
 fn show_main_window(app: &AppHandle) {

@@ -51,6 +51,15 @@ the CLI-managed install — this just owns the whole thing as one process instea
   exactly like the CLI-managed install — `scripts/brain.sh prepare` already skips them gracefully
   and says so if CLT isn't present, rather than failing setup outright.
 
+## Troubleshooting
+
+If the app shows an error (during setup or once it's running), the full log — `prepare`'s output,
+line by line, and the Next.js server's own stdout/stderr — is at:
+
+```
+~/Library/Logs/com.second-brain.desktop/Second Brain.log
+```
+
 ## Building it
 
 ```sh
