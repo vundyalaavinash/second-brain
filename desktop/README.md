@@ -36,8 +36,14 @@ the CLI-managed install — this just owns the whole thing as one process instea
   files are all arm64. An Intel build would need its own `npm run build` and its own Tauri
   bundle target.
 - **Unsigned.** No Apple Developer account is wired into this build, so macOS Gatekeeper will
-  warn on first open — right-click → Open bypasses it once. Real signing + notarization is a
-  separate, later step.
+  warn on first open. Right-click → Open bypasses it on most Macs. If a Mac's "Allow apps from"
+  setting is locked to the App Store, that doesn't work at all and there's no "Open Anyway" button
+  to fall back on — the reliable fix on any Mac, regardless of that setting, is to strip the
+  quarantine flag after installing:
+  ```sh
+  xattr -cr "/Applications/Second Brain.app"
+  ```
+  Real signing + notarization is a separate, later step that would remove the need for this.
 - **Models download on first launch**, not bundled — the summary model alone is ~4.4 GB, and
   GitHub's own release-asset size limit (2 GB per file) rules out bundling everything anyway. A
   first run needs real time and a real internet connection.
