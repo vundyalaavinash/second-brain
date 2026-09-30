@@ -173,8 +173,12 @@ build_recorder() {
   ok "recorder built at $RECORDER_BIN"
 }
 
-# Download a model unless it is already there. An existing model is never touched,
-# and a download that fails leaves only its .part file behind, never a half model.
+# Download a model unless it is already there. An existing model is never touched. The summary
+# model alone is ~4.4 GB, so a transient failure (dropped connection, brief network blip) shouldn't
+# mean starting over from zero: --retry handles a blip within this one invocation, and -C - resumes
+# from whatever .part a previous, ultimately-failed attempt left behind -- which is deliberately
+# kept on failure now, not deleted, specifically so the next prepare/setup run can pick up where
+# this one left off instead of re-downloading bytes already on disk.
 fetch_model() {
   local dest="$1" url="$2" label="$3"
   if [ -s "$dest" ]; then
@@ -182,12 +186,11 @@ fetch_model() {
     return 0
   fi
   say "downloading the $label model ($url)"
-  if curl -L --fail --progress-bar -o "$dest.part" "$url"; then
+  if curl -L --fail --progress-bar --retry 3 --retry-delay 5 --retry-all-errors -C - -o "$dest.part" "$url"; then
     mv "$dest.part" "$dest"
     ok "$label downloaded to $dest"
   else
-    rm -f "$dest.part"
-    say "could not download the $label model; meetings will not transcribe until it is there"
+    say "could not download the $label model; meetings will not transcribe until it is there (will resume from where it left off next time)"
     return 1
   fi
 }
@@ -387,20 +390,33 @@ download_model() {
   # everything after it in the same run.
   say "downloading the embedding model into $DATA_DIR/models (first time only)"
   mkdir -p "$DATA_DIR/models"
-  SB_MODELS="$DATA_DIR/models" node -e '
-    const { pipeline, env } = require("@huggingface/transformers");
-    env.cacheDir = process.env.SB_MODELS;
-    pipeline("feature-extraction", "Xenova/bge-small-en-v1.5", { dtype: "q8" })
-      .then((p) => p(["warmup"], { pooling: "cls", normalize: true }))
-      .then(() => console.log("model ready"))
-      .catch((e) => {
-        // e.message alone is just "fetch failed" for a network-layer error -- the actual reason
-        // (DNS failure, TLS interception, connection reset) is on e.cause, which is otherwise
-        // silently dropped.
-        console.error("model download failed:", e.message, e.cause ? `(cause: ${e.cause})` : "");
-        process.exit(1);
-      });
-  ' || say "embedding model download failed; semantic search will stay off until it succeeds (rerun setup/prepare to retry)"
+  # transformers.js's own downloader has no curl-style resume, but it does skip re-fetching any
+  # individual file already sitting in cacheDir -- so retrying the whole pipeline() call after a
+  # transient failure is cheap (only the files still missing get fetched again), not a full restart.
+  local attempt
+  for attempt in 1 2 3; do
+    if SB_MODELS="$DATA_DIR/models" node -e '
+      const { pipeline, env } = require("@huggingface/transformers");
+      env.cacheDir = process.env.SB_MODELS;
+      pipeline("feature-extraction", "Xenova/bge-small-en-v1.5", { dtype: "q8" })
+        .then((p) => p(["warmup"], { pooling: "cls", normalize: true }))
+        .then(() => console.log("model ready"))
+        .catch((e) => {
+          // e.message alone is just "fetch failed" for a network-layer error -- the actual reason
+          // (DNS failure, TLS interception, connection reset) is on e.cause, which is otherwise
+          // silently dropped.
+          console.error("model download failed:", e.message, e.cause ? `(cause: ${e.cause})` : "");
+          process.exit(1);
+        });
+    '; then
+      return 0
+    fi
+    if [ "$attempt" -lt 3 ]; then
+      say "retrying the embedding model download ($attempt/3 failed)"
+      sleep 5
+    fi
+  done
+  say "embedding model download failed after 3 attempts; semantic search will stay off until it succeeds (rerun setup/prepare to retry)"
 }
 
 cmd_setup() {
