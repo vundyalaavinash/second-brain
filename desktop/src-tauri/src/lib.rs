@@ -154,11 +154,23 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         if file_type.is_dir() {
             copy_dir_recursive(&entry.path(), &target)?;
         } else if file_type.is_symlink() {
-            // The standalone build symlinks Next's own bundled node_modules packages back into
-            // node_modules/.bin and similar; a plain copy would just recreate an equally valid
-            // symlink's *target* file instead of failing on it.
+            // Resolve the link and copy what it points at, rather than recreating a link whose
+            // relative target may not exist at the destination.
+            //
+            // The directory branch matters: this used to be a bare `fs::copy`, which cannot copy
+            // a directory, and the error was discarded. Next's Turbopack build puts symlinked
+            // *directories* in .next/node_modules (its hashed aliases for serverExternalPackages),
+            // so every one of them was silently dropped at install time and the server then failed
+            // to start with "Cannot find module 'better-sqlite3-<hash>'". The build now
+            // materializes those particular links before bundling, but silently losing data on a
+            // symlink is wrong regardless of who else is guarding against it.
             if let Ok(real) = std::fs::read_link(entry.path()) {
-                let _ = std::fs::copy(src.join(&real), &target);
+                let resolved = if real.is_absolute() { real } else { src.join(&real) };
+                if resolved.is_dir() {
+                    copy_dir_recursive(&resolved, &target)?;
+                } else if resolved.exists() {
+                    std::fs::copy(&resolved, &target)?;
+                }
             }
         } else {
             std::fs::copy(entry.path(), &target)?;

@@ -96,10 +96,31 @@ rm -rf .next/standalone/helper
 mkdir -p .next/standalone/helper
 rsync -a --exclude='.build' helper/ .next/standalone/helper/
 rm -rf .next/standalone/desktop           # see note below -- not optional
+node desktop/scripts/bundle-externals.mjs # see note below -- not optional
 
 cd desktop
 cargo tauri build                       # .app + .dmg under src-tauri/target/release/bundle/
+
+cd .. && ./desktop/scripts/smoke-test.sh  # REQUIRED before publishing
 ```
+
+**Run `smoke-test.sh` before every release.** It extracts the built `.app`'s payload to a directory
+outside the repo and uses it there: loads every externalized package, builds both Swift helpers from
+the bundled source, runs `bootstrap`, and boots the server to serve real routes. Testing inside the
+repo is what let three separate bugs reach users — Node resolves `require()` upward into the repo's
+own `node_modules`, so packages entirely missing from the bundle still loaded locally, and
+`swift build` passed against `helper/` in the repo while the bundled copy had no `Package.swift`.
+The script exists because "it works on my machine" was structurally guaranteed here.
+
+`bundle-externals.mjs` is equally not optional. Turbopack doesn't bundle `serverExternalPackages`
+(that's the point of them) and its tracer copies them incompletely — it followed the ESM graph and
+skipped the CJS entry points that `require()` actually resolves to, so `linkedom` and `sqlite-vec`
+shipped as present-but-unusable directories. It also rewrites externals to content-hashed aliases
+(`better-sqlite3-90e2652d1716b047`) resolved through `.next/node_modules/`, where each alias is a
+**symlink to a directory** — which Tauri's bundler drops entirely and the app's install-time copy
+cannot copy. The script copies each external plus its dependency closure (including the
+platform-specific `optionalDependencies` that carry native binaries, like `sqlite-vec-darwin-arm64`)
+and replaces those alias symlinks with real directories.
 
 The `rm -rf .next/standalone/desktop` step is required, not cleanup. `next build` defaults to
 Turbopack, whose file tracer swept this entire directory (including `src-tauri/target/`, a
