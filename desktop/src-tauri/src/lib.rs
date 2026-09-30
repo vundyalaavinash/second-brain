@@ -30,6 +30,25 @@ fn emit_log(app: &AppHandle, line: impl AsRef<str>) {
     log::info!("{}", line.as_ref());
 }
 
+/// `scripts/brain.sh`'s `fetch_model` prints `SB_PROGRESS|<label>|<percent>` lines (real
+/// newlines, unlike curl's own \r-based meter, which a line-by-line reader never sees) while a
+/// model downloads. The loading screen renders these as an actual progress bar instead of just
+/// another scrolling log line.
+fn emit_progress(app: &AppHandle, label: &str, percent: u32) {
+    let _ = app.emit("setup-progress", serde_json::json!({ "label": label, "percent": percent }));
+}
+
+/// `true` and routes the line to `emit_progress` if it matches brain.sh's `SB_PROGRESS|` protocol;
+/// `false` (do nothing else) if the line didn't match, so the caller falls back to `emit_log`.
+fn try_emit_progress(app: &AppHandle, line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("SB_PROGRESS|") else { return false };
+    let mut parts = rest.splitn(2, '|');
+    let (Some(label), Some(percent_str)) = (parts.next(), parts.next()) else { return false };
+    let Ok(percent) = percent_str.parse::<u32>() else { return false };
+    emit_progress(app, label, percent);
+    true
+}
+
 /// Where the *code* (the standalone server build, brain.sh, the migrations it needs) lives --
 /// deliberately not the data directory (`~/Library/Application Support/second-brain/`, brain.sh's
 /// own default): code and data are two different things this app should never conflate, the same
@@ -108,7 +127,9 @@ fn run_prepare(app: &AppHandle, dir: &Path) -> std::io::Result<bool> {
         let app = app.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                emit_log(&app, line);
+                if !try_emit_progress(&app, &line) {
+                    emit_log(&app, line);
+                }
             }
         });
     }

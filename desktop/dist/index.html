@@ -5,14 +5,25 @@
 <title>Second Brain</title>
 <style>
   body { background: #0b0b0f; color: #e8e6f0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-  #wrap { max-width: 560px; padding: 24px; }
+  #wrap { max-width: 560px; width: 100%; padding: 24px; }
   h1 { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 12px; }
+  #progress-wrap { display: none; margin: 0 0 14px; }
+  #progress-label { font-size: 12px; color: #b7a6ff; margin: 0 0 6px; display: flex; justify-content: space-between; }
+  #progress-track { height: 6px; border-radius: 3px; background: rgba(124, 92, 255, 0.16); overflow: hidden; }
+  #progress-bar { height: 100%; width: 0%; border-radius: 3px; background: #7c5cff; transition: width 0.2s ease; }
   #log { font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.6; color: #9b97ad; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
 </style>
 </head>
 <body>
   <div id="wrap">
     <h1>Setting up Second Brain&hellip;</h1>
+    <div id="progress-wrap">
+      <div id="progress-label">
+        <span id="progress-name"></span>
+        <span id="progress-percent"></span>
+      </div>
+      <div id="progress-track"><div id="progress-bar"></div></div>
+    </div>
     <div id="log">Starting.</div>
   </div>
   <script>
@@ -23,11 +34,27 @@
     const { listen } = window.__TAURI__.event;
     const { invoke } = window.__TAURI__.core;
     const log = document.getElementById("log");
+    const progressWrap = document.getElementById("progress-wrap");
+    const progressName = document.getElementById("progress-name");
+    const progressPercent = document.getElementById("progress-percent");
+    const progressBar = document.getElementById("progress-bar");
 
     Promise.all([
       listen("setup-log", (e) => {
         log.textContent += "\n" + e.payload;
         log.scrollTop = log.scrollHeight;
+      }),
+      listen("setup-progress", (e) => {
+        const { label, percent } = e.payload;
+        progressWrap.style.display = "block";
+        progressName.textContent = "Downloading " + label + " model";
+        progressPercent.textContent = percent + "%";
+        progressBar.style.width = percent + "%";
+        if (percent >= 100) {
+          // Leave the finished bar visible for a moment rather than snapping it away the instant
+          // this one model completes -- another one may start right after.
+          setTimeout(() => { progressWrap.style.display = "none"; }, 1200);
+        }
       }),
       listen("setup-ready", (e) => {
         window.location.href = e.payload;

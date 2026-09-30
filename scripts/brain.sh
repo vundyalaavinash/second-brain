@@ -179,6 +179,14 @@ build_recorder() {
 # from whatever .part a previous, ultimately-failed attempt left behind -- which is deliberately
 # kept on failure now, not deleted, specifically so the next prepare/setup run can pick up where
 # this one left off instead of re-downloading bytes already on disk.
+#
+# curl's own --progress-bar draws with \r (no newline), so it's invisible to a line-by-line reader
+# -- which is exactly how the desktop app's setup screen consumes this script's output. Instead,
+# curl runs in the background and a poll loop emits `SB_PROGRESS|<label>|<percent>` lines (real
+# newlines) while it runs; the desktop app's Rust side (src-tauri/src/lib.rs) recognizes that
+# prefix and turns it into a UI progress bar instead of a log line. A plain terminal run of this
+# script just prints those lines like any other -- no worse than before, since --progress-bar's
+# \r output was never useful in a piped/logged context either.
 fetch_model() {
   local dest="$1" url="$2" label="$3" consequence="$4"
   if [ -s "$dest" ]; then
@@ -186,9 +194,38 @@ fetch_model() {
     return 0
   fi
   say "downloading the $label model ($url)"
-  if curl -L --fail --progress-bar --retry 3 --retry-delay 5 --retry-all-errors -C - -o "$dest.part" "$url"; then
+
+  local total
+  total="$(curl -sIL "$url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" {size=$2} END {print size}')"
+
+  # --silent --show-error, not --progress-bar: our own poll loop below is the real progress signal
+  # now, and curl's \r-based meter would otherwise accumulate unread (no newline to flush it) until
+  # one huge garbled line lands in the log at the very end. --show-error keeps real error text on
+  # failure despite --silent.
+  curl -L --fail --silent --show-error --retry 3 --retry-delay 5 --retry-all-errors -C - -o "$dest.part" "$url" &
+  local curl_pid=$!
+
+  if [ -n "${total:-}" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+    local last_percent=-1 current percent
+    while kill -0 "$curl_pid" 2>/dev/null; do
+      if [ -f "$dest.part" ]; then
+        current=$(wc -c <"$dest.part" 2>/dev/null | tr -d ' ')
+        if [ -n "$current" ]; then
+          percent=$((current * 100 / total))
+          if [ "$percent" -ne "$last_percent" ]; then
+            echo "SB_PROGRESS|$label|$percent"
+            last_percent=$percent
+          fi
+        fi
+      fi
+      sleep 1
+    done
+  fi
+
+  if wait "$curl_pid"; then
     mv "$dest.part" "$dest"
     ok "$label downloaded to $dest"
+    echo "SB_PROGRESS|$label|100"
   else
     say "could not download the $label model; $consequence (will resume from where it left off next time)"
     return 1
