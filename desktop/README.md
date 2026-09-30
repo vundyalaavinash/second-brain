@@ -60,6 +60,30 @@ line by line, and the Next.js server's own stdout/stderr — is at:
 ~/Library/Logs/com.second-brain.desktop/Second Brain.log
 ```
 
+### A model download keeps failing
+
+Each model download is skip-if-present: `prepare` only fetches a model if the exact file isn't
+already there, so you can download one yourself (a browser succeeds in plenty of cases where the
+app's own `fetch`/`curl` doesn't — a flaky connection, a proxy, a firewall) and drop it into place
+by hand. Quit the app first, then place these under
+`~/Library/Application Support/second-brain/models/` with the exact relative paths below, and
+relaunch:
+
+| What | Exact path | Source URL |
+|---|---|---|
+| Whisper (small, faster) | `whisper/ggml-base.en.bin` | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin` |
+| Whisper (larger, better) | `whisper/ggml-medium.en.bin` | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin` |
+| Gist model | `gist/model.gguf` | `https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf` |
+| Summary model | `summary/model.gguf` | `https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf` |
+| Embedding — config | `Xenova/bge-small-en-v1.5/config.json` | `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/config.json` |
+| Embedding — tokenizer | `Xenova/bge-small-en-v1.5/tokenizer.json` | `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/tokenizer.json` |
+| Embedding — tokenizer config | `Xenova/bge-small-en-v1.5/tokenizer_config.json` | `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/tokenizer_config.json` |
+| Embedding — model | `Xenova/bge-small-en-v1.5/onnx/model.onnx` | `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model.onnx` |
+| Embedding — model (quantized) | `Xenova/bge-small-en-v1.5/onnx/model_quantized.onnx` | `https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model_quantized.onnx` |
+
+If you already have a whisper model from somewhere else, just rename/copy it to the exact filename
+above — the filename is all that's checked.
+
 ## Building it
 
 ```sh
