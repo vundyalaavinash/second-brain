@@ -77,8 +77,12 @@ Usage: scripts/brain.sh <command>
                    move everything in the data directory to <path>, point both launch
                    agents at it, and restart -- no reinstall, no rebuild, no re-download
   prepare          everything setup does except building the app and installing its own
-                   launch agent -- what the desktop app (desktop/) runs on first launch,
-                   since it ships pre-built and owns its own server process instead
+                   launch agent -- bootstrap plus fetch-assets, in that order
+  bootstrap        just what the server needs before it can boot (data dirs, auth token).
+                   Sub-second, no network -- the desktop app runs this, starts the server,
+                   and only then fetches assets, so the app is usable while they download
+  fetch-assets     the slow half of prepare: every model, Homebrew's llama.cpp, the Swift
+                   helper and recorder. Safe to run while the server is already up
 
 Data directory: $DATA_DIR
 (SB_DATA_DIR only matters before the first setup; after that, run set-data-dir to move it)
@@ -188,7 +192,11 @@ build_recorder() {
 # script just prints those lines like any other -- no worse than before, since --progress-bar's
 # \r output was never useful in a piped/logged context either.
 fetch_model() {
-  local dest="$1" url="$2" label="$3" consequence="$4"
+  # `label` is the precise one for logs (it names the exact checkpoint and quantization, which is
+  # what you want when diagnosing a bad download); `display` is what the setup screen's progress
+  # bar shows, in terms of the feature it powers rather than the model that powers it. Defaults to
+  # label when a caller doesn't care to distinguish them.
+  local dest="$1" url="$2" label="$3" consequence="$4" display="${5:-$3}"
   if [ -s "$dest" ]; then
     ok "$label already at $dest"
     return 0
@@ -213,7 +221,7 @@ fetch_model() {
         if [ -n "$current" ]; then
           percent=$((current * 100 / total))
           if [ "$percent" -ne "$last_percent" ]; then
-            echo "SB_PROGRESS|$label|$percent"
+            echo "SB_PROGRESS|$display|$percent"
             last_percent=$percent
           fi
         fi
@@ -225,7 +233,7 @@ fetch_model() {
   if wait "$curl_pid"; then
     mv "$dest.part" "$dest"
     ok "$label downloaded to $dest"
-    echo "SB_PROGRESS|$label|100"
+    echo "SB_PROGRESS|$display|100"
   else
     say "could not download the $label model; $consequence (will resume from where it left off next time)"
     return 1
@@ -237,7 +245,7 @@ download_whisper_models() {
   local base="$WHISPER_DIR/ggml-base.en.bin"
   local final="$WHISPER_DIR/ggml-medium.en.bin"
   local brew_final="$HOME/.whisper-cpp/models/ggml-medium.en.bin"
-  fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" "meetings will not transcribe" || true
+  fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" "meetings will not transcribe" "the live transcription model" || true
   if [ -s "$final" ]; then
     ok "whisper medium.en already at $final"
   elif [ -s "$brew_final" ]; then
@@ -246,7 +254,7 @@ download_whisper_models() {
     ln -sf "$brew_final" "$final"
     ok "linked the medium.en model already at $brew_final"
   else
-    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" "the final (post-meeting) transcript pass will fail until it is there -- live transcription during the meeting still works" || true
+    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" "the final (post-meeting) transcript pass will fail until it is there -- live transcription during the meeting still works" "the full transcription model" || true
   fi
   write_model_settings "$base" "$final"
 }
@@ -277,7 +285,7 @@ download_gist_model() {
   local target="$dir/model.gguf"
   mkdir -p "$dir"
   ensure_llama_cli
-  fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" "note distillation will stay off" || true
+  fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" "note distillation will stay off" "the note distillation model" || true
 }
 
 # Meeting summaries (src/jobs/handlers/summarize-meeting.ts) used to need an Anthropic key;
@@ -290,7 +298,7 @@ download_summary_model() {
   local target="$dir/model.gguf"
   mkdir -p "$dir"
   ensure_llama_cli
-  fetch_model "$target" "$SUMMARY_URL" "summary (Qwen2.5-7B-Instruct, Q4_K_M)" "meeting summaries will stay off" || true
+  fetch_model "$target" "$SUMMARY_URL" "summary (Qwen2.5-7B-Instruct, Q4_K_M)" "meeting summaries will stay off" "the meeting summary model" || true
 }
 
 # The live and the final transcription models, as meetings.whisperBase and
@@ -491,19 +499,45 @@ cmd_setup() {
 # have). Everything else -- Homebrew's llama.cpp, the embedding/whisper/gist/summary models, the
 # Swift helper and recorder, the activity token -- is identical either way, so it stays one
 # function neither path duplicates.
-cmd_prepare() {
+# The fast half of `prepare`: everything the server genuinely needs before it can boot, and
+# nothing else. Sub-second, no network. Split out from `prepare` so the desktop app can start the
+# server -- and hand the user a working app -- in a couple of seconds instead of making them wait
+# out ~6.5 GB of model downloads first. Every model and helper is already "off, not broken" when
+# missing, so the app is fully usable while `fetch-assets` is still running behind it.
+cmd_bootstrap() {
   require_node
   cd "$ROOT"
   mkdir -p "$DATA_DIR/files" "$LOG_DIR"
+  ensure_token
+  ok "bootstrap complete. Data lives in $DATA_DIR"
+}
+
+# The slow half: models, Homebrew's llama.cpp, the Swift helper and recorder. Safe to run while
+# the server is already up -- nothing here touches the database, and each step independently
+# degrades to "that feature stays off" rather than failing the run.
+cmd_fetch_assets() {
+  require_node
+  cd "$ROOT"
   download_model
   helper_stop
-  ensure_token
   if build_helper; then write_helper_plist; fi
   build_recorder || true
   download_whisper_models
   download_gist_model
   download_summary_model
   probe_recorder
+  # Nothing else starts it on this path. `cmd_start` is the only other caller of helper_start and
+  # the desktop app never runs it -- it owns its own server process instead of the launch agent --
+  # so without this the helper was stopped and rebuilt on every run and then simply left down,
+  # which is to say activity tracking never actually ran under the desktop app at all. Safe
+  # unconditionally: helper_start no-ops when the helper isn't installed (no swift, no plist).
+  helper_start
+  ok "assets complete. Data lives in $DATA_DIR"
+}
+
+cmd_prepare() {
+  cmd_bootstrap
+  cmd_fetch_assets
   ok "prepare complete. Data lives in $DATA_DIR"
 }
 
@@ -1064,6 +1098,8 @@ case "${1:-}" in
   restore) shift; cmd_restore "$@" ;;
   set-data-dir) shift; cmd_set_data_dir "$@" ;;
   prepare) cmd_prepare ;;
+  bootstrap) cmd_bootstrap ;;
+  fetch-assets) cmd_fetch_assets ;;
   -h|--help|help|"") usage ;;
   *) usage; fail "unknown command: $1" ;;
 esac

@@ -22,6 +22,26 @@ struct ServerProcess(Mutex<Option<Child>>);
 /// a second server fighting the first one for the same port.
 struct BringupStarted(Mutex<bool>);
 
+/// The tray's status line, held so background asset downloads can keep it current. It is a
+/// disabled menu item -- a label, not something to click.
+struct TrayStatus(Mutex<Option<MenuItem<tauri::Wry>>>);
+
+/// A running snapshot of what the setup screen would have shown. Tauri events are fire-and-forget
+/// -- a window opened later never sees the ones already emitted -- so reopening "Setup Progress"
+/// from the tray mid-download would otherwise show an empty, apparently-stuck screen. The page
+/// asks for this on load and hydrates from it, then follows live events from there.
+#[derive(Default, Clone, serde::Serialize)]
+struct SetupState {
+    install: String,
+    server: String,
+    assets: String,
+    label: String,
+    percent: u32,
+    url: Option<String>,
+}
+
+struct SetupStateStore(Mutex<SetupState>);
+
 /// `dist/index.html`'s own loading screen listens for these two events: `setup-log` appends a
 /// line to what it shows while `prepare` and the server start up, `setup-ready` is the signal to
 /// navigate the window to the real app once the server answers.
@@ -35,7 +55,40 @@ fn emit_log(app: &AppHandle, line: impl AsRef<str>) {
 /// model downloads. The loading screen renders these as an actual progress bar instead of just
 /// another scrolling log line.
 fn emit_progress(app: &AppHandle, label: &str, percent: u32) {
+    {
+        let store = app.state::<SetupStateStore>();
+        let mut snapshot = store.0.lock().unwrap();
+        snapshot.label = label.to_string();
+        snapshot.percent = percent;
+    }
     let _ = app.emit("setup-progress", serde_json::json!({ "label": label, "percent": percent }));
+}
+
+/// Drives the setup screen's step checklist. `id` is one of "install", "server", "assets";
+/// `state` is "active", "done" or "error".
+fn emit_step(app: &AppHandle, id: &str, state: &str) {
+    {
+        let store = app.state::<SetupStateStore>();
+        let mut snapshot = store.0.lock().unwrap();
+        match id {
+            "install" => snapshot.install = state.to_string(),
+            "server" => snapshot.server = state.to_string(),
+            "assets" => snapshot.assets = state.to_string(),
+            _ => {}
+        }
+    }
+    let _ = app.emit("setup-step", serde_json::json!({ "id": id, "state": state }));
+    log::info!("[step] {id}: {state}");
+}
+
+/// The one place asset progress is visible once the user has left the setup screen for the app
+/// itself: a disabled tray menu item whose text is the current status. The tray is the only piece
+/// of this app's own UI still on screen at that point -- the window is showing the Next.js app,
+/// which is served over http and has no access to these events.
+fn set_tray_status(app: &AppHandle, text: &str) {
+    if let Some(item) = app.state::<TrayStatus>().0.lock().unwrap().as_ref() {
+        let _ = item.set_text(text);
+    }
 }
 
 /// `true` and routes the line to `emit_progress` if it matches brain.sh's `SB_PROGRESS|` protocol;
@@ -46,6 +99,7 @@ fn try_emit_progress(app: &AppHandle, line: &str) -> bool {
     let (Some(label), Some(percent_str)) = (parts.next(), parts.next()) else { return false };
     let Ok(percent) = percent_str.parse::<u32>() else { return false };
     emit_progress(app, label, percent);
+    set_tray_status(app, &format!("Downloading {label} — {percent}%"));
     true
 }
 
@@ -62,9 +116,13 @@ fn code_dir(app: &AppHandle) -> PathBuf {
 
 /// Copies the bundled resources (the standalone server build and brain.sh) into `code_dir` the
 /// first time this app runs, or whenever the bundled version is newer than what is already
-/// there. Nothing here touches the data directory or any model -- that is `brain.sh prepare`'s
-/// job, run after this returns.
-fn ensure_code_installed(app: &AppHandle) -> std::io::Result<PathBuf> {
+/// there. Nothing here touches the data directory or any model -- that is `brain.sh`'s job, run
+/// after this returns.
+///
+/// The `bool` is "this copy was already in place", i.e. not a first run or an update. The setup
+/// screen uses it to decide whether to linger (first run: models are about to download, there is
+/// something worth watching) or continue straight into the app (everything already cached).
+fn ensure_code_installed(app: &AppHandle) -> std::io::Result<(PathBuf, bool)> {
     let dest = code_dir(app);
     let marker = dest.join(".version");
     let bundled_version = app.package_info().version.to_string();
@@ -72,7 +130,7 @@ fn ensure_code_installed(app: &AppHandle) -> std::io::Result<PathBuf> {
         .map(|v| v.trim() == bundled_version)
         .unwrap_or(false);
     if already_current && dest.join("server.js").exists() {
-        return Ok(dest);
+        return Ok((dest, true));
     }
     let resource_dir = app
         .path()
@@ -84,7 +142,7 @@ fn ensure_code_installed(app: &AppHandle) -> std::io::Result<PathBuf> {
     }
     copy_dir_recursive(&resource_dir, &dest)?;
     std::fs::write(&marker, &bundled_version)?;
-    Ok(dest)
+    Ok((dest, false))
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -109,16 +167,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Runs `scripts/brain.sh prepare` (Homebrew's llama.cpp, every model, the Swift helper and
-/// recorder -- everything `cmd_setup` does except building the app and installing a launch
-/// agent, since this app is already built and owns its own process instead) from the freshly
-/// installed code directory, streaming each line to the loading screen as it happens rather than
-/// waiting silently for the whole thing to finish.
-fn run_prepare(app: &AppHandle, dir: &Path) -> std::io::Result<bool> {
-    emit_log(app, "Checking dependencies and models (this can take a while the first time)...");
+/// Runs one `scripts/brain.sh` subcommand from the installed code directory, streaming each line
+/// out as it happens rather than waiting silently for the whole thing to finish.
+///
+/// Two subcommands matter here, and the split is the whole point: `bootstrap` is the sub-second,
+/// no-network half the server needs before it can boot, and `fetch-assets` is the multi-GB half
+/// (models, llama.cpp, the Swift binaries) that runs *after* the server is already up and the
+/// user is already in the app.
+fn run_script(app: &AppHandle, dir: &Path, subcommand: &str) -> std::io::Result<bool> {
     let mut child = Command::new("bash")
         .arg("scripts/brain.sh")
-        .arg("prepare")
+        .arg(subcommand)
         .current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -272,6 +331,26 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+/// Reopens the setup screen from the tray, as its own window rather than navigating the main one
+/// away from the app the user is presumably using. It hydrates from `setup_state` on load, so it
+/// shows current progress rather than the empty screen a fresh page would otherwise start from.
+fn show_setup_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("setup") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(
+        app,
+        "setup",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("Second Brain Setup")
+    .inner_size(620.0, 560.0)
+    .resizable(true)
+    .build();
+}
+
 /// Everything from "get the code onto disk" to "the server answers" -- run only once the
 /// frontend has confirmed it is actually listening (see `frontend_ready` below), never from
 /// `setup()` directly: that races the webview's own page load, and a `setup-log`/`setup-ready`
@@ -288,21 +367,24 @@ fn start_bringup(handle: AppHandle) {
         *started = true;
     }
     std::thread::spawn(move || {
-        let dir = match ensure_code_installed(&handle) {
-            Ok(dir) => dir,
+        emit_step(&handle, "install", "active");
+        let (dir, already_installed) = match ensure_code_installed(&handle) {
+            Ok(result) => result,
             Err(e) => {
+                emit_step(&handle, "install", "error");
                 emit_log(&handle, format!("Could not install the app's files: {e}"));
                 return;
             }
         };
+        emit_step(&handle, "install", "done");
 
         if !port_is_open(PORT) {
-            match run_prepare(&handle, &dir) {
+            emit_step(&handle, "server", "active");
+            emit_log(&handle, "Preparing the data directory...");
+            match run_script(&handle, &dir, "bootstrap") {
                 Ok(true) => {}
-                Ok(false) => {
-                    emit_log(&handle, "Setup reported a problem -- check the log above. Trying to start the server anyway.");
-                }
-                Err(e) => emit_log(&handle, format!("Could not run setup: {e}")),
+                Ok(false) => emit_log(&handle, "Bootstrap reported a problem -- check the details. Starting the server anyway."),
+                Err(e) => emit_log(&handle, format!("Could not run bootstrap: {e}")),
             }
 
             match spawn_server(&handle, &dir) {
@@ -310,21 +392,63 @@ fn start_bringup(handle: AppHandle) {
                     handle.state::<ServerProcess>().0.lock().unwrap().replace(child);
                 }
                 Err(e) => {
+                    emit_step(&handle, "server", "error");
                     emit_log(&handle, format!("Could not start the server: {e}"));
                     return;
                 }
             }
+        } else {
+            emit_step(&handle, "server", "active");
         }
 
         emit_log(&handle, "Waiting for the server to answer...");
+        let mut answered = false;
         for _ in 0..600 {
             if port_is_open(PORT) {
-                let _ = handle.emit("setup-ready", format!("http://127.0.0.1:{PORT}"));
-                return;
+                answered = true;
+                break;
             }
             std::thread::sleep(Duration::from_millis(500));
         }
-        emit_log(&handle, "The server did not answer within 5 minutes. Check the log above.");
+        if !answered {
+            emit_step(&handle, "server", "error");
+            emit_log(&handle, "The server did not answer within 5 minutes. Check the details.");
+            return;
+        }
+        emit_step(&handle, "server", "done");
+
+        // The app is usable from here on. `already_installed` decides whether the setup screen
+        // continues straight through (nothing to watch -- assets were fetched on an earlier run)
+        // or waits for the user, since a first run is about to pull several GB and that progress
+        // is worth showing rather than hiding behind an app that half-works.
+        let url = format!("http://127.0.0.1:{PORT}");
+        handle.state::<SetupStateStore>().0.lock().unwrap().url = Some(url.clone());
+        let _ = handle.emit(
+            "setup-ready",
+            serde_json::json!({ "url": url, "autoContinue": already_installed }),
+        );
+
+        // Models, llama.cpp and the Swift binaries -- the multi-GB half. Deliberately after the
+        // server is up and the user has a working app, not before it. Every step degrades to
+        // "that feature stays off" on failure, so nothing here can keep the app from running.
+        emit_step(&handle, "assets", "active");
+        set_tray_status(&handle, "Downloading models…");
+        match run_script(&handle, &dir, "fetch-assets") {
+            Ok(true) => {
+                emit_step(&handle, "assets", "done");
+                set_tray_status(&handle, "All models ready");
+            }
+            Ok(false) => {
+                emit_step(&handle, "assets", "error");
+                set_tray_status(&handle, "Some models missing");
+                emit_log(&handle, "Some assets did not finish. Those features stay off until they do -- reopen Setup from the tray to retry.");
+            }
+            Err(e) => {
+                emit_step(&handle, "assets", "error");
+                set_tray_status(&handle, "Some models missing");
+                emit_log(&handle, format!("Could not fetch assets: {e}"));
+            }
+        }
     });
 }
 
@@ -333,6 +457,13 @@ fn start_bringup(handle: AppHandle) {
 #[tauri::command]
 fn frontend_ready(app: AppHandle) {
     start_bringup(app);
+}
+
+/// What the setup screen hydrates from on load -- see `SetupState` for why a fresh page can't
+/// just wait for events.
+#[tauri::command]
+fn setup_state(app: AppHandle) -> SetupState {
+    app.state::<SetupStateStore>().0.lock().unwrap().clone()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -357,18 +488,29 @@ pub fn run() {
         )
         .manage(ServerProcess(Mutex::new(None)))
         .manage(BringupStarted(Mutex::new(false)))
+        .manage(TrayStatus(Mutex::new(None)))
+        .manage(SetupStateStore(Mutex::new(SetupState::default())))
         .setup(|app| {
             let handle = app.handle().clone();
 
+            // Disabled on purpose: a status line, not a button. `set_tray_status` keeps its text
+            // current while assets download in the background, which is the only place that
+            // progress is visible once the window has moved on to the app itself.
+            let status_item =
+                MenuItem::with_id(app, "status", "Starting…", false, None::<&str>)?;
             let open_item = MenuItem::with_id(app, "open", "Open Second Brain", true, None::<&str>)?;
+            let setup_item = MenuItem::with_id(app, "setup", "Setup Progress", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+            let tray_menu =
+                Menu::with_items(app, &[&status_item, &open_item, &setup_item, &quit_item])?;
+            app.state::<TrayStatus>().0.lock().unwrap().replace(status_item);
             TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true)
                 .icon(app.default_window_icon().unwrap().clone())
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "open" => show_main_window(app),
+                    "setup" => show_setup_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -392,7 +534,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![frontend_ready])
+        .invoke_handler(tauri::generate_handler![frontend_ready, setup_state])
         .on_window_event(|window, event| {
             // Closing the window is not quitting the app: the server (and, once minimised,
             // activity tracking and auto-recording) keeps running from the tray, exactly the

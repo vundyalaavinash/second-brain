@@ -4,28 +4,245 @@
 <meta charset="utf-8" />
 <title>Second Brain</title>
 <style>
-  body { background: #0b0b0f; color: #e8e6f0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-  #wrap { max-width: 560px; width: 100%; padding: 24px; }
-  h1 { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 12px; }
-  #progress-wrap { display: none; margin: 0 0 14px; }
-  #progress-label { font-size: 12px; color: #b7a6ff; margin: 0 0 6px; display: flex; justify-content: space-between; }
-  #progress-track { height: 6px; border-radius: 3px; background: rgba(124, 92, 255, 0.16); overflow: hidden; }
-  #progress-bar { height: 100%; width: 0%; border-radius: 3px; background: #7c5cff; transition: width 0.2s ease; }
-  #log { font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.6; color: #9b97ad; white-space: pre-wrap; max-height: 60vh; overflow-y: auto; }
+  :root {
+    --carbon: #0b0b0f;
+    --violet: #7c5cff;
+    --violet-bright: #b7a6ff;
+    --violet-dim: rgba(124, 92, 255, 0.18);
+    --ink: #e8e6f0;
+    --ink-soft: #9b97ad;
+    --ink-faint: #6a6679;
+    --amber: #e0a33e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--carbon);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 32px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One soft violet bloom behind the mark, the only decoration on the page. */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 22%;
+    left: 50%;
+    width: 520px;
+    height: 520px;
+    margin: -260px 0 0 -260px;
+    background: radial-gradient(circle, rgba(124, 92, 255, 0.13), transparent 62%);
+    pointer-events: none;
+  }
+
+  #wrap { position: relative; width: 100%; max-width: 420px; }
+
+  #mark { display: block; margin: 0 auto 22px; }
+  #mark-track { stroke: var(--violet-dim); }
+  #mark-arc {
+    stroke: url(#arc-gradient);
+    stroke-linecap: round;
+    transform-origin: 50% 50%;
+    animation: spin 2.4s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
+  }
+  #mark.settled #mark-arc { animation: none; stroke: var(--violet); stroke-dasharray: 226; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  h1 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    text-align: center;
+    margin: 0 0 6px;
+  }
+
+  #sub {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    text-align: center;
+    margin: 0 0 30px;
+  }
+
+  #steps { list-style: none; margin: 0 0 4px; padding: 0; }
+  .step {
+    display: flex;
+    align-items: baseline;
+    gap: 11px;
+    padding: 8px 0;
+    font-size: 13.5px;
+    color: var(--ink-faint);
+    transition: color 0.3s ease;
+  }
+  .step[data-state="active"] { color: var(--ink); }
+  .step[data-state="done"] { color: var(--ink-soft); }
+  .step[data-state="error"] { color: var(--amber); }
+
+  .dot {
+    position: relative;
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    opacity: 0.45;
+    transform: translateY(1px);
+    transition: opacity 0.3s ease, background 0.3s ease;
+  }
+  .step[data-state="active"] .dot {
+    opacity: 1;
+    border-color: var(--violet-bright);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .step[data-state="done"] .dot {
+    opacity: 1;
+    border-color: var(--violet);
+    background: var(--violet);
+  }
+  .step[data-state="error"] .dot { opacity: 1; background: var(--amber); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(183, 166, 255, 0.5); }
+    70% { box-shadow: 0 0 0 5px rgba(183, 166, 255, 0); }
+  }
+
+  .step-note { margin-left: auto; font-size: 12px; color: var(--ink-faint); }
+
+  #progress { margin: 14px 0 0; opacity: 0; max-height: 0; transition: opacity 0.3s ease; }
+  #progress.on { opacity: 1; max-height: 60px; }
+  #progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--violet-bright);
+    margin: 0 0 7px;
+  }
+  #progress-percent { font-variant-numeric: tabular-nums; }
+  #progress-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--violet-dim);
+    overflow: hidden;
+  }
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--violet), var(--violet-bright));
+    transition: width 0.4s ease;
+  }
+
+  #actions { margin-top: 28px; text-align: center; min-height: 34px; }
+  #open {
+    display: none;
+    width: 100%;
+    padding: 10px 18px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #fff;
+    background: var(--violet);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+  }
+  #open:hover { background: #8d70ff; }
+  #open:active { transform: scale(0.99); }
+  #open:focus-visible { outline: 2px solid var(--violet-bright); outline-offset: 2px; }
+  #open.on { display: block; }
+
+  #details-toggle {
+    display: inline-block;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #details-toggle:hover { color: var(--ink-soft); }
+
+  #log {
+    display: none;
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px;
+    line-height: 1.65;
+    color: var(--ink-faint);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 34vh;
+    overflow-y: auto;
+    text-align: left;
+  }
+  #log.on { display: block; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #mark-arc, .step[data-state="active"] .dot { animation: none; }
+    * { transition-duration: 0.01ms !important; }
+  }
 </style>
 </head>
 <body>
   <div id="wrap">
-    <h1>Setting up Second Brain&hellip;</h1>
-    <div id="progress-wrap">
+    <svg id="mark" width="60" height="60" viewBox="0 0 80 80" aria-hidden="true">
+      <defs>
+        <linearGradient id="arc-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e3dbff" />
+          <stop offset="100%" stop-color="#7c5cff" />
+        </linearGradient>
+      </defs>
+      <circle id="mark-track" cx="40" cy="40" r="30" fill="none" stroke-width="6" />
+      <circle id="mark-arc" cx="40" cy="40" r="30" fill="none" stroke-width="6"
+              stroke-dasharray="52 137" />
+    </svg>
+
+    <h1 id="title">Setting up Second Brain</h1>
+    <p id="sub">This runs entirely on your Mac. Nothing leaves it.</p>
+
+    <ul id="steps">
+      <li class="step" id="step-install" data-state="pending">
+        <span class="dot"></span><span>Installing app files</span>
+        <span class="step-note" id="note-install"></span>
+      </li>
+      <li class="step" id="step-server" data-state="pending">
+        <span class="dot"></span><span>Starting the server</span>
+        <span class="step-note" id="note-server"></span>
+      </li>
+      <li class="step" id="step-assets" data-state="pending">
+        <span class="dot"></span><span>Downloading AI models</span>
+        <span class="step-note" id="note-assets"></span>
+      </li>
+    </ul>
+
+    <div id="progress">
       <div id="progress-label">
         <span id="progress-name"></span>
         <span id="progress-percent"></span>
       </div>
       <div id="progress-track"><div id="progress-bar"></div></div>
     </div>
-    <div id="log">Starting.</div>
+
+    <div id="actions">
+      <button id="open" type="button">Open Second Brain</button>
+      <button id="details-toggle" type="button">Show details</button>
+      <div id="log">Starting.</div>
+    </div>
   </div>
+
   <script>
     // No bundler here on purpose -- dist/ is a hand-written static page with nothing to build,
     // so this uses Tauri's global `window.__TAURI__` (app.withGlobalTauri in tauri.conf.json)
@@ -33,37 +250,119 @@
     // resolve at all.
     const { listen } = window.__TAURI__.event;
     const { invoke } = window.__TAURI__.core;
-    const log = document.getElementById("log");
-    const progressWrap = document.getElementById("progress-wrap");
-    const progressName = document.getElementById("progress-name");
-    const progressPercent = document.getElementById("progress-percent");
-    const progressBar = document.getElementById("progress-bar");
+
+    const el = (id) => document.getElementById(id);
+    const mark = el("mark");
+    const log = el("log");
+    const openBtn = el("open");
+    const progress = el("progress");
+
+    // This same page is both the first-run screen in the main window and the "Setup Progress"
+    // window reopened from the tray. In the latter, navigating to the app would turn this into a
+    // stray second app window, so it offers no continue button.
+    //
+    // Guarded because an unexpected global API shape here would throw before the listeners below
+    // are ever registered, and a setup screen with no listeners sits at "Starting." forever with
+    // no way to tell why -- the exact failure this page already hit once, from a bare-specifier
+    // import. Defaulting to "main" degrades to the normal first-run behaviour.
+    let isSetupWindow = false;
+    try {
+      isSetupWindow = window.__TAURI__.window.getCurrentWindow().label !== "main";
+    } catch {
+      isSetupWindow = false;
+    }
+    let appUrl = null;
+
+    const STEP_NOTES = { active: "", done: "Done", error: "Needs attention" };
+
+    function setStep(id, state) {
+      const row = el("step-" + id);
+      if (!row) return;
+      row.dataset.state = state;
+      el("note-" + id).textContent = STEP_NOTES[state] ?? "";
+    }
+
+    function setProgress(label, percent) {
+      progress.classList.add("on");
+      el("progress-name").textContent = "Downloading " + label;
+      el("progress-percent").textContent = percent + "%";
+      el("progress-bar").style.width = percent + "%";
+    }
+
+    function settle(title, sub) {
+      mark.classList.add("settled");
+      el("title").textContent = title;
+      el("sub").textContent = sub;
+      progress.classList.remove("on");
+    }
+
+    function ready(url) {
+      appUrl = url;
+      if (isSetupWindow) return;
+      openBtn.classList.add("on");
+    }
+
+    openBtn.addEventListener("click", () => {
+      if (appUrl) window.location.href = appUrl;
+    });
+
+    el("details-toggle").addEventListener("click", () => {
+      const on = log.classList.toggle("on");
+      el("details-toggle").textContent = on ? "Hide details" : "Show details";
+      if (on) log.scrollTop = log.scrollHeight;
+    });
 
     Promise.all([
       listen("setup-log", (e) => {
         log.textContent += "\n" + e.payload;
         log.scrollTop = log.scrollHeight;
       }),
-      listen("setup-progress", (e) => {
-        const { label, percent } = e.payload;
-        progressWrap.style.display = "block";
-        progressName.textContent = "Downloading " + label + " model";
-        progressPercent.textContent = percent + "%";
-        progressBar.style.width = percent + "%";
-        if (percent >= 100) {
-          // Leave the finished bar visible for a moment rather than snapping it away the instant
-          // this one model completes -- another one may start right after.
-          setTimeout(() => { progressWrap.style.display = "none"; }, 1200);
+      listen("setup-step", (e) => {
+        const { id, state } = e.payload;
+        setStep(id, state);
+        if (id === "assets" && state !== "active") {
+          settle(
+            state === "done" ? "Second Brain is ready" : "Ready, with some pieces missing",
+            state === "done"
+              ? "Everything is installed and running locally."
+              : "The app works. Check the details for what didn't finish.",
+          );
         }
       }),
+      listen("setup-progress", (e) => setProgress(e.payload.label, e.payload.percent)),
       listen("setup-ready", (e) => {
-        window.location.href = e.payload;
+        const { url, autoContinue } = e.payload;
+        // Nothing left to watch on a launch where the models are already cached, so don't make
+        // the user click through a screen that would just flash past.
+        if (autoContinue && !isSetupWindow) {
+          window.location.href = url;
+          return;
+        }
+        ready(url);
+        el("sub").textContent =
+          "The app is ready to use. Models keep downloading in the background — " +
+          "you can start now and check progress from the menu bar.";
       }),
-    ]).then(() => {
-      // Only once both listeners are actually registered does the Rust side get told it is safe
-      // to start emitting -- see frontend_ready in src-tauri/src/lib.rs for why this order
-      // matters (an event emitted before this point would simply never be received).
+    ]).then(async () => {
+      // Only once the listeners are actually registered does the Rust side get told it is safe to
+      // start emitting -- see frontend_ready in src-tauri/src/lib.rs for why this order matters
+      // (an event emitted before this point would simply never be received).
       invoke("frontend_ready");
+
+      // Events already emitted are gone -- Tauri does not replay them -- so a window opened
+      // partway through (the tray's "Setup Progress") hydrates from the current snapshot first,
+      // then follows live events from here on.
+      try {
+        const state = await invoke("setup_state");
+        for (const id of ["install", "server", "assets"]) {
+          if (state[id]) setStep(id, state[id]);
+        }
+        if (state.label && state.assets === "active") setProgress(state.label, state.percent);
+        if (state.url) ready(state.url);
+        if (state.assets === "done") settle("Second Brain is ready", "Everything is installed and running locally.");
+      } catch {
+        // A hydrate failure is not worth surfacing: live events still drive the screen.
+      }
     });
   </script>
 </body>
