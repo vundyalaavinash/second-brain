@@ -180,7 +180,7 @@ build_recorder() {
 # kept on failure now, not deleted, specifically so the next prepare/setup run can pick up where
 # this one left off instead of re-downloading bytes already on disk.
 fetch_model() {
-  local dest="$1" url="$2" label="$3"
+  local dest="$1" url="$2" label="$3" consequence="$4"
   if [ -s "$dest" ]; then
     ok "$label already at $dest"
     return 0
@@ -190,7 +190,7 @@ fetch_model() {
     mv "$dest.part" "$dest"
     ok "$label downloaded to $dest"
   else
-    say "could not download the $label model; meetings will not transcribe until it is there (will resume from where it left off next time)"
+    say "could not download the $label model; $consequence (will resume from where it left off next time)"
     return 1
   fi
 }
@@ -200,7 +200,7 @@ download_whisper_models() {
   local base="$WHISPER_DIR/ggml-base.en.bin"
   local final="$WHISPER_DIR/ggml-medium.en.bin"
   local brew_final="$HOME/.whisper-cpp/models/ggml-medium.en.bin"
-  fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" || true
+  fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" "meetings will not transcribe" || true
   if [ -s "$final" ]; then
     ok "whisper medium.en already at $final"
   elif [ -s "$brew_final" ]; then
@@ -209,7 +209,7 @@ download_whisper_models() {
     ln -sf "$brew_final" "$final"
     ok "linked the medium.en model already at $brew_final"
   else
-    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" || true
+    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" "the final (post-meeting) transcript pass will fail until it is there -- live transcription during the meeting still works" || true
   fi
   write_model_settings "$base" "$final"
 }
@@ -240,7 +240,7 @@ download_gist_model() {
   local target="$dir/model.gguf"
   mkdir -p "$dir"
   ensure_llama_cli
-  fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" || true
+  fetch_model "$target" "$GIST_URL" "gist (Qwen2.5-0.5B-Instruct, Q4_K_M)" "note distillation will stay off" || true
 }
 
 # Meeting summaries (src/jobs/handlers/summarize-meeting.ts) used to need an Anthropic key;
@@ -253,7 +253,7 @@ download_summary_model() {
   local target="$dir/model.gguf"
   mkdir -p "$dir"
   ensure_llama_cli
-  fetch_model "$target" "$SUMMARY_URL" "summary (Qwen2.5-7B-Instruct, Q4_K_M)" || true
+  fetch_model "$target" "$SUMMARY_URL" "summary (Qwen2.5-7B-Instruct, Q4_K_M)" "meeting summaries will stay off" || true
 }
 
 # The live and the final transcription models, as meetings.whisperBase and
