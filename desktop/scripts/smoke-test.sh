@@ -113,7 +113,10 @@ if ( cd "$INSTALL" && HOME="$BOOT_HOME" SB_DATA_DIR="$WORK/data" bash scripts/br
 else
   fail "bootstrap failed"
 fi
-( cd "$INSTALL" && HOME="$BOOT_HOME" bash scripts/brain.sh fetch-assets --help >/dev/null 2>&1 ) || true
+# Checked by reading the dispatcher, never by running it. brain.sh ignores extra arguments, so
+# `fetch-assets --help` is not a dry run -- it executes the real thing, which calls helper_stop,
+# and `launchctl bootout` acts on the user's GUI domain regardless of an isolated HOME. Running it
+# here stopped the developer's actual activity helper.
 grep -q "fetch-assets) cmd_fetch_assets" "$INSTALL/scripts/brain.sh" && pass "fetch-assets is dispatchable" || fail "fetch-assets missing from dispatcher"
 
 step "Server boots and serves real pages, with no repo to fall back on"

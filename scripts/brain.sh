@@ -347,17 +347,22 @@ helper_stop() {
 
 helper_status() {
   if helper_loaded; then ok "activity helper loaded"; else say "activity helper not loaded"; fi
-  if [ -x "$HELPER_BIN" ]; then
-    local out
-    out="$(SB_DATA_DIR="$DATA_DIR" "$HELPER_BIN" --once 2>/dev/null || true)"
-    if [ -n "$out" ]; then
-      printf '%s' "$out" | node -e '
-        let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-          try { const p = JSON.parse(s).permissions;
-            console.log(`  accessibility: ${p.accessibility ? "granted" : "missing"}  calendar: ${p.calendar ? "granted" : "missing"}`);
-          } catch { console.log("  helper check failed"); }
-        });'
-    fi
+  # Permissions are reported from what the *running* helper last told the server, never by running
+  # `--once` here. macOS grants TCC per executing process context, so a helper launched from this
+  # shell inherits the terminal's grants, not the launch agent's -- the two disagree completely in
+  # practice. This printed "calendar: missing" while the actual daemon had calendar access and was
+  # reading 9 calendars, which is a good way to spend an afternoon debugging the wrong thing.
+  local reported
+  reported="$(is_up && curl -sf --max-time 2 "$URL/api/activity/status" 2>/dev/null || true)"
+  if [ -n "$reported" ]; then
+    printf '%s' "$reported" | node -e '
+      let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+        try { const h = JSON.parse(s).helper; const p = h.permissions;
+          console.log(`  accessibility: ${p.accessibility ? "granted" : "missing"}  calendar: ${p.calendar ? "granted" : "missing"}  (as reported by the running helper, last seen ${h.lastSeen ?? "never"})`);
+        } catch { console.log("  helper has not reported permissions yet"); }
+      });'
+  else
+    printf '  permissions: unknown (server not answering)\n'
   fi
   local status
   status="$(is_up && curl -sf --max-time 2 "$URL/api/activity/status" 2>/dev/null || true)"
