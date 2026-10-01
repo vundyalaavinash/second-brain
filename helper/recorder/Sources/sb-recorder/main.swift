@@ -38,8 +38,26 @@ if args.contains("--version") {
     print(VERSION)
     exit(0)
 }
+
+// Reports whether recording could work, without recording and without prompting. The app needs
+// to be able to say "recording will not work, the microphone is denied" *before* someone sits
+// through a meeting expecting it to -- checking that the binary and models exist says nothing
+// about whether macOS will actually let this process open a microphone, which is exactly the gap
+// that let recording look healthy and fail every time.
+if args.contains("--permissions") {
+    let status: String
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: status = "authorized"
+    case .denied: status = "denied"
+    case .restricted: status = "restricted"
+    case .notDetermined: status = "notDetermined"
+    @unknown default: status = "unknown"
+    }
+    print("{\"microphone\":\"\(status)\"}")
+    exit(0)
+}
 if !probing && pathArgument == nil {
-    log("usage: sb-recorder <wav-path> | sb-recorder --probe")
+    log("usage: sb-recorder <wav-path> | sb-recorder --probe | sb-recorder --permissions")
     exit(2)
 }
 

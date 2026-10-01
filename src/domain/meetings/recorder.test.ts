@@ -185,6 +185,38 @@ describe("Recorder", () => {
     expect(meta(t, item.id).recording!.state).toBe("error");
   });
 
+  it("says so when it records without a live transcript, instead of degrading silently", async () => {
+    // Recording and the final pass both still work here; only the live text is missing. Without
+    // a word about it, "why is there no streaming transcript" has no answer from the outside.
+    const lines: string[] = [];
+    const quiet = new Recorder({
+      db: t.db,
+      recorderBin: FAKE_RECORDER,
+      whisperBin: null,
+      baseModel: null,
+      filesDir,
+      log: (m) => lines.push(m),
+    });
+    const item = createAdhocMeeting(t.db, new Date());
+    quiet.start(item);
+    await until(() => lines.some((l) => l.includes("no live transcript")));
+    await quiet.stop();
+
+    expect(lines.find((l) => l.includes("no live transcript"))).toContain("whisper-cli and the base.en model");
+  });
+
+  // A session that fails while the app is running must not leave the item in "processing"
+  // forever: no transcript is queued when nothing was recorded, so nothing else would move it.
+  it("does not leave a failed session stuck in processing", async () => {
+    process.env.SB_FAKE_RECORDER_FAIL_EARLY = "microphone access denied";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().state === "error");
+
+    expect(getItem(t.db, item.id)!.status).toBe("ready");
+    expect(meta(t, item.id).recording!.state).toBe("error");
+  });
+
   it("treats a helper that dies badly while stopping as a failure", async () => {
     // The stop was asked for, but the helper still went down with an error: the session failed.
     process.env.SB_FAKE_RECORDER_STOP_CODE = "3";

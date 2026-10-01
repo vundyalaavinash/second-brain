@@ -46,6 +46,14 @@ export function finishRecordingItem(db: DB, itemId: number, state: RecordingMeta
   const meta = parseMeta<{ recording?: RecordingMeta }>(item);
   if (!meta.recording) return;
   updateItem(db, itemId, { meta: { ...meta, recording: { ...meta.recording, state, endedAt } } });
+  // `status` is only "processing" because starting the recording put it there, and a failed
+  // session has nothing left that will move it on: no transcript is queued when no audio was
+  // written, so the item would sit in "processing" for good. reconcileRecordings already applies
+  // this rule, but only to sessions stranded by a crash (`recording.state` still "recording") --
+  // a session that failed while the app was running is already "error" by the time it looks, so
+  // it never matched, and those items stayed stuck. Done sessions are left alone: their
+  // transcript job is what finishes them.
+  if (state === "error" && item.status === "processing") updateItem(db, itemId, { status: "ready" });
 }
 
 /** The one place the final pass is queued, so a reconciled session queues exactly what a live one does. */
@@ -121,6 +129,13 @@ export class Recorder extends EventEmitter {
     } else {
       // Nothing is listening for the PCM, so drain it: the helper stalls if it is not read.
       proc.stdout?.resume();
+      // Recording still works and the final pass still runs off the WAV, so this is a degraded
+      // session rather than a broken one -- but it degrades invisibly, and "why is there no live
+      // transcript" is impossible to answer from the outside. Say which piece is missing.
+      const missing = [!this.deps.whisperBin && "whisper-cli", !this.deps.baseModel && "the base.en model"]
+        .filter(Boolean)
+        .join(" and ");
+      this.deps.log?.(`[recorder] no live transcript this session: ${missing} is missing. The recording and its final transcript are unaffected.`);
     }
     proc.on("error", (err) => this.onSpawnError(err));
     proc.on("exit", (code, signal) => this.onExit(code, signal));

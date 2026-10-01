@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { setSetting } from "@/domain/settings";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { checkTools, resolveTool } from "./tools";
+import { checkTools, microphoneAccess, resetMicrophoneCache, resolveTool } from "./tools";
 
 function fakeExecutable(dir: string, name: string): string {
   fs.mkdirSync(dir, { recursive: true });
@@ -90,5 +90,48 @@ describe("checkTools", () => {
     fs.mkdirSync(path.join(t.dir, "models", "whisper"), { recursive: true });
     fs.writeFileSync(path.join(t.dir, "models", "whisper", "ggml-base.en.bin"), "weights");
     expect(checkTools(t.db, { pathDirs: [binDir] }).baseModel).toBe(path.join(t.dir, "models", "whisper", "ggml-base.en.bin"));
+  });
+});
+
+describe("microphoneAccess", () => {
+  beforeEach(() => resetMicrophoneCache());
+  afterEach(() => resetMicrophoneCache());
+
+  function fakeHelper(dir: string, body: string): string {
+    const file = path.join(dir, "fake-recorder-perms");
+    fs.writeFileSync(file, `#!/bin/sh\n${body}\n`);
+    fs.chmodSync(file, 0o755);
+    return file;
+  }
+
+  it("reads what the helper reports", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-perm-"));
+    const bin = fakeHelper(dir, `echo '{"microphone":"denied"}'`);
+    expect(microphoneAccess(bin)).toBe("denied");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // An older helper predates --permissions and exits non-zero. That must read as "cannot tell",
+  // never as "access is fine" -- claiming permission the app does not have is how recording came
+  // to look healthy right up until it failed.
+  it("is unknown, not authorized, when the helper cannot answer", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-perm-"));
+    const bin = fakeHelper(dir, "exit 2");
+    expect(microphoneAccess(bin)).toBe("unknown");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("is unknown when there is no helper at all", () => {
+    expect(microphoneAccess(null)).toBe("unknown");
+  });
+
+  it("caches, so it is not a subprocess per status call", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-perm-"));
+    const counter = path.join(dir, "calls");
+    const bin = fakeHelper(dir, `echo x >> ${counter}\necho '{"microphone":"authorized"}'`);
+    microphoneAccess(bin);
+    microphoneAccess(bin);
+    expect(fs.readFileSync(counter, "utf8").trim().split("\n")).toHaveLength(1);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
