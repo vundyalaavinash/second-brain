@@ -410,7 +410,20 @@ fn start_bringup(handle: AppHandle) {
                 }
             }
         } else {
+            // Something else already holds the port -- almost always the CLI-managed launchd
+            // agent. Adopting it keeps two servers from fighting over 3141, but it quietly
+            // changes what this app can do: the recorder and helpers are then spawned by that
+            // other process tree, which has no GUI app for macOS to attribute a permission
+            // request to, so the microphone and calendar prompts can never appear and this
+            // app's Info.plist usage descriptions never come into play. Looking healthy while
+            // recording is structurally impossible is worse than saying so.
             emit_step(&handle, "server", "active");
+            emit_log(
+                &handle,
+                format!(
+                    "A server was already running on port {PORT}, so this app is showing that one rather than starting its own.                      Permission prompts (microphone, calendar) belong to whichever process started it -- if that is the                      command-line install, run `scripts/brain.sh stop` and reopen this app so it owns the server and can ask."
+                ),
+            );
         }
 
         emit_log(&handle, "Waiting for the server to answer...");
