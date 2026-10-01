@@ -240,21 +240,29 @@ fetch_model() {
   fi
 }
 
+# The final pass runs large-v3-turbo rather than medium.en: it is more accurate on English and
+# several times faster, for 86 MB more than the model it replaces. It is a multilingual
+# checkpoint, so both passes are locked to English with `-l en` (live.ts, transcribe-final.ts) --
+# which is also what keeps accented English from being written off as "[NON-ENGLISH SPEECH]", the
+# way the English-only models did.
+#
+# An install that already has medium.en keeps using it until this downloads; nothing is deleted,
+# so falling back is a settings change rather than a re-download.
 download_whisper_models() {
   mkdir -p "$WHISPER_DIR"
   local base="$WHISPER_DIR/ggml-base.en.bin"
-  local final="$WHISPER_DIR/ggml-medium.en.bin"
-  local brew_final="$HOME/.whisper-cpp/models/ggml-medium.en.bin"
+  local final="$WHISPER_DIR/ggml-large-v3-turbo.bin"
+  local brew_final="$HOME/.whisper-cpp/models/ggml-large-v3-turbo.bin"
   fetch_model "$base" "$WHISPER_URL/ggml-base.en.bin" "whisper base.en" "meetings will not transcribe" "the live transcription model" || true
   if [ -s "$final" ]; then
-    ok "whisper medium.en already at $final"
+    ok "whisper large-v3-turbo already at $final"
   elif [ -s "$brew_final" ]; then
     # whisper-cpp from Homebrew already has it; link rather than fetch 1.5 GB
     # again. The link, not its target, is the one path everything else names.
     ln -sf "$brew_final" "$final"
     ok "linked the medium.en model already at $brew_final"
   else
-    fetch_model "$final" "$WHISPER_URL/ggml-medium.en.bin" "whisper medium.en" "the final (post-meeting) transcript pass will fail until it is there -- live transcription during the meeting still works" "the full transcription model" || true
+    fetch_model "$final" "$WHISPER_URL/ggml-large-v3-turbo.bin" "whisper large-v3-turbo" "the final (post-meeting) transcript pass will fail until it is there -- live transcription during the meeting still works" "the full transcription model" || true
   fi
   write_model_settings "$base" "$final"
 }

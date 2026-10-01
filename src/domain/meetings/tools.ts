@@ -99,7 +99,9 @@ export function checkTools(db: DB, opts: { pathDirs?: string[] } = {}): Tools {
   const dirs = opts.pathDirs ?? defaultPathDirs();
   const recorder = recorderBin();
   const basePath = getSetting(db, WHISPER_BASE_KEY, path.join(whisperModelsDir(), "ggml-base.en.bin"));
-  const finalPath = getSetting(db, WHISPER_FINAL_KEY, path.join(whisperModelsDir(), "ggml-medium.en.bin"));
+  // Default only -- an existing install keeps whatever `write_model_settings` recorded, so moving
+  // to large-v3-turbo takes effect when the model is actually on disk, not the moment this ships.
+  const finalPath = getSetting(db, WHISPER_FINAL_KEY, path.join(whisperModelsDir(), "ggml-large-v3-turbo.bin"));
 
   const tools: Tools = {
     microphone: "unknown",

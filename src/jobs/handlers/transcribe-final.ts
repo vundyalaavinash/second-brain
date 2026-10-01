@@ -105,7 +105,7 @@ export function createTranscribeFinalHandler(deps: TranscribeFinalDeps): JobHand
         });
       }
 
-      await run(whisper, ["-m", model, "-f", audio, "-oj", "-of", base], { timeout: WHISPER_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
+      await run(whisper, ["-m", model, "-f", audio, "-l", "en", "-oj", "-of", base], { timeout: WHISPER_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
       const segments = parseWhisperJson(fs.readFileSync(`${base}.json`, "utf8"));
 
       // The live pass is kept, not discarded. It used to be deleted here as "guesses that have

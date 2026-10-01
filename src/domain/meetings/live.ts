@@ -149,7 +149,7 @@ export class LiveTranscriber {
     try {
       const pcm = this.buffer;
       fs.writeFileSync(wav, Buffer.concat([wavHeader(pcm.length), pcm]));
-      await run(this.deps.whisperBin, ["-m", this.deps.model, "-f", wav, "-nt", "-otxt", "-of", this.base], {
+      await run(this.deps.whisperBin, ["-m", this.deps.model, "-f", wav, "-l", "en", "-nt", "-otxt", "-of", this.base], {
         timeout: WHISPER_TIMEOUT_MS,
       });
       const text = fs.readFileSync(`${this.base}.txt`, "utf8").replace(/\s+/g, " ").trim();
