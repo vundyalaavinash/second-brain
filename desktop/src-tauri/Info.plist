@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Without these, macOS does not prompt -- it denies outright. An app that asks for the
+    microphone with no NSMicrophoneUsageDescription is refused by the system before the user ever
+    sees a dialog, which is exactly why recording failed with no prompt and no obvious reason.
+
+    These strings are what the prompt actually shows, so they say what the app does with the
+    access and not merely that it wants it.
+  -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Second Brain records meetings you start, so it can transcribe them on this Mac. Audio never leaves your machine.</string>
+
+  <key>NSCalendarsUsageDescription</key>
+  <string>Second Brain reads your calendar to show your meetings and offer to record them.</string>
+
+  <!-- macOS 14 and newer ask for calendar access through this key instead of the one above. -->
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Second Brain reads your calendar to show your meetings and offer to record them.</string>
+
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Second Brain asks your browser for the page you are on, so activity tracking can tell one tab from another.</string>
+</dict>
+</plist>

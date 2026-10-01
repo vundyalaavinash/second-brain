@@ -51,6 +51,30 @@ the CLI-managed install — this just owns the whole thing as one process instea
   exactly like the CLI-managed install — `scripts/brain.sh prepare` already skips them gracefully
   and says so if CLT isn't present, rather than failing setup outright.
 
+## Permissions
+
+macOS only prompts for microphone, calendar and automation access when the app asking has a
+usage-description string for it in its `Info.plist`. Without one it does not show a dialog and
+quietly denies instead -- which is how meeting recording came to fail with no prompt and no
+visible reason. `src-tauri/Info.plist` carries those strings and Tauri merges them into the built
+app; the wording is what the prompt actually shows, so it says what the access is used for.
+
+Two things this does not solve:
+
+- **The CLI-managed install cannot prompt at all.** TCC attributes a request to the responsible
+  process, which for `launchd -> next start -> sb-recorder` is no GUI app, so there is nothing to
+  show a dialog on behalf of and nothing with a usage string. Run it from a terminal and the
+  helper inherits *that* terminal's grants, which is why the same binary records fine by hand and
+  dies instantly under the launch agent. The desktop app is the fix: it is a real bundle, so
+  requests are attributed to it.
+- **Accessibility is never prompted for.** macOS grants it only from System Settings. The activity
+  helper can ask the system to open that pane, but the switch has to be flipped by hand.
+
+Both Swift helpers are ad-hoc signed, so their grants are bound to the binary rather than to a
+stable identity: rebuilding one silently voids whatever was granted to the previous build, and the
+stale entry can still appear switched on in System Settings. Remove it with the `-` button and let
+it re-prompt rather than toggling it off and on.
+
 ## Troubleshooting
 
 If the app shows an error (during setup or once it's running), the full log — `prepare`'s output,
