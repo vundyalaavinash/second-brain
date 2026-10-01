@@ -69,6 +69,7 @@ describe("Recorder", () => {
     delete process.env.SB_FAKE_RECORDER_KILL_MS;
     delete process.env.SB_FAKE_RECORDER_STOP_CODE;
     delete process.env.SB_FAKE_RECORDER_SAY;
+    delete process.env.SB_FAKE_RECORDER_FAIL_EARLY;
     t.cleanup();
   });
 
@@ -168,6 +169,20 @@ describe("Recorder", () => {
     expect(recorder.status().error).toBe(
       "recorder exited with SIGKILL: libc++abi: terminating due to uncaught exception",
     );
+  });
+
+  // What a denied microphone actually looks like: the helper refuses before creating the file.
+  // The reported reason has to survive, and nothing should be queued against audio that is not
+  // there -- otherwise the item ends up blaming "the audio is missing" for a permission problem.
+  it("keeps the helper's reason and queues nothing when no audio was ever written", async () => {
+    process.env.SB_FAKE_RECORDER_FAIL_EARLY = "microphone access denied; allow it in System Settings";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().state === "error");
+
+    expect(recorder.status().error).toBe("microphone access denied; allow it in System Settings");
+    expect(listJobs(t.db, { itemId: item.id })).toEqual([]);
+    expect(meta(t, item.id).recording!.state).toBe("error");
   });
 
   it("treats a helper that dies badly while stopping as a failure", async () => {

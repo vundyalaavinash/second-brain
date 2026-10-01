@@ -98,6 +98,7 @@ export class Recorder extends EventEmitter {
 
     const proc = spawn(this.deps.recorderBin, [absolute], { stdio: ["ignore", "pipe", "pipe"] });
     this.proc = proc;
+    this.wavAbsolute = absolute;
     this.current = { state: "recording", itemId: item.id, title: item.title, startedAt, autoStarted: !!opts.autoStarted };
 
     const meta = parseMeta(item);
@@ -168,6 +169,9 @@ export class Recorder extends EventEmitter {
   /** The last few non-JSON lines `sb-recorder` wrote, newest last — see `onStderr`. */
   private lastStderr: string[] = [];
 
+  /** Where this session's WAV should be, so `onExit` can tell "no audio" from "some audio". */
+  private wavAbsolute: string | null = null;
+
   /** The helper could not be spawned at all: no process, so `exit` never comes. */
   private onSpawnError(err: Error): void {
     const itemId = this.current.itemId;
@@ -192,15 +196,24 @@ export class Recorder extends EventEmitter {
     // a clean end is code 0 or a null code (the SIGINT we sent); any other code still failed.
     const failed = wasStopping ? code !== 0 && code !== null : code !== 0;
     this.finishItem(itemId, failed ? "error" : "done");
-    // Whatever happened, the WAV on disk is a recording: it always gets a final pass.
-    queueFinalTranscript(this.deps.db, itemId);
-    // "exited with SIGABRT" on its own tells nobody anything actionable, so whatever the helper
-    // last said goes with it — that line is usually the actual reason.
+
+    // A partial WAV is still worth transcribing -- even a few seconds is a recording. But a
+    // session that never wrote the file at all has nothing to transcribe, and queueing the pass
+    // anyway buries the real failure under "The audio for item N is missing": the symptom talking
+    // over the cause, which is exactly how a denied microphone came to look like a missing file.
+    const hasAudio = this.wavAbsolute !== null && fs.existsSync(this.wavAbsolute);
+    if (hasAudio) queueFinalTranscript(this.deps.db, itemId);
+
+    // The helper's own reason, when it gave one, beats the exit code every time: "microphone
+    // access denied" is actionable, "recorder exited with 1" is not. `onStderr` parks a reported
+    // error on `current`, and this used to overwrite it wholesale with the generic text.
+    const reported = this.current.state === "recording" || this.current.state === "stopping" ? this.current.error : undefined;
     const said = this.lastStderr.at(-1);
-    const why = `recorder exited with ${code ?? signal}${said ? `: ${said}` : ""}`;
+    const why = reported ?? `recorder exited with ${code ?? signal}${said ? `: ${said}` : ""}`;
     this.current = failed ? { state: "error", itemId, error: why } : { state: "idle" };
-    if (failed) this.deps.log?.(`[recorder] ${why}`);
+    if (failed) this.deps.log?.(`[recorder] ${why}${hasAudio ? "" : " (no audio was written, so no transcript was queued)"}`);
     this.lastStderr = [];
+    this.wavAbsolute = null;
     this.emit("change", this.status());
   }
 

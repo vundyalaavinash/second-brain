@@ -63,6 +63,13 @@ function finish(code) {
 process.on("SIGINT", () => finish(stopCode));
 process.on("SIGTERM", () => finish(stopCode));
 
+// SB_FAKE_RECORDER_FAIL_EARLY: refuse before touching the WAV, the way the real helper does when
+// microphone access is denied -- a JSON error, exit 1, and no file on disk at all.
+if (process.env.SB_FAKE_RECORDER_FAIL_EARLY) {
+  process.stderr.write(`${JSON.stringify({ state: "error", message: process.env.SB_FAKE_RECORDER_FAIL_EARLY })}\n`);
+  process.exit(1);
+}
+
 fs.mkdirSync(path.dirname(wavPath), { recursive: true });
 fd = fs.openSync(wavPath, "w");
 fs.writeSync(fd, header(0), 0, 44, 0);
