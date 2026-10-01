@@ -4,7 +4,9 @@ import path from "node:path";
 import type { DB } from "@/db/client";
 import type { CalendarEventInput } from "./calendar";
 import { joinUrlFrom, localDay, replaceCalendarEvents } from "./calendar";
-import { setSetting } from "@/domain/settings";
+import { eq, sql } from "drizzle-orm";
+import { calendarEvents } from "@/db/schema";
+import { getSetting, setSetting } from "@/domain/settings";
 import type { MeetingStatus } from "@/db/schema";
 
 /**
@@ -155,6 +157,7 @@ export function parseOutlookWidgetStore(raw: unknown): CalendarEventInput[] {
   return out;
 }
 
+const ENABLED_KEY = "calendar.outlookEnabled";
 const SYNCED_AT_KEY = "calendar.outlookSyncedAt";
 const ERROR_KEY = "calendar.outlookError";
 const COUNT_KEY = "calendar.outlookCount";
@@ -168,6 +171,68 @@ export interface OutlookSyncResult {
 
 export function outlookStorePath(home = os.homedir()): string {
   return path.join(home, OUTLOOK_WIDGET_STORE);
+}
+
+export interface OutlookState {
+  enabled: boolean;
+  /** Whether Outlook's cache is actually there, so the UI can tell "switched off" from "nothing
+   * to read" rather than showing an enabled toggle that silently does nothing. */
+  available: boolean;
+  syncedAt: string | null;
+  error: string | null;
+  count: number;
+  /** Rows currently attributed to this source -- what "turn it off and clean up" would remove. */
+  stored: number;
+}
+
+/**
+ * Off unless explicitly switched on. Anyone who has added their Exchange account to macOS
+ * Internet Accounts already gets these meetings through EventKit, and syncing both sources
+ * produces two rows for every meeting -- so this stays opt-in rather than defaulting to a state
+ * that silently duplicates a working calendar.
+ */
+export function isOutlookEnabled(db: DB): boolean {
+  return getSetting(db, ENABLED_KEY, "") === "1";
+}
+
+export function getOutlookState(db: DB, home = os.homedir()): OutlookState {
+  const stored = db
+    .select({ n: sql<number>`count(*)` })
+    .from(calendarEvents)
+    .where(eq(calendarEvents.source, "outlook"))
+    .get();
+  return {
+    enabled: isOutlookEnabled(db),
+    available: fs.existsSync(outlookStorePath(home)),
+    syncedAt: getSetting(db, SYNCED_AT_KEY, "") || null,
+    error: getSetting(db, ERROR_KEY, "") || null,
+    count: Number(getSetting(db, COUNT_KEY, "0")) || 0,
+    stored: stored?.n ?? 0,
+  };
+}
+
+/**
+ * Removes every meeting this source put in the database. Scoped by `source` alone and not by any
+ * window, because the point is to undo this integration completely -- including occurrences that
+ * have aged out of whatever window the widget currently caches. EventKit's and the feed's rows
+ * are a different source and are never touched.
+ */
+export function clearOutlookEvents(db: DB): number {
+  const removed = db.delete(calendarEvents).where(eq(calendarEvents.source, "outlook")).run().changes;
+  setSetting(db, COUNT_KEY, "0");
+  setSetting(db, SYNCED_AT_KEY, "");
+  setSetting(db, ERROR_KEY, "");
+  return removed;
+}
+
+/**
+ * Switching this off deletes what it synced. Leaving the rows behind would be worse than useless:
+ * they would sit there permanently stale, never refreshed and never removed, duplicating whatever
+ * EventKit reports for the same meetings.
+ */
+export function setOutlookEnabled(db: DB, enabled: boolean): { removed: number } {
+  setSetting(db, ENABLED_KEY, enabled ? "1" : "");
+  return { removed: enabled ? 0 : clearOutlookEvents(db) };
 }
 
 /**
@@ -190,6 +255,7 @@ export function syncOutlookWidget(
   const file = outlookStorePath(deps.home);
   const now = deps.now ?? new Date();
   const log = deps.log ?? (() => {});
+  if (!isOutlookEnabled(db)) return { state: "off" };
   let raw: string;
   try {
     raw = fs.readFileSync(file, "utf8");

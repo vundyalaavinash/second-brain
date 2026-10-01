@@ -32,6 +32,8 @@ const sync: MeetingListDTO = {
   decision: "going",
   decisionNote: "",
   seriesDecision: null,
+    containerId: null,
+    containerFromSeries: false,
   item: { id: 7, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: null },
 };
 

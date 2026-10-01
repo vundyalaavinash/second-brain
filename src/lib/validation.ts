@@ -62,6 +62,11 @@ export const MeetingPatchBody = z.object({ noRecord: z.boolean() }).strict();
 export const MeetingDecisionBody = z
   .object({ decision: z.enum(MEETING_DECISIONS), note: z.string().optional(), scope: z.enum(["occurrence", "series"]) })
   .strict();
+
+/** `containerId: null` clears the assignment at that scope rather than setting one. */
+export const MeetingContainerBody = z
+  .object({ containerId: z.union([z.number().int().positive(), z.null()]), scope: z.enum(["occurrence", "series"]) })
+  .strict();
 /** `0`-`365` or `null` ("keep forever") -- see `AUDIO_RETENTION_KEY` in `domain/meetings/audio-retention.ts`. */
 export const MeetingSettingsBody = z
   .object({

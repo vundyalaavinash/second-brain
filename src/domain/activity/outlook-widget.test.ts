@@ -3,7 +3,16 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { macTimeToIso, outlookStorePath, parseOutlookWidgetStore, syncOutlookWidget } from "./outlook-widget";
+import {
+  clearOutlookEvents,
+  getOutlookState,
+  isOutlookEnabled,
+  macTimeToIso,
+  outlookStorePath,
+  parseOutlookWidgetStore,
+  setOutlookEnabled,
+  syncOutlookWidget,
+} from "./outlook-widget";
 import { localDay, replaceCalendarEvents } from "./calendar";
 
 /** One day's worth of the interleaved [timestamp, [events]] shape the real file uses. */
@@ -169,6 +178,8 @@ describe("syncOutlookWidget", () => {
   beforeEach(() => {
     t = makeTestDb();
     home = fs.mkdtempSync(path.join(os.tmpdir(), "sb-outlook-"));
+    // Opt-in by default (see setOutlookEnabled); these cases are about what syncing does once on.
+    setOutlookEnabled(t.db, true);
   });
   afterEach(() => {
     t.cleanup();
@@ -238,5 +249,66 @@ describe("syncOutlookWidget", () => {
       .prepare("SELECT source, COUNT(*) c FROM calendar_events GROUP BY source ORDER BY source")
       .all() as { source: string; c: number }[];
     expect(bySource).toEqual([{ source: "eventkit", c: 1 }, { source: "outlook", c: 1 }]);
+  });
+});
+
+describe("outlook sync toggle and cleanup", () => {
+  let t: TestDb;
+  let home: string;
+  const NOW = new Date("2026-09-23T06:00:00.000Z");
+
+  beforeEach(() => {
+    t = makeTestDb();
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "sb-outlook-"));
+    const file = outlookStorePath(home);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ dayToAppointments: day(812473200, [event()]) }));
+  });
+  afterEach(() => {
+    t.cleanup();
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  // Anyone whose Exchange account is in macOS Internet Accounts already gets these meetings via
+  // EventKit; defaulting this on would silently double every one of them.
+  it("is off until switched on, and syncs nothing while off", () => {
+    expect(isOutlookEnabled(t.db)).toBe(false);
+    expect(syncOutlookWidget(t.db, { home, now: NOW })).toEqual({ state: "off" });
+    expect(getOutlookState(t.db, home).stored).toBe(0);
+  });
+
+  it("syncs once switched on", () => {
+    setOutlookEnabled(t.db, true);
+    expect(syncOutlookWidget(t.db, { home, now: NOW }).count).toBe(1);
+    expect(getOutlookState(t.db, home)).toMatchObject({ enabled: true, available: true, stored: 1 });
+  });
+
+  it("deletes what it synced when switched off", () => {
+    setOutlookEnabled(t.db, true);
+    syncOutlookWidget(t.db, { home, now: NOW });
+    expect(setOutlookEnabled(t.db, false)).toEqual({ removed: 1 });
+    expect(getOutlookState(t.db, home)).toMatchObject({ enabled: false, stored: 0 });
+  });
+
+  it("never removes another source's rows when cleaning up", () => {
+    setOutlookEnabled(t.db, true);
+    syncOutlookWidget(t.db, { home, now: NOW });
+    replaceCalendarEvents(
+      t.db,
+      [{
+        externalId: "eventkit:keep", title: "Same meeting", startsAt: macTimeToIso(812473200),
+        endsAt: macTimeToIso(812476800), attendees: 0, hasCallLink: false,
+      }],
+      undefined, {}, { source: "eventkit" },
+    );
+    clearOutlookEvents(t.db);
+    const rows = t.db.$client.prepare("SELECT source FROM calendar_events").all() as { source: string }[];
+    expect(rows.map((r) => r.source)).toEqual(["eventkit"]);
+  });
+
+  it("reports the cache as unavailable when there is no file to read", () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "sb-none-"));
+    expect(getOutlookState(t.db, empty).available).toBe(false);
+    fs.rmSync(empty, { recursive: true, force: true });
   });
 });

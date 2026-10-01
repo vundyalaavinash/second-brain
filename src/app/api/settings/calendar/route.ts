@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { getFeedState, setFeedUrl, syncCalendarFeed } from "@/domain/activity";
+import { getFeedState, getOutlookState, setFeedUrl, setOutlookEnabled, syncCalendarFeed, syncOutlookWidget } from "@/domain/activity";
 import { crossSite, errorResponse, forbidden } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-const Body = z.object({ feedUrl: z.string().max(2048) }).strict();
+const Body = z
+  .object({ feedUrl: z.string().max(2048).optional(), outlookEnabled: z.boolean().optional() })
+  .strict()
+  .refine((b) => b.feedUrl !== undefined || b.outlookEnabled !== undefined, "Nothing to change");
 
 /** The published calendar link the app polls, and how its last sync went. */
 export async function GET(): Promise<Response> {
   try {
-    return NextResponse.json(getFeedState(getDb()));
+    const db = getDb();
+    return NextResponse.json({ ...getFeedState(db), outlook: getOutlookState(db) });
   } catch (err) {
     return errorResponse(err);
   }
@@ -25,13 +29,32 @@ export async function PATCH(req: Request): Promise<Response> {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     const db = getDb();
-    try {
-      setFeedUrl(db, parsed.data.feedUrl);
-    } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+    let sync;
+    if (parsed.data.feedUrl !== undefined) {
+      try {
+        setFeedUrl(db, parsed.data.feedUrl);
+      } catch (err) {
+        return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+      }
+      sync = await syncCalendarFeed(db, { log: (m) => console.log(`[calendar-feed] ${m}`) });
     }
-    const sync = await syncCalendarFeed(db, { log: (m) => console.log(`[calendar-feed] ${m}`) });
-    return NextResponse.json({ ...getFeedState(db), sync });
+    // Switching Outlook on syncs immediately so the answer already says whether it found
+    // anything; switching it off deletes what it synced, and reports how much it removed.
+    let outlookSync;
+    let removed = 0;
+    if (parsed.data.outlookEnabled !== undefined) {
+      removed = setOutlookEnabled(db, parsed.data.outlookEnabled).removed;
+      if (parsed.data.outlookEnabled) {
+        outlookSync = syncOutlookWidget(db, { log: (m) => console.log(`[calendar-outlook] ${m}`) });
+      }
+    }
+    return NextResponse.json({
+      ...getFeedState(db),
+      outlook: getOutlookState(db),
+      ...(sync ? { sync } : {}),
+      ...(outlookSync ? { outlookSync } : {}),
+      ...(removed ? { removed } : {}),
+    });
   } catch (err) {
     return errorResponse(err);
   }

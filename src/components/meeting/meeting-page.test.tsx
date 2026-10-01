@@ -59,6 +59,8 @@ const ITEM: ItemDTO = {
 };
 
 const EVENT: ActivityMeetingDTO = {
+  containerId: null,
+  containerFromSeries: false,
   id: 3,
   title: "Product sync",
   startsAt: "2026-09-22T10:30:00",

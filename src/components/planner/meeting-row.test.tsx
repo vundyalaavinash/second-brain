@@ -26,6 +26,8 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string } =
     decision: "going",
     decisionNote: "",
     seriesDecision: null,
+    containerId: null,
+    containerFromSeries: false,
     ...over,
   };
 }

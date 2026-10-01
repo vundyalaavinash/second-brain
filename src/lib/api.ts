@@ -11,6 +11,7 @@ import { getItemPeople, PersonError } from "@/domain/people";
 import { ActivityError } from "@/domain/activity/rules";
 import { MeetingError } from "@/domain/meetings/errors";
 import { effectiveDecisionAsOf, seriesDecisionDetailsFor } from "@/domain/meetings/decision";
+import { effectiveContainerId, seriesContainers } from "@/domain/meetings/attribution";
 import type { MeetingDecision } from "@/db/enums";
 import { AttachmentError } from "@/domain/attachments";
 import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
@@ -234,7 +235,11 @@ export function serializePlanTasks(
  * reading the same rows through `effectiveDecisionAsOf`, would then contradict. For anything from
  * now onward the two resolutions agree, so nothing about a day still ahead changes.
  */
-export function serializeMeeting(ev: CalendarEvent, seriesDecision: { decision: MeetingDecision; decidedAt: string } | null = null): ActivityMeetingDTO {
+export function serializeMeeting(
+  ev: CalendarEvent,
+  seriesDecision: { decision: MeetingDecision; decidedAt: string } | null = null,
+  seriesContainerId: number | null = null,
+): ActivityMeetingDTO {
   return {
     id: ev.id,
     title: ev.title,
@@ -258,6 +263,8 @@ export function serializeMeeting(ev: CalendarEvent, seriesDecision: { decision: 
     decision: effectiveDecisionAsOf(ev, seriesDecision),
     decisionNote: ev.decisionNote,
     seriesDecision: seriesDecision?.decision ?? null,
+    containerId: effectiveContainerId(ev, seriesContainerId),
+    containerFromSeries: ev.containerId === null && seriesContainerId !== null,
   };
 }
 
@@ -266,14 +273,22 @@ export function serializeMeeting(ev: CalendarEvent, seriesDecision: { decision: 
 export function serializeMeetings(db: DB, events: CalendarEvent[]): ActivityMeetingDTO[] {
   const seriesIds = [...new Set(events.map((e) => e.seriesId).filter((id): id is string => id !== null))];
   const decisions = seriesDecisionDetailsFor(db, seriesIds);
-  return events.map((ev) => serializeMeeting(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null));
+  const containers = seriesContainers(db, seriesIds);
+  return events.map((ev) =>
+    serializeMeeting(
+      ev,
+      ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null,
+      ev.seriesId ? (containers.get(ev.seriesId) ?? null) : null,
+    ),
+  );
 }
 
 /** A single row's own series decision, resolved with its own one-row query — never called from
  * a loop over a list, which is what `serializeMeetings` above is for. */
 export function serializeMeetingResolved(db: DB, ev: CalendarEvent): ActivityMeetingDTO {
   const seriesDecision = ev.seriesId ? (seriesDecisionDetailsFor(db, [ev.seriesId]).get(ev.seriesId) ?? null) : null;
-  return serializeMeeting(ev, seriesDecision);
+  const seriesContainerId = ev.seriesId ? (seriesContainers(db, [ev.seriesId]).get(ev.seriesId) ?? null) : null;
+  return serializeMeeting(ev, seriesDecision, seriesContainerId);
 }
 
 export function serializeGoal(g: GoalWithMeasure): GoalDTO {

@@ -220,8 +220,12 @@ export const calendarEvents = sqliteTable(
     decision: text("decision", { enum: MEETING_DECISIONS }),
     /** Free text alongside `decision`, e.g. why. Person-owned, same as `decision`. */
     decisionNote: text("decision_note").notNull().default(""),
+    /** Which project or area this one occurrence counts against, when it differs from whatever
+     * its series says. Null defers to the series assignment (`meetingSeriesContainers`), then to
+     * nothing. Person-owned: excluded from the sync upsert's `set`, like `decision`. */
+    containerId: integer("container_id").references(() => containers.id, { onDelete: "set null" }),
   },
-  (t) => [index("calendar_events_day_idx").on(t.day)],
+  (t) => [index("calendar_events_day_idx").on(t.day), index("calendar_events_container_idx").on(t.containerId)],
 );
 
 /**
@@ -229,6 +233,31 @@ export const calendarEvents = sqliteTable(
  * occurrence's own `calendarEvents.decision` always wins over this when it is set (see
  * `effectiveDecision`); this is what a "not going, every time" answer writes to instead.
  */
+/**
+ * Which project or area every occurrence of a recurring meeting counts against. Separate from the
+ * occurrence's own `calendarEvents.containerId`, which overrides it, and separate from
+ * `meetingSeriesDecisions` because the two answer different questions and behave differently.
+ *
+ * Deliberately carries no `assignedAt` time scoping, unlike a series *decision*. A decision is
+ * forward-only because attendance that already happened cannot retroactively become
+ * non-attendance. An assignment is the opposite: saying "this standup belongs to Project X" is a
+ * classification of what the meeting has always been, and the entire point of the rollup is to
+ * answer "how much has this project cost me" -- which is wrong if it silently excludes every
+ * occurrence that happened before someone got around to labelling the series.
+ *
+ * It also has to live outside `calendarEvents` to survive: a sync deletes rows that fall out of
+ * its window (the Outlook widget cache only holds a short span), so an assignment stored per-row
+ * would quietly disappear as meetings age out and come back unattributed.
+ */
+export const meetingSeriesContainers = sqliteTable("meeting_series_containers", {
+  seriesId: text("series_id").primaryKey(),
+  containerId: integer("container_id")
+    .notNull()
+    .references(() => containers.id, { onDelete: "cascade" }),
+  assignedAt: text("assigned_at").notNull(),
+});
+export type MeetingSeriesContainer = typeof meetingSeriesContainers.$inferSelect;
+
 export const meetingSeriesDecisions = sqliteTable("meeting_series_decisions", {
   seriesId: text("series_id").primaryKey(),
   decision: text("decision", { enum: MEETING_DECISIONS }).notNull(),

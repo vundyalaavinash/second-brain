@@ -2,6 +2,7 @@ import { and, asc, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { activitySessions, calendarEvents, items, type MeetingStatus, type MeetingDecision } from "@/db/schema";
 import { effectiveDecisionAsOf, seriesDecisionDetailsFor } from "@/domain/meetings/decision";
+import { effectiveContainerId, seriesContainers } from "@/domain/meetings/attribution";
 import { dayBounds, isInterview, parseAttendeeNames } from "./calendar";
 
 /** Sessions can span at most a day plus the 15-minute fold gap; two days of slack keeps the started_at index range tight. */
@@ -46,6 +47,10 @@ export interface ActivityMeeting {
    * `ActivityMeetingDTO.seriesDecision` (`@/lib/dto`) for why `decision` alone can't answer
    * "is there one to reverse". */
   seriesDecision: MeetingDecision | null;
+  /** The project or area this meeting counts against, resolved occurrence-then-series — see
+   * `ActivityMeetingDTO.containerId` (`@/lib/dto`). */
+  containerId: number | null;
+  containerFromSeries: boolean;
 }
 
 export interface ActivityDay {
@@ -156,6 +161,7 @@ export function getDay(db: DB, day: string): ActivityDay {
   // and for the same reason. Nothing changes for a day still ahead.
   const seriesIds = [...new Set(events.map((ev) => ev.seriesId).filter((id): id is string => id !== null))];
   const decisions = seriesDecisionDetailsFor(db, seriesIds);
+  const containerBySeries = seriesContainers(db, seriesIds);
   const meetings: ActivityMeeting[] = events.map((ev) => ({
     id: ev.id,
     title: ev.title,
@@ -179,6 +185,8 @@ export function getDay(db: DB, day: string): ActivityDay {
     decision: effectiveDecisionAsOf(ev, ev.seriesId ? (decisions.get(ev.seriesId) ?? null) : null),
     decisionNote: ev.decisionNote,
     seriesDecision: (ev.seriesId ? decisions.get(ev.seriesId)?.decision : null) ?? null,
+    containerId: effectiveContainerId(ev, (ev.seriesId ? containerBySeries.get(ev.seriesId) : null) ?? null),
+    containerFromSeries: ev.containerId === null && (ev.seriesId ? containerBySeries.has(ev.seriesId) : false),
   }));
   return { day, activeMs: active.reduce((a, s) => a + ms(s), 0), sessions, byCategory, byApp, bySite, meetings };
 }
