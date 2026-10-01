@@ -165,6 +165,9 @@ export class Recorder extends EventEmitter {
     return this.status();
   }
 
+  /** The last few non-JSON lines `sb-recorder` wrote, newest last — see `onStderr`. */
+  private lastStderr: string[] = [];
+
   /** The helper could not be spawned at all: no process, so `exit` never comes. */
   private onSpawnError(err: Error): void {
     const itemId = this.current.itemId;
@@ -191,7 +194,13 @@ export class Recorder extends EventEmitter {
     this.finishItem(itemId, failed ? "error" : "done");
     // Whatever happened, the WAV on disk is a recording: it always gets a final pass.
     queueFinalTranscript(this.deps.db, itemId);
-    this.current = failed ? { state: "error", itemId, error: `recorder exited with ${code ?? signal}` } : { state: "idle" };
+    // "exited with SIGABRT" on its own tells nobody anything actionable, so whatever the helper
+    // last said goes with it — that line is usually the actual reason.
+    const said = this.lastStderr.at(-1);
+    const why = `recorder exited with ${code ?? signal}${said ? `: ${said}` : ""}`;
+    this.current = failed ? { state: "error", itemId, error: why } : { state: "idle" };
+    if (failed) this.deps.log?.(`[recorder] ${why}`);
+    this.lastStderr = [];
     this.emit("change", this.status());
   }
 
@@ -205,6 +214,16 @@ export class Recorder extends EventEmitter {
    * the live pass stops and the final transcript still comes off disk.
    */
   private onStderr(text: string): void {
+    // Kept even once the session is over: a crash (SIGABRT from an uncatchable Objective-C
+    // exception in CoreAudio, say) races the exit handler, and the last line before it is the
+    // only explanation anyone gets. `onExit` reads it back so the error says something better
+    // than the bare signal name.
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("{")) continue;
+      this.lastStderr.push(t);
+      if (this.lastStderr.length > 5) this.lastStderr.shift();
+    }
     // A line that arrives after the session has ended has nothing left to describe.
     if (this.current.state !== "recording" && this.current.state !== "stopping") return;
     for (const line of text.split("\n")) {

@@ -72,6 +72,9 @@ function say(line) {
 }
 
 say({ state: "recording", systemAudio: true });
+// A plain, non-JSON line: what a helper writes just before it aborts, and what the recorder is
+// expected to carry into its failure message rather than discard.
+if (process.env.SB_FAKE_RECORDER_SAY) process.stderr.write(`${process.env.SB_FAKE_RECORDER_SAY}\n`);
 
 const silence = Buffer.alloc(CHUNK_BYTES);
 const timer = setInterval(() => {

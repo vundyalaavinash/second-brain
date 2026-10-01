@@ -68,6 +68,7 @@ describe("Recorder", () => {
     delete process.env.SB_FAKE_RECORDER_STALL_MS;
     delete process.env.SB_FAKE_RECORDER_KILL_MS;
     delete process.env.SB_FAKE_RECORDER_STOP_CODE;
+    delete process.env.SB_FAKE_RECORDER_SAY;
     t.cleanup();
   });
 
@@ -153,6 +154,20 @@ describe("Recorder", () => {
     expect(recorder.status().error).toBe("recorder exited with SIGKILL");
     expect(meta(t, item.id).recording!.state).toBe("error");
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final"]);
+  });
+
+  it("carries the helper's last words into the failure, not just the signal", async () => {
+    // A bare "exited with SIGABRT" is unactionable. When the helper manages to say why before it
+    // dies -- an uncatchable CoreAudio abort prints to stderr first -- that line is the message.
+    process.env.SB_FAKE_RECORDER_SAY = "libc++abi: terminating due to uncaught exception";
+    process.env.SB_FAKE_RECORDER_KILL_MS = "150";
+    const item = createAdhocMeeting(t.db, new Date());
+    recorder.start(item);
+    await until(() => recorder.status().state === "error");
+
+    expect(recorder.status().error).toBe(
+      "recorder exited with SIGKILL: libc++abi: terminating due to uncaught exception",
+    );
   });
 
   it("treats a helper that dies badly while stopping as a failure", async () => {
