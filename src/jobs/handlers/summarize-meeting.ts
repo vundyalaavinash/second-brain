@@ -7,7 +7,11 @@ import { getChatProvider, type ChatProvider } from "@/providers/chat";
 
 export const MeetingSummarySchema = z.object({
   summary: z.string().describe("One short paragraph covering what the meeting was about and where it got to."),
-  decisions: z.array(z.string()).describe("What the meeting settled, one line each. Empty when it settled nothing."),
+  decisions: z
+    .array(z.string())
+    .describe(
+      "Each question the meeting closed, one line each: a choice made, an option rejected, a date or owner fixed, something approved, cancelled or deferred. Anything the summary says was settled belongs here too. Empty only when the meeting settled nothing.",
+    ),
   proposed_actions: z
     .array(
       z.object({
@@ -25,8 +29,16 @@ const TOOL_NAME = "record_meeting_summary";
 const SYSTEM = [
   "You summarise meeting transcripts for a personal knowledge base.",
   "Write in British English, in plain sentences, and stay with what was said: no advice, no filler, no invented names.",
-  "The summary is one short paragraph. Decisions are the things the meeting settled, one line each, and none at all is a fine answer.",
+  "The summary is one short paragraph.",
+  // The model reliably folded settled questions into the paragraph and then returned decisions:
+  // [] -- a transcript that chose Tuesday over Friday and cancelled a hire came back with three
+  // actions and no decisions at all. Naming what counts, and requiring anything settled in the
+  // paragraph to appear in the list too, is what stops the summary absorbing them.
+  "A decision is any question the meeting closed: a choice made, an option rejected, a date or owner fixed, something approved, cancelled or deferred.",
+  "List each decision as its own line. If the summary paragraph says the meeting settled something, that same thing must also appear in decisions.",
+  "Return no decisions only when the meeting genuinely settled nothing -- a status update or a discussion that reached no conclusion.",
   "Proposed actions are the things somebody now has to do, phrased as a task title with a note naming who and by when if the meeting said so.",
+  "A decision and the action it creates are both recorded: choosing to run the backfill on Tuesday is a decision, and booking the window is an action.",
 ].join(" ");
 
 export interface SummarizeMeetingDeps {

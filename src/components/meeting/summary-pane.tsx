@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Plus } from "lucide-react";
+import { Check, ClipboardCheck, Copy, Plus } from "lucide-react";
 import type { TaskDTO } from "@/lib/dto";
 import { Button, Input } from "../ui";
+import { hasRecapContent, meetingRecap } from "@/domain/meetings/recap";
 
 /** What the summary job writes to `meta.summary`. */
 export interface MeetingSummaryMeta {
@@ -21,6 +22,8 @@ export interface TaskHome {
 
 interface Props {
   itemId: number;
+  /** Names the meeting in the recap, so what gets pasted says which one it was. */
+  title: string;
   summary: MeetingSummaryMeta | undefined;
   summaryError: string | undefined;
   /** False when the local summary model isn't installed yet, which is why there may be no summary. */
@@ -36,8 +39,9 @@ interface Props {
  * somebody now owns. Each action is a row the person can reword before accepting; accepting
  * one creates a task that remembers this meeting.
  */
-export function SummaryPane({ itemId, summary, summaryError, hasSummaryModel, accepted, home, onAccepted }: Props) {
+export function SummaryPane({ itemId, title, summary, summaryError, hasSummaryModel, accepted, home, onAccepted }: Props) {
   const [titles, setTitles] = useState<Record<number, string>>({});
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,10 +67,31 @@ export function SummaryPane({ itemId, summary, summaryError, hasSummaryModel, ac
     }
   }
 
+  const recapInput = { title, summary };
+  const recap = hasRecapContent(recapInput) ? meetingRecap(recapInput) : null;
+
   return (
     <section className="pane" aria-label="Summary">
       <header className="flex items-center gap-2 px-4 h-11 border-b border-hairline">
         <span className="micro">Summary</span>
+        {/* The written recap is the point of the summary, not a by-product of it: a meeting whose
+            decisions and owners were never confirmed back to the room is the one that goes wrong
+            later. One button, already formatted, so sending it is not a separate piece of work. */}
+        {recap && (
+          <Button
+            size="sm"
+            icon={copied ? ClipboardCheck : Copy}
+            className="ml-auto"
+            onClick={() => {
+              void navigator.clipboard.writeText(recap).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              });
+            }}
+          >
+            {copied ? "Copied" : "Copy recap"}
+          </Button>
+        )}
       </header>
 
       <div className="px-4 py-4 flex flex-col gap-5">

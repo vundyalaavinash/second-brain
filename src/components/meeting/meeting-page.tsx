@@ -307,6 +307,7 @@ export function MeetingPage({ item: initial, event, tasks, hasSummaryModel, reco
 
       <SummaryPane
         itemId={initial.id}
+        title={item.title}
         summary={meta.summary}
         summaryError={meta.summaryError}
         hasSummaryModel={hasSummaryModel}
