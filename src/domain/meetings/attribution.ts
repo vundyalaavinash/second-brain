@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { calendarEvents, containers, meetingSeriesContainers } from "@/db/schema";
+import { calendarEvents, containers, items, meetingSeriesContainers } from "@/db/schema";
 import { MeetingError } from "./errors";
 
 /**
@@ -12,9 +12,15 @@ import { MeetingError } from "./errors";
 export function effectiveContainerId(
   event: { containerId: number | null; seriesId: string | null },
   seriesContainerId: number | null,
+  /** Where this meeting's captured item was filed, when it has one. Last in precedence: filing a
+   * meeting note under a project is a weaker statement than assigning the meeting itself, but it
+   * is a real one, and leaving it out meant a meeting could read as "filed under Payments" on the
+   * Planner while counting against nothing in Payments' own rollup. */
+  itemContainerId: number | null = null,
 ): number | null {
   if (event.containerId !== null) return event.containerId;
-  return seriesContainerId;
+  if (seriesContainerId !== null) return seriesContainerId;
+  return itemContainerId;
 }
 
 /** Series id -> assigned container, for every series named. */
@@ -114,12 +120,13 @@ export function containerMeetingRollup(
     })
     .from(calendarEvents)
     .leftJoin(meetingSeriesContainers, eq(calendarEvents.seriesId, meetingSeriesContainers.seriesId))
+    .leftJoin(items, eq(calendarEvents.itemId, items.id))
     .where(
       and(
         gte(calendarEvents.day, range.from),
         lt(calendarEvents.day, range.to),
         eq(calendarEvents.allDay, 0),
-        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}) = ${containerId}`,
+        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}, ${items.containerId}) = ${containerId}`,
       ),
     )
     .all();
@@ -163,12 +170,13 @@ export function unattributedMeetings(
     })
     .from(calendarEvents)
     .leftJoin(meetingSeriesContainers, eq(calendarEvents.seriesId, meetingSeriesContainers.seriesId))
+    .leftJoin(items, eq(calendarEvents.itemId, items.id))
     .where(
       and(
         gte(calendarEvents.day, range.from),
         lt(calendarEvents.day, range.to),
         eq(calendarEvents.allDay, 0),
-        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}) is null`,
+        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}, ${items.containerId}) is null`,
       ),
     )
     .all()

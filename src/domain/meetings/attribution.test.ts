@@ -1,7 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { calendarEvents, meetingSeriesContainers } from "@/db/schema";
+import { calendarEvents, items, meetingSeriesContainers } from "@/db/schema";
+import { createItem } from "@/domain/items";
 import { createContainer } from "@/domain/containers";
 import {
   assignMeetingContainer,
@@ -176,5 +177,65 @@ describe("meeting attribution", () => {
     expect(unattributedMeetings(t.db, RANGE).map((m) => m.title)).toEqual(["Mystery sync"]);
     assignMeetingContainer(t.db, id, project, "series");
     expect(unattributedMeetings(t.db, RANGE)).toEqual([]);
+  });
+});
+
+describe("captured-item fallback", () => {
+  let t: TestDb;
+  let project: number;
+  let area: number;
+  const RANGE = { from: "2026-09-01", to: "2026-10-01" };
+
+  beforeEach(() => {
+    t = makeTestDb();
+    project = createContainer(t.db, { kind: "project", name: "Payments" }).id;
+    area = createContainer(t.db, { kind: "area", name: "Hiring" }).id;
+  });
+  afterEach(() => t.cleanup());
+
+  function meetingWithFiledItem(containerId: number | null): number {
+    const item = createItem(t.db, { type: "note", title: "Meeting note" });
+    if (containerId !== null) {
+      t.db.update(items).set({ containerId }).where(eq(items.id, item.id)).run();
+    }
+    return t.db
+      .insert(calendarEvents)
+      .values({
+        externalId: `ext-${Math.random()}`,
+        title: "Filed meeting",
+        startsAt: "2026-09-10T09:00:00.000Z",
+        endsAt: "2026-09-10T10:00:00.000Z",
+        day: "2026-09-10",
+        attendees: 0,
+        hasCallLink: 0,
+        source: "outlook",
+        itemId: item.id,
+      })
+      .returning({ id: calendarEvents.id })
+      .get().id;
+  }
+
+  it("falls back to where the captured item was filed", () => {
+    meetingWithFiledItem(project);
+    expect(containerMeetingRollup(t.db, project, RANGE).meetings).toBe(1);
+    expect(unattributedMeetings(t.db, RANGE)).toEqual([]);
+  });
+
+  it("is overridden by an explicit assignment on the meeting", () => {
+    const id = meetingWithFiledItem(project);
+    assignMeetingContainer(t.db, id, area, "occurrence");
+    expect(containerMeetingRollup(t.db, area, RANGE).meetings).toBe(1);
+    expect(containerMeetingRollup(t.db, project, RANGE).meetings).toBe(0);
+  });
+
+  it("stays unattributed when the item is filed nowhere", () => {
+    meetingWithFiledItem(null);
+    expect(unattributedMeetings(t.db, RANGE).map((m) => m.title)).toEqual(["Filed meeting"]);
+  });
+
+  it("orders occurrence over series over item", () => {
+    expect(effectiveContainerId({ containerId: 1, seriesId: "s" }, 2, 3)).toBe(1);
+    expect(effectiveContainerId({ containerId: null, seriesId: "s" }, 2, 3)).toBe(2);
+    expect(effectiveContainerId({ containerId: null, seriesId: null }, null, 3)).toBe(3);
   });
 });
