@@ -20,6 +20,15 @@ const json = (method: string, url: string, body?: unknown) =>
 const params = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) });
 
 /** A local date `n` days from today, for the window a task list carries its sessions in. */
+/** A day inside the list's window that is never DAY, however the calendar happens to fall. */
+function otherDay(): string {
+  for (let n = 3; n < 10; n += 1) {
+    const day = shift(n);
+    if (day !== DAY) return day;
+  }
+  throw new Error("no day inside the window that is not DAY");
+}
+
 function shift(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() + n);
@@ -86,8 +95,10 @@ describe("blocks api", () => {
     const taskId = await addTask("Draft the brief");
     await addBlock(taskId, `${DAY}T09:00:00`, 30);
     await addBlock(taskId, `${DAY}T14:00:00`, 30);
-    // Inside the window a task list carries, whenever this runs.
-    const other = await addBlock(taskId, `${shift(3)}T09:00:00`, 30);
+    // Inside the window a task list carries, whenever this runs -- and provably not DAY itself.
+    // `shift` counts from today while DAY is fixed, so the two collided exactly once the calendar
+    // reached three days before DAY, and the "other day" block landed on the day being cleared.
+    const other = await addBlock(taskId, `${otherDay()}T09:00:00`, 30);
     const cleared = await r.taskBlocks.DELETE(json("DELETE", `/api/tasks/${taskId}/blocks?date=${DAY}`), params(taskId));
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toEqual({ removed: 2 });
