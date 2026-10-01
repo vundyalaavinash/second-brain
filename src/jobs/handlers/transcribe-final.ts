@@ -35,6 +35,8 @@ interface MeetingMeta {
   recording?: RecordingMeta;
   transcript?: Segment[];
   final_transcript_ready?: boolean;
+  /** What the live pass heard while the meeting ran, kept alongside the final transcript rather
+   * than replaced by it. */
   liveTranscript?: unknown;
 }
 
@@ -106,9 +108,12 @@ export function createTranscribeFinalHandler(deps: TranscribeFinalDeps): JobHand
       await run(whisper, ["-m", model, "-f", audio, "-oj", "-of", base], { timeout: WHISPER_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
       const segments = parseWhisperJson(fs.readFileSync(`${base}.json`, "utf8"));
 
-      // The live guesses have served their purpose; the item keeps the real transcript only.
+      // The live pass is kept, not discarded. It used to be deleted here as "guesses that have
+      // served their purpose", but it is the only record of what was heard as it happened: the
+      // final pass is a fresh transcription of the audio, so when it mishears something there is
+      // otherwise nothing left to compare against, and once the audio is released under the
+      // retention rule it cannot be redone at all. It is a few KB of text.
       const next: MeetingMeta = { ...meta, transcript: segments, final_transcript_ready: true };
-      delete next.liveTranscript;
       updateItem(db, itemId, { extractedText: segmentsToText(segments), status: "ready", error: null, meta: next as Record<string, unknown> });
       rechunkItem(db, itemId);
       enqueueJob(db, "embed", { itemId }, itemId);

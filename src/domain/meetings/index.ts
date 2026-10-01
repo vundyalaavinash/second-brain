@@ -1,6 +1,6 @@
 import type { DB } from "@/db/client";
 import type { Item } from "@/db/schema";
-import { createItem, getItem } from "@/domain/items";
+import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { captureMeeting } from "@/domain/activity/calendar";
 import { filesDir } from "@/lib/paths";
 import { MeetingError } from "./errors";
@@ -82,12 +82,50 @@ function resolveTarget(db: DB, target: RecordingTarget): Item {
   throw new MeetingError("Give a calendar event, a meeting item, or adhoc", 400);
 }
 
+/**
+ * Recording a meeting that already has a transcript files the old one away first.
+ *
+ * Recording again is allowed -- a meeting resumes, or someone hits stop by mistake -- but the
+ * final pass overwrites `transcript` wholesale when it lands, so without this the earlier
+ * transcript (and the live pass beside it) would be gone with no warning and no way back: the
+ * audio it came from is on a retention timer and may already have been released. Each prior
+ * session keeps its own transcript, live pass and wav path, oldest first.
+ */
+function archivePreviousSession(db: DB, item: Item): void {
+  const meta = parseMeta<{
+    transcript?: unknown;
+    liveTranscript?: unknown;
+    recording?: { wavPath?: string; startedAt?: string };
+    previousSessions?: unknown[];
+  }>(item);
+  if (!meta.transcript && !meta.liveTranscript) return;
+  const previousSessions = [
+    ...(Array.isArray(meta.previousSessions) ? meta.previousSessions : []),
+    {
+      startedAt: meta.recording?.startedAt ?? null,
+      wavPath: meta.recording?.wavPath ?? null,
+      transcript: meta.transcript ?? null,
+      liveTranscript: meta.liveTranscript ?? null,
+    },
+  ];
+  const next = { ...meta, previousSessions } as Record<string, unknown>;
+  delete next.transcript;
+  delete next.liveTranscript;
+  delete next.final_transcript_ready;
+  delete next.summary;
+  updateItem(db, item.id, { meta: next });
+}
+
 export function startRecording(db: DB, target: RecordingTarget, opts: { autoStarted?: boolean } = {}): RecorderStatus {
   const recorder = getRecorder(db);
   if (recorder.status().state === "recording" || recorder.status().state === "stopping") {
     throw new MeetingError("A recording is already running", 409);
   }
-  const item = resolveTarget(db, target);
+  const resolved = resolveTarget(db, target);
+  archivePreviousSession(db, resolved);
+  // Re-read: `Recorder.start` spreads the meta off the item it is handed, so passing the copy
+  // taken before archiving would write the old transcript straight back over the archive.
+  const item = getItem(db, resolved.id) ?? resolved;
   recorder.start(item, opts);
   return recorder.status();
 }

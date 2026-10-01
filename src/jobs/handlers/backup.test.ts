@@ -11,6 +11,11 @@ import { saveAttachment, attachmentPath } from "@/domain/attachments";
 import { setAudioRetentionDays, readAudioFootprintSnapshot } from "@/domain/meetings/audio-retention";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 import { getLastDbCheck } from "@/db/safety";
+
+/** Yesterday, not a fixed date: "inside the retention window" has to stay true as the calendar
+ * moves. A hardcoded day silently became "past the window" once the default 7 days elapsed,
+ * and these tests started failing for reasons that had nothing to do with the code. */
+const INSIDE_WINDOW = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 import {
   createBackupHandler,
   backupsDir,
@@ -144,7 +149,7 @@ describe("backup handler", () => {
   });
 
   it("finding 4: records a fresh audio footprint snapshot for the status line to read, after the release and sweep", async () => {
-    transcribedMeeting({ title: "Held", endedAt: "2026-09-24T10:00:00.000Z" }); // inside the window -- stays held
+    transcribedMeeting({ title: "Held", endedAt: INSIDE_WINDOW }); // inside the window -- stays held
     expect(readAudioFootprintSnapshot(t.db)).toEqual({ recordings: 0, bytes: 0, nextReleaseAt: null });
 
     const job = enqueueJob(t.db, "backup", {});

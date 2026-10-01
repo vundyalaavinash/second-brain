@@ -262,12 +262,14 @@ export function MeetingPage({ item: initial, event, tasks, hasSummaryModel, reco
           <span role="status" aria-live="polite" className="text-[12.5px]">
             Transcribing
           </span>
-        ) : finalReady ? (
-          <span className="text-[12.5px] text-fg-faint">Done</span>
         ) : (
           <span title={recorder.title ?? undefined}>
+            {/* A finished transcript used to replace this button with the word "Done", which left
+                no way to record again from the meeting it belongs to -- a meeting that resumed, or
+                a stop hit by mistake, had nowhere to go. Recording again archives the transcript
+                that is already there rather than overwriting it (see startRecording). */}
             <Button size="sm" icon={Mic} disabled={!!recorder.blocked} title={recorder.title ?? undefined} onClick={() => recorder.record({ itemId: item.id })}>
-              Record
+              {finalReady ? "Record again" : "Record"}
             </Button>
           </span>
         )}

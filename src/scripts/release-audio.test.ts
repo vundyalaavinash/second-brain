@@ -9,6 +9,11 @@ import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { readAudioFootprintSnapshot } from "@/domain/meetings/audio-retention";
 import type { RecordingMeta } from "@/domain/meetings/recorder";
 
+/** Yesterday, not a fixed date: "inside the retention window" has to stay true as the calendar
+ * moves. A hardcoded day silently became "past the window" once the default 7 days elapsed,
+ * and these tests started failing for reasons that had nothing to do with the code. */
+const INSIDE_WINDOW = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
 const REPO_ROOT = path.resolve(__dirname, "../..");
 function runReleaseAudio(dataDir: string): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync("npx", ["tsx", "src/scripts/release-audio.ts"], {
@@ -84,7 +89,7 @@ describe("release-audio.ts CLI", () => {
   it("finding 4: records a fresh audio footprint snapshot for the status line to read", () => {
     dataDir = makeTempDataDir();
     const db: DB = openDatabase(path.join(dataDir, "brain.db"));
-    meeting(db, dataDir, { title: "Held", endedAt: "2026-09-24T10:00:00.000Z", transcript: "still held" }); // inside the window
+    meeting(db, dataDir, { title: "Held", endedAt: INSIDE_WINDOW, transcript: "still held" }); // inside the window
     db.$client.close();
 
     const { status } = runReleaseAudio(dataDir);
@@ -101,7 +106,7 @@ describe("release-audio.ts CLI", () => {
     dataDir = makeTempDataDir();
     const file = path.join(dataDir, "brain.db");
     const db: DB = openDatabase(file); // applies every real migration once, normally
-    const orphaned = meeting(db, dataDir, { title: "Held", endedAt: "2026-09-24T10:00:00.000Z", transcript: "still held" });
+    const orphaned = meeting(db, dataDir, { title: "Held", endedAt: INSIDE_WINDOW, transcript: "still held" });
 
     // Make the newest migration look pending, the same way `pendingMigrations` reads it:
     // MAX(created_at) in __drizzle_migrations behind the journal's newest entry.

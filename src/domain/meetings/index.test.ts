@@ -83,6 +83,44 @@ describe("recording sessions", () => {
     expect(refusal(() => startRecording(t.db, {}))).toBe(400);
   });
 
+  // Recording a meeting that already has a transcript is allowed -- a meeting resumes, a stop is
+  // hit by mistake -- but the final pass overwrites `transcript` wholesale, so the earlier one
+  // has to be filed away rather than silently lost. The audio behind it is on a retention timer
+  // and may already be gone, so there is no redoing it.
+  it("files the previous transcript away when a meeting is recorded again", () => {
+    const meeting = createItem(t.db, {
+      type: "meeting",
+      title: "Weekly",
+      meta: {
+        transcript: [{ start: 0, end: 1, text: "first pass" }],
+        liveTranscript: [{ at: "2026-09-22T10:00:00.000Z", text: "heard live" }],
+        final_transcript_ready: true,
+        summary: { summary: "the old summary" },
+        recording: { wavPath: "meetings/old.wav", startedAt: "2026-09-22T10:00:00.000Z", state: "done" },
+      },
+    });
+
+    startRecording(t.db, { itemId: meeting.id });
+
+    const meta = parseMeta<{ previousSessions?: { transcript?: unknown; liveTranscript?: unknown; wavPath?: string }[]; transcript?: unknown; summary?: unknown }>(
+      getItem(t.db, meeting.id)!,
+    );
+    expect(meta.previousSessions).toHaveLength(1);
+    expect(meta.previousSessions![0].transcript).toEqual([{ start: 0, end: 1, text: "first pass" }]);
+    expect(meta.previousSessions![0].liveTranscript).toEqual([{ at: "2026-09-22T10:00:00.000Z", text: "heard live" }]);
+    expect(meta.previousSessions![0].wavPath).toBe("meetings/old.wav");
+    // The new session starts clean, so a stale transcript or summary cannot look like this one's.
+    expect(meta.transcript).toBeUndefined();
+    expect(meta.summary).toBeUndefined();
+  });
+
+  it("files nothing away for a meeting that has never been transcribed", () => {
+    const meeting = createItem(t.db, { type: "meeting", title: "Fresh", meta: {} });
+    startRecording(t.db, { itemId: meeting.id });
+    const meta = parseMeta<{ previousSessions?: unknown[] }>(getItem(t.db, meeting.id)!);
+    expect(meta.previousSessions).toBeUndefined();
+  });
+
   it("stops and keeps through the singleton", async () => {
     startRecording(t.db, { adhoc: true }, { autoStarted: true });
     expect(keepRecording().keep).toBe(true);

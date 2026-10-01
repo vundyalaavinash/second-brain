@@ -87,7 +87,10 @@ describe("transcribe_final handler", () => {
       { start: 1.5, end: 3, text: "this is the meeting" },
     ]);
     expect(m.final_transcript_ready).toBe(true);
-    expect("liveTranscript" in m).toBe(false);
+    // The live pass is the only record of what was heard as it happened; the final transcript is
+    // a fresh pass over the audio, so keeping both is what makes a mishearing checkable at all --
+    // and the audio itself is released on a retention timer.
+    expect(m.liveTranscript).toEqual([{ at: "2026-09-22T10:00:00.000Z", text: "hello" }]);
     expect(getItemChunks(t.db, item.id).length).toBeGreaterThan(0);
     expect(listJobs(t.db, { itemId: item.id }).map((j) => j.type)).toEqual(["transcribe_final", "embed"]);
   });
