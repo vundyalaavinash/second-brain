@@ -4,6 +4,7 @@ import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
 import { enqueueJob } from "@/jobs/queue";
 import type { Job } from "@/db/schema";
 import type { ChatProvider } from "@/providers/chat";
+import { ContextOverflowError } from "@/providers/llama-cli-output";
 import { createSummarizeMeetingHandler, MeetingSummarySchema } from "./summarize-meeting";
 
 const SUMMARY = {
@@ -163,5 +164,172 @@ describe("a summary with an action that has no note", () => {
       proposed_actions: [{ title: "Do the thing" }],
     });
     expect(parsed.proposed_actions[0]).toEqual({ title: "Do the thing", notes: "" });
+  });
+});
+
+/**
+ * A transcript longer than the model's context window. `llama-cli` refuses such a prompt outright
+ * -- it does not quietly drop the tokens that do not fit -- so the job splits the transcript and
+ * summarises it in parts. Measured against the real model, the refusal arrives in about a second
+ * and carries both token counts, which is what the split is sized from.
+ */
+describe("a transcript too long for one pass", () => {
+  let t: TestDb;
+
+  beforeEach(() => {
+    t = makeTestDb();
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    t.cleanup();
+  });
+
+  /** Long enough to need splitting, with a distinct, findable sentence every few hundred chars. */
+  function longTranscript(sentences: number): string {
+    return Array.from({ length: sentences }, (_, i) => `In part ${i} we agreed that item ${i} would be owned by person ${i}.`).join(" ");
+  }
+
+  function meeting(transcript: string, body = "") {
+    const item = createItem(t.db, { type: "meeting", title: "Long workshop", body, status: "ready" });
+    return updateItem(t.db, item.id, { extractedText: transcript });
+  }
+
+  /**
+   * Stands in for llama-cli: refuses any prompt over `limit` characters the way the real binary
+   * refuses one over its context window, reporting token counts derived from a fixed 4 characters
+   * per token -- close to the 4.12 measured on a real transcript.
+   */
+  function sizeLimitedProvider(limit: number) {
+    const seen: string[] = [];
+    const provider: ChatProvider = {
+      structured: async (req) => {
+        seen.push(req.user);
+        if (req.user.length > limit) {
+          throw new ContextOverflowError(Math.round(req.user.length / 4), Math.round(limit / 4));
+        }
+        if (req.name === "record_meeting_narrative") return { summary: "One paragraph over the whole thing." } as never;
+        // Echo something traceable back to the part that produced it.
+        const marker = /item (\d+)/.exec(req.user);
+        return {
+          summary: `Part covering item ${marker?.[1] ?? "?"}.`,
+          decisions: [`Item ${marker?.[1] ?? "?"} has an owner`],
+          proposed_actions: [{ title: `Follow up on item ${marker?.[1] ?? "?"}`, notes: "" }],
+        } as never;
+      },
+    };
+    return { provider, seen };
+  }
+
+  function job(itemId: number): Job {
+    return enqueueJob(t.db, "summarize_meeting", { itemId }, itemId);
+  }
+
+  it("splits, summarises each part, and records a summary rather than failing", async () => {
+    const item = meeting(longTranscript(200));
+    const { provider, seen } = sizeLimitedProvider(2000);
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const meta = parseMeta<{ summary?: typeof SUMMARY; summaryError?: string; summaryParts?: unknown[]; summaryGaps?: string }>(getItem(t.db, item.id)!);
+    expect(meta.summaryError).toBeUndefined();
+    expect(meta.summaryGaps).toBeUndefined();
+    expect(meta.summary?.summary).toBe("One paragraph over the whole thing.");
+    expect(meta.summary!.decisions.length).toBeGreaterThan(1);
+    // One refused whole-transcript attempt, then the parts, then the narrative pass.
+    expect(seen.length).toBeGreaterThan(3);
+  });
+
+  it("keeps the per-part summaries, so coverage can be checked rather than trusted", async () => {
+    const item = meeting(longTranscript(200));
+    const { provider } = sizeLimitedProvider(2000);
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const meta = parseMeta<{ summaryParts?: unknown[] }>(getItem(t.db, item.id)!);
+    expect(meta.summaryParts?.length).toBeGreaterThan(1);
+  });
+
+  /** The property the whole design exists for: no part of the transcript goes unread. */
+  it("shows every part of the transcript to the model", async () => {
+    const item = meeting(longTranscript(120));
+    const { provider, seen } = sizeLimitedProvider(2000);
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const parts = seen.slice(1).join("\n");
+    for (let i = 0; i < 120; i++) expect(parts).toContain(`In part ${i} we agreed`);
+  });
+
+  it("records a summary and says what is missing when one part fails", async () => {
+    const item = meeting(longTranscript(200));
+    let calls = 0;
+    const provider: ChatProvider = {
+      structured: async (req) => {
+        calls++;
+        if (req.user.length > 2000) throw new ContextOverflowError(Math.round(req.user.length / 4), 500);
+        // The second part attempted fails for a reason splitting cannot fix.
+        if (calls === 3) throw new Error("llama-cli failed: out of memory");
+        if (req.name === "record_meeting_narrative") return { summary: "Most of the meeting." } as never;
+        return { summary: "A part.", decisions: ["Something was settled"], proposed_actions: [] } as never;
+      },
+    };
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const meta = parseMeta<{ summary?: typeof SUMMARY; summaryGaps?: string; summaryError?: string }>(getItem(t.db, item.id)!);
+    expect(meta.summary).toBeDefined();
+    expect(meta.summaryError).toBeUndefined();
+    expect(meta.summaryGaps).toContain("could not be summarised");
+    expect(meta.summaryGaps).toContain("out of memory");
+  });
+
+  it("falls back to the parts' own paragraphs when the narrative pass fails", async () => {
+    const item = meeting(longTranscript(60));
+    const provider: ChatProvider = {
+      structured: async (req) => {
+        if (req.user.length > 2000) throw new ContextOverflowError(Math.round(req.user.length / 4), 500);
+        if (req.name === "record_meeting_narrative") throw new Error("llama-cli failed: no model");
+        return { summary: "What this part covered.", decisions: [], proposed_actions: [] } as never;
+      },
+    };
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const meta = parseMeta<{ summary?: typeof SUMMARY; summaryError?: string }>(getItem(t.db, item.id)!);
+    expect(meta.summaryError).toBeUndefined();
+    expect(meta.summary?.summary).toContain("What this part covered.");
+  });
+
+  it("records a plain failure when no part can be summarised at all", async () => {
+    const item = meeting(longTranscript(200));
+    const provider: ChatProvider = {
+      structured: async (req) => {
+        throw new ContextOverflowError(Math.round(req.user.length / 4), 10);
+      },
+    };
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const meta = parseMeta<{ summary?: unknown; summaryError?: string }>(getItem(t.db, item.id)!);
+    expect(meta.summary).toBeUndefined();
+    expect(meta.summaryError).toContain("too long for one pass");
+  });
+
+  it("carries the notes through to a structured pass, not just the narrative", async () => {
+    const item = meeting(longTranscript(200), "Remember to ask Priya about the rollback owner.");
+    const { provider, seen } = sizeLimitedProvider(2000);
+    const handler = createSummarizeMeetingHandler({ db: t.db, provider, log: () => {} });
+
+    await handler(job(item.id));
+
+    const structured = seen.filter((u) => u.includes("Transcript") || u.includes("Notes taken"));
+    expect(structured.some((u) => u.includes("Remember to ask Priya"))).toBe(true);
   });
 });

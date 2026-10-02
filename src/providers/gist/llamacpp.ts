@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { extractAnswer } from "../llama-cli-output";
+import { extractAnswer, llamaCliError } from "../llama-cli-output";
 import type { GistProvider } from "./types";
 
 const run = promisify(execFile);
@@ -27,7 +27,12 @@ export function createLlamaCppGistProvider(modelPath: string, binPath: string): 
         timeout: GIST_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,
       });
-      return extractAnswer(stdout, prompt);
+      const answer = extractAnswer(stdout, prompt);
+      // llama-cli exits 0 when it refuses a prompt, and this provider does not parse what it gets
+      // back -- so without this check the error text is stored as the gist itself.
+      const failure = llamaCliError(answer);
+      if (failure) throw failure;
+      return answer;
     },
   };
 }

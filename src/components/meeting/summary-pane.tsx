@@ -26,6 +26,8 @@ interface Props {
   title: string;
   summary: MeetingSummaryMeta | undefined;
   summaryError: string | undefined;
+  /** Set when a summary was produced from a split transcript but does not cover all of it. */
+  summaryGaps: string | undefined;
   /** False when the local summary model isn't installed yet, which is why there may be no summary. */
   hasSummaryModel: boolean;
   /** Indices of the proposed actions already turned into tasks. */
@@ -39,7 +41,7 @@ interface Props {
  * somebody now owns. Each action is a row the person can reword before accepting; accepting
  * one creates a task that remembers this meeting.
  */
-export function SummaryPane({ itemId, title, summary, summaryError, hasSummaryModel, accepted, home, onAccepted }: Props) {
+export function SummaryPane({ itemId, title, summary, summaryError, summaryGaps, hasSummaryModel, accepted, home, onAccepted }: Props) {
   const [titles, setTitles] = useState<Record<number, string>>({});
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
@@ -104,6 +106,10 @@ export function SummaryPane({ itemId, title, summary, summaryError, hasSummaryMo
         )}
 
         {summaryError && <p className="text-[12.5px] text-danger">The summary failed: {summaryError}</p>}
+
+        {/* A summary assembled from parts of a long transcript, where some part could not be read.
+            Worth saying plainly: the sections below are true, but they are not the whole meeting. */}
+        {summaryGaps && <p className="text-[12.5px] text-warn">This does not cover the whole meeting: {summaryGaps}</p>}
 
         {summary && summary.decisions.length > 0 && (
           <div className="flex flex-col gap-2">

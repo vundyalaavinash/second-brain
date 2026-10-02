@@ -37,6 +37,7 @@ export interface MeetingMeta {
   final_transcript_ready?: boolean;
   summary?: MeetingSummaryMeta;
   summaryError?: string;
+  summaryGaps?: string;
   acceptedActions?: number[];
   calendarEventId?: number;
   /** Design §9: set once `releaseAudio` has deleted the wav, either by the nightly pass or the
@@ -310,6 +311,7 @@ export function MeetingPage({ item: initial, event, tasks, hasSummaryModel, reco
         title={item.title}
         summary={meta.summary}
         summaryError={meta.summaryError}
+        summaryGaps={meta.summaryGaps}
         hasSummaryModel={hasSummaryModel}
         accepted={accepted}
         home={home}

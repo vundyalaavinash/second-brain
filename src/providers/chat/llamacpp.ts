@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ChatProvider, StructuredRequest } from "./types";
 import { jsonSchemaToGrammar } from "./json-schema-to-gbnf";
-import { extractAnswer } from "../llama-cli-output";
+import { extractAnswer, llamaCliError } from "../llama-cli-output";
 
 const run = promisify(execFile);
 
@@ -21,8 +21,10 @@ const SUMMARY_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_BUFFER = 10 * 1024 * 1024;
 
 /** How many tokens the answer itself is allowed -- a summary, a handful of decisions, a handful
- * of proposed actions is a few hundred words at most, never a full second transcript. */
-const MAX_ANSWER_TOKENS = 800;
+ * of proposed actions is a few hundred words at most, never a full second transcript. Exported
+ * because the summary job subtracts it when sizing the parts of a transcript too long for one
+ * pass: the context window has to hold the prompt *and* the answer. */
+export const ANSWER_TOKEN_RESERVE = 800;
 
 /**
  * One inference call, one process, no server -- the same shape as the gist provider
@@ -48,10 +50,14 @@ export function createLlamaCppChatProvider(modelPath: string, binPath: string): 
         // dropping into an interactive REPL that never exits on its own.
         const { stdout } = await run(
           binPath,
-          ["-m", modelPath, "-p", prompt, "-n", String(MAX_ANSWER_TOKENS), "--no-display-prompt", "--single-turn", "--grammar-file", grammarFile],
+          ["-m", modelPath, "-p", prompt, "-n", String(ANSWER_TOKEN_RESERVE), "--no-display-prompt", "--single-turn", "--grammar-file", grammarFile],
           { timeout: SUMMARY_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
         );
         const answer = extractAnswer(stdout, prompt);
+        // Before JSON.parse, because llama-cli exits 0 on a refused prompt: without this the
+        // overflow arrives as a JSON syntax error naming the letter 'E' instead of the transcript.
+        const failure = llamaCliError(answer);
+        if (failure) throw failure;
         const parsed: unknown = JSON.parse(answer);
         return req.schema.parse(parsed) as T;
       } finally {
