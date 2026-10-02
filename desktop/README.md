@@ -75,6 +75,29 @@ stable identity: rebuilding one silently voids whatever was granted to the previ
 stale entry can still appear switched on in System Settings. Remove it with the `-` button and let
 it re-prompt rather than toggling it off and on.
 
+This has happened for real, and it is worth knowing how to prove rather than guess at, because the
+symptom is a granted-looking switch and a helper reporting the permission as missing. `tccd` says
+so outright:
+
+```sh
+/usr/bin/log show --last 10m --predicate 'process == "tccd"' | grep -i sb-activity
+```
+
+```
+cdhash H"20b47a92…"; status: -67050
+Failed to match existing code requirement for subject …/bin/sb-activity
+    and service kTCCServiceAccessibility
+AUTHREQ_RESULT: authValue=0, authReason=5
+```
+
+The pinned cdhash is the build that was granted; `codesign -dvvv "$HELPER_BIN"` prints the one on
+disk now, and they differ after any rebuild. Note `/usr/bin/log` rather than `log`, which is
+shadowed by a shell function in some setups. The line is only logged when the helper *first* asks,
+so it is usually absent by the time you look -- which is why `scripts/brain.sh status` explains the
+rebuild date instead of trying to find it. Accessibility is the one grant that cannot recover by
+itself: it never prompts, so unlike calendar and automation it cannot be re-granted by answering a
+dialog after the rebuild.
+
 ## Troubleshooting
 
 If the app shows an error (during setup or once it's running), the full log — `prepare`'s output,

@@ -131,6 +131,48 @@ ensure_token() {
   fi
 }
 
+# Accessibility is granted to a *build* of the helper, not to the helper. The binary is ad-hoc
+# signed (`Signature=adhoc`, no team identifier), so it has no stable identity for macOS to key a
+# grant to and tccd can only pin the cdhash of the exact file it was shown. Rebuilding changes that
+# hash and silently voids the grant: System Settings goes on showing the entry with its switch on,
+# while tccd logs "Failed to match existing code requirement" and denies. Observed for real -- a
+# grant made before a rebuild left `accessibility: missing` with no visible reason.
+#
+# Saying *when* is what makes that actionable, and the binary's own mtime already records it -- no
+# stamp file to write, and it works on an install that predates this code, which a new stamp would
+# not. tccd's own denial is the definitive evidence, but it is only logged when the helper first
+# asks, so it is reliably absent by the time anyone runs `status`: measured over 25 minutes of a
+# denied helper, not assumed.
+helper_build_date() {
+  [ -f "$HELPER_BIN" ] || return 0
+  stat -f "%Sm" -t "%e %b %Y at %H:%M" "$HELPER_BIN" 2>/dev/null | sed 's/^ *//' || true
+}
+
+# Why `accessibility: missing` may be showing even though the switch looks on, and what to do.
+accessibility_advice() {
+  local when; when="$(helper_build_date)"
+  printf '  Accessibility is bound to the exact build it was granted to: the helper is ad-hoc signed,
+'
+  printf '  so macOS pins the grant to that one file and a rebuild voids it -- while System Settings
+'
+  printf '  carries on showing the entry with its switch on.
+'
+  if [ -n "$when" ]; then
+    printf '  This helper was last rebuilt on %s; a grant given before then no longer applies.
+' "$when"
+  fi
+  printf '  Toggling it off and on reuses the same stale entry, so remove it and add it again:
+'
+  printf '    System Settings > Privacy & Security > Accessibility
+'
+  printf '    select sb-activity, press [-], then press [+] and choose:
+'
+  printf '      %s
+' "$HELPER_BIN"
+  printf '    then: launchctl kickstart -k %s/%s
+' "$DOMAIN" "$HELPER_LABEL"
+}
+
 build_helper() {
   if ! command -v swift >/dev/null; then
     say "swift not found; skipping the activity helper. Install the Xcode command line tools and rerun setup to enable it."
@@ -144,6 +186,7 @@ build_helper() {
   mkdir -p "$(dirname "$HELPER_BIN")"
   cp "$HELPER_SRC/.build/release/sb-activity" "$HELPER_BIN" || return 1
   ok "helper built at $HELPER_BIN"
+  say "this rebuild voided any Accessibility grant the previous build had -- 'scripts/brain.sh status' says how to restore it"
 }
 
 write_helper_plist() {
@@ -381,13 +424,19 @@ helper_status() {
           console.log(`  accessibility: ${p.accessibility ? "granted" : "missing"}  calendar: ${p.calendar ? "granted" : "missing"}  (as reported by the running helper, last seen ${h.lastSeen ?? "never"})`);
         } catch { console.log("  helper has not reported permissions yet"); }
       });'
+    # Asked of the same payload rather than re-fetched, so the advice can never disagree with the
+    # line printed above it.
+    local access
+    access="$(printf '%s' "$reported" | node -e '
+      let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+        try { console.log(JSON.parse(s).helper.permissions.accessibility ? "granted" : "missing"); } catch { console.log("unknown"); }
+      });' 2>/dev/null || true)"
+    if [ "$access" = "missing" ]; then accessibility_advice; fi
   else
     printf '  permissions: unknown (server not answering)\n'
   fi
-  local status
-  status="$(is_up && curl -sf --max-time 2 "$URL/api/activity/status" 2>/dev/null || true)"
-  if [ -n "$status" ]; then
-    printf '%s' "$status" | node -e '
+  if [ -n "$reported" ]; then
+    printf '%s' "$reported" | node -e '
       let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
         try { const n = JSON.parse(s).helper.calendarsSeen;
           console.log(`  calendars: ${typeof n === "number" ? n : "unknown"}`);
