@@ -63,7 +63,7 @@ describe("summarize_meeting handler", () => {
     await handler(job(item.id));
 
     const meta = parseMeta<MeetingMeta>(getItem(t.db, item.id)!);
-    expect(meta.summary).toEqual(SUMMARY);
+    expect(meta.summary).toEqual(MeetingSummarySchema.parse(SUMMARY));
     expect(meta.summaryError).toBeUndefined();
     // The recorder's own meta survives the merge.
     expect(meta.recording?.state).toBe("done");
@@ -134,7 +134,7 @@ describe("summarize_meeting handler", () => {
 
     const meta = parseMeta<MeetingMeta>(getItem(t.db, item.id)!);
     expect(meta.summaryError).toBeUndefined();
-    expect(meta.summary).toEqual(SUMMARY);
+    expect(meta.summary).toEqual(MeetingSummarySchema.parse(SUMMARY));
   });
 
   it("skips an item with neither a transcript nor notes", async () => {
@@ -147,5 +147,21 @@ describe("summarize_meeting handler", () => {
 
     expect(structured).not.toHaveBeenCalled();
     expect(logs).toHaveLength(1);
+  });
+});
+
+/**
+ * A model that leaves `notes` off an action must still produce a usable summary. The alternative --
+ * rejecting the whole answer -- loses the paragraph, the decisions and the actions over a missing
+ * note, which is a worse trade every time.
+ */
+describe("a summary with an action that has no note", () => {
+  it("fills the note in rather than rejecting the answer", () => {
+    const parsed = MeetingSummarySchema.parse({
+      summary: "What happened.",
+      decisions: ["A choice"],
+      proposed_actions: [{ title: "Do the thing" }],
+    });
+    expect(parsed.proposed_actions[0]).toEqual({ title: "Do the thing", notes: "" });
   });
 });

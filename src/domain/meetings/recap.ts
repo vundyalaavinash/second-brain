@@ -1,8 +1,19 @@
-import type { MeetingSummary } from "@/jobs/handlers/summarize-meeting";
+/**
+ * Deliberately not `MeetingSummary` itself: summaries written before a field existed are still on
+ * disk and still worth a recap, so everything past `summary` is optional here. The generation
+ * schema stays strict -- it is only reading that has to cope with history.
+ */
+export interface StoredSummary {
+  summary?: string;
+  decisions?: string[];
+  proposed_actions?: { title: string; owner?: string; deadline?: string; notes?: string }[];
+  risks?: string[];
+  open_questions?: string[];
+}
 
 export interface RecapInput {
   title: string;
-  summary?: MeetingSummary;
+  summary?: StoredSummary;
   /** What the person typed themselves, which outranks anything the model inferred. */
   notes?: string;
 }
@@ -39,11 +50,26 @@ export function meetingRecap(input: RecapInput): string {
   if (actions.length > 0) {
     lines.push("Action items:");
     for (const action of actions) {
-      // The note carries who and by when when the meeting said so; appended rather than given its
-      // own line so one action stays one line, which is what makes the list scannable.
-      const note = action.notes?.trim();
-      lines.push(note ? `- ${action.title.trim()} (${note})` : `- ${action.title.trim()}`);
+      // Owner and deadline are appended to the action's own line rather than given lines of their
+      // own, so the list stays scannable -- and a missing one is visible as an absence, which is
+      // the whole point of asking for them separately.
+      const qualifiers = [action.owner?.trim(), action.deadline?.trim(), action.notes?.trim()].filter(Boolean);
+      lines.push(qualifiers.length > 0 ? `- ${action.title.trim()} (${qualifiers.join(", ")})` : `- ${action.title.trim()}`);
     }
+    lines.push("");
+  }
+
+  const risks = (summary?.risks ?? []).filter((r) => r.trim());
+  if (risks.length > 0) {
+    lines.push("Risks / dependencies:");
+    for (const risk of risks) lines.push(`- ${risk.trim()}`);
+    lines.push("");
+  }
+
+  const questions = (summary?.open_questions ?? []).filter((q) => q.trim());
+  if (questions.length > 0) {
+    lines.push("Open questions:");
+    for (const question of questions) lines.push(`- ${question.trim()}`);
     lines.push("");
   }
 
@@ -62,6 +88,8 @@ export function hasRecapContent(input: RecapInput): boolean {
     summary?.summary?.trim() ||
       (summary?.decisions ?? []).some((d) => d.trim()) ||
       (summary?.proposed_actions ?? []).some((a) => a.title.trim()) ||
+      (summary?.risks ?? []).some((r) => r.trim()) ||
+      (summary?.open_questions ?? []).some((q) => q.trim()) ||
       notes?.trim(),
   );
 }

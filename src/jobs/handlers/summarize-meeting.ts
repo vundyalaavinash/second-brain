@@ -5,6 +5,21 @@ import { jobPayload } from "@/jobs/payload";
 import { getItem, parseMeta, updateItem } from "@/domain/items";
 import { getChatProvider, type ChatProvider } from "@/providers/chat";
 
+/**
+ * Four more fields were tried here and taken back out: owner and deadline on each action, plus
+ * risks and open_questions, to match the meeting template this app is modelled on.
+ *
+ * Measured on the same transcript, repeatedly, widening the schema made every field worse. The
+ * model filled owner and deadline zero times out of two while still writing "By end of week, for
+ * Priya" into `notes` -- it had the information and would not put it where it was asked. risks and
+ * open_questions came back empty, and decisions dropped from one to zero: asking for seven things
+ * cost the one it had been getting right.
+ *
+ * So the schema stays narrow, which is what the local 7B model can actually do. Owner and deadline
+ * are better confirmed by a person when accepting an action as a task -- which is what the source
+ * material asks for anyway ("repeat the ask, owner, deadline"): a confirmation step, not an
+ * extraction problem.
+ */
 export const MeetingSummarySchema = z.object({
   summary: z.string().describe("One short paragraph covering what the meeting was about and where it got to."),
   decisions: z
@@ -16,7 +31,7 @@ export const MeetingSummarySchema = z.object({
     .array(
       z.object({
         title: z.string().describe("The task, as an imperative line short enough for a to-do list."),
-        notes: z.string().describe("Who owns it and by when, if the meeting said. Empty otherwise."),
+        notes: z.string().default("").describe("Who owns it and by when, if the meeting said. Empty otherwise."),
       }),
     )
     .describe("Work the meeting left somebody holding. Empty when it left none."),
@@ -39,6 +54,7 @@ const SYSTEM = [
   "Return no decisions only when the meeting genuinely settled nothing -- a status update or a discussion that reached no conclusion.",
   "Proposed actions are the things somebody now has to do, phrased as a task title with a note naming who and by when if the meeting said so.",
   "A decision and the action it creates are both recorded: choosing to run the backfill on Tuesday is a decision, and booking the window is an action.",
+  "Never guess who owns something, and never invent a date: if the meeting did not say, the note leaves it out.",
 ].join(" ");
 
 export interface SummarizeMeetingDeps {

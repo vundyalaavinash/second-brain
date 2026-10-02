@@ -11,7 +11,7 @@ import { hasRecapContent, meetingRecap } from "@/domain/meetings/recap";
 export interface MeetingSummaryMeta {
   summary: string;
   decisions: string[];
-  proposed_actions: { title: string; notes: string }[];
+  proposed_actions: { title: string; notes?: string }[];
 }
 
 /** Where a task made from this meeting lands, in words the row can link to. */

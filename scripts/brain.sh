@@ -100,6 +100,18 @@ require_node() {
 is_loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
 is_up()     { curl -sf -o /dev/null --max-time 2 "$URL/capture"; }
 
+# The PID listening on $PORT, empty when nothing is. A server left behind by an ad-hoc run holds
+# the port; the agent then exits 1 on every spawn and launchd retries forever with nothing on
+# screen saying why -- 1605 silent respawns over twelve hours, in the case that prompted this.
+#
+# The trailing `|| true` is load-bearing, not defensive: `lsof` exits 1 when nothing is listening,
+# and under this script's `set -o pipefail` that failure becomes the function's status, so
+# `holder=$(port_holder)` would abort the caller on a free port -- the one case that must succeed.
+port_holder() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true; }
+# What the agent's last spawn did, for when the port is free and it still will not stay up. Same
+# `|| true` reason: `launchctl print` fails when the agent is not loaded.
+last_exit() { launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk -F'= ' '/last exit code/ {print $2; exit}' || true; }
+
 wait_for_server() {
   local i
   for i in $(seq 1 60); do
@@ -559,9 +571,17 @@ cmd_start() {
   [ "${1:-}" = "--no-open" ] && open_browser=0
   [ -f "$PLIST" ] || fail "launch agent not installed. Run: scripts/brain.sh setup"
   [ -d "$ROOT/.next" ] || fail "no build found. Run: scripts/brain.sh restart --build"
+  local holder
   if is_loaded; then
     say "agent already loaded"
   else
+    # Checked before bootstrapping, not after: once the agent is up it holds the port itself, so
+    # anything listening at this point is something else, and launchd cannot win a port it does
+    # not own -- it just exits 1 and retries, forever and quietly.
+    holder=$(port_holder)
+    if [ -n "$holder" ]; then
+      fail "port $PORT is already in use by PID $holder ($(ps -o comm= -p "$holder" 2>/dev/null || true)), which is not this agent. Stop it first: kill $holder"
+    fi
     launchctl bootstrap "$DOMAIN" "$PLIST"
     ok "agent loaded"
   fi
@@ -571,6 +591,12 @@ cmd_start() {
     helper_start
     if [ "$open_browser" = 1 ] && command -v open >/dev/null; then open "$URL"; fi
   else
+    holder=$(port_holder)
+    # `[ -n "$holder" ] && say ...` would abort here under `set -e` whenever the port is free,
+    # swallowing the very diagnostics this branch exists to print.
+    if [ -n "$holder" ]; then say "PID $holder is listening on $PORT but not answering"; fi
+    local code; code=$(last_exit)
+    say "agent's last spawn exited with ${code:-an unknown code}"
     fail "server did not answer within 60 s. Check: scripts/brain.sh logs"
   fi
 }

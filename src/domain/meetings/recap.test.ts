@@ -80,3 +80,44 @@ describe("hasRecapContent", () => {
     expect(hasRecapContent({ title: "x", notes: "my own note" })).toBe(true);
   });
 });
+
+describe("recap with the fuller template", () => {
+  it("puts owner and deadline on the action's own line, and lists risks and open questions", () => {
+    const text = meetingRecap({
+      title: "Platform sync",
+      summary: {
+        summary: "Cutover and latency.",
+        decisions: ["Backfill runs Tuesday night"],
+        proposed_actions: [
+          { title: "Book the maintenance window", owner: "Priya", deadline: "before Tuesday" },
+          { title: "Design the async fraud check", owner: "", deadline: "end of week" },
+        ],
+        risks: ["The backfill takes six hours"],
+        open_questions: ["Who signs off the rollback?"],
+      },
+    });
+    expect(text).toContain("- Book the maintenance window (Priya, before Tuesday)");
+    expect(text).toContain("- Design the async fraud check (end of week)");
+    expect(text).toContain("Risks / dependencies:");
+    expect(text).toContain("- The backfill takes six hours");
+    expect(text).toContain("Open questions:");
+    expect(text).toContain("- Who signs off the rollback?");
+  });
+
+  // Summaries written before these fields existed are still on disk; a recap of one must not
+  // throw, and must not sprout empty headings either.
+  it("recaps a summary saved before these fields existed", () => {
+    const text = meetingRecap({
+      title: "Older meeting",
+      summary: { summary: "What happened.", decisions: ["A choice"], proposed_actions: [{ title: "Do it", notes: "Sam" }] },
+    });
+    expect(text).toContain("- Do it (Sam)");
+    expect(text).not.toContain("Risks / dependencies:");
+    expect(text).not.toContain("Open questions:");
+  });
+
+  it("counts risks or open questions alone as worth sending", () => {
+    expect(hasRecapContent({ title: "x", summary: { risks: ["a dependency"] } })).toBe(true);
+    expect(hasRecapContent({ title: "x", summary: { open_questions: ["unanswered"] } })).toBe(true);
+  });
+});
