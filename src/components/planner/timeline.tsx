@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type DragEvent, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Mic } from "lucide-react";
 import type { ActivityMeetingDTO, BlockDTO, MeetingItemDTO, MeetingListDTO, PlanTaskDTO } from "@/lib/dto";
 import { formatClock, todayLocal } from "../activity/format";
 import { count, openMeeting } from "./open-meeting";
@@ -399,7 +400,16 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                 * row disappears on any meeting under 48 minutes (`b.height >= 48` further down) --
                 * the one control someone actually needs from here must not vanish with it. */}
               <button type="button" aria-label={label(m)} onClick={() => open(b.id)} className="absolute inset-0 focus-ring rounded-md" />
-              <div className="relative pointer-events-none p-2 flex flex-col gap-0.5 h-full">
+              {/* `p-2` is 16px of vertical padding, and a 15-minute block is 15px tall
+                * (PX_PER_MIN = 1, MIN_HEIGHT = 15) -- so on any short meeting the padding was
+                * taller than the box, pushing the title and its button down out of the block for
+                * `overflow-hidden` to clip. Short blocks get no vertical padding and centre their
+                * single row instead; only the horizontal padding is unconditional. */}
+              <div
+                className={`relative pointer-events-none px-2 flex flex-col gap-0.5 h-full ${
+                  b.height < 30 ? "justify-center py-0" : "py-2"
+                }`}
+              >
                 <span className="flex items-center gap-1.5 min-w-0">
                   <span className="truncate text-[13px]">{m.title}</span>
                   {BADGES.filter((badge) => m.item?.[badge.key]).map((badge) => (
@@ -416,9 +426,12 @@ export function Timeline({ date, meetings, tasks, onPatchTask, onBlock, workHour
                       disabled={!!recorder.blocked}
                       aria-label={`Record ${m.title}`}
                       title={recorder.title ?? undefined}
-                      className="focus-ring rounded-sm text-[11px] text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none"
+                      className="focus-ring rounded-sm text-[11px] text-fg-muted hover:text-fg hover:underline disabled:opacity-40 disabled:pointer-events-none flex items-center"
                     >
-                      Record
+                      {/* The word costs width a short block does not have, and it shares that row
+                        * with the title and the length. The icon says the same thing; the label
+                        * stays on `aria-label` either way. */}
+                      {b.height < 30 ? <Mic className="w-3 h-3" aria-hidden /> : "Record"}
                     </button>
                   </span>
                 </span>

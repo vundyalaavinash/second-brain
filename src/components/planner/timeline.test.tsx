@@ -607,3 +607,58 @@ describe("Timeline", () => {
     });
   });
 });
+
+/**
+ * A 15-minute meeting is a 15px block (PX_PER_MIN = 1, MIN_HEIGHT = 15), and `p-2` is 16px of
+ * vertical padding -- taller than the box it sits in. The title and the record control were pushed
+ * below the block and clipped by `overflow-hidden`, which is what "short meetings are misaligned,
+ * not in the centre" was.
+ */
+describe("a meeting too short to pad", () => {
+  const short: MeetingListDTO = {
+    ...sync,
+    id: 91,
+    title: "Standup",
+    startsAt: `${DATE}T14:00:00`,
+    endsAt: `${DATE}T14:15:00`,
+    scheduledMs: 900_000,
+    joinUrl: "",
+  };
+
+  function blockOf(name: string): HTMLElement {
+    // The block is the positioned ancestor of its own open-button.
+    const el = screen.getByRole("button", { name }).parentElement;
+    if (!el) throw new Error("block not found");
+    return el;
+  }
+
+  it("drops the vertical padding and centres the row instead of overflowing", () => {
+    render(<Timeline date={DATE} meetings={[short]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    const content = blockOf("Standup, 14:00 to 14:15, 3 attendees").querySelector("div.relative");
+    expect(content).toBeTruthy();
+    expect(content!.className).toContain("justify-center");
+    expect(content!.className).toContain("py-0");
+    expect(content!.className).not.toContain("py-2");
+  });
+
+  it("keeps the vertical padding on a block with room for it", () => {
+    render(<Timeline date={DATE} meetings={[sync]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    const content = blockOf("Product sync, 10:00 to 11:00, 3 attendees").querySelector("div.relative");
+    expect(content!.className).toContain("py-2");
+    expect(content!.className).not.toContain("justify-center");
+  });
+
+  // The row already carries the title and the length; the word "Record" does not fit beside them,
+  // so the icon stands in. The accessible name must survive the swap.
+  it("shows the record control as an icon, still named for a screen reader", () => {
+    render(<Timeline date={DATE} meetings={[short]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    const record = screen.getByRole("button", { name: "Record Standup" });
+    expect(record.textContent).toBe("");
+    expect(record.querySelector("svg")).toBeTruthy();
+  });
+
+  it("still spells out Record when the block is tall enough", () => {
+    render(<Timeline date={DATE} meetings={[sync]} tasks={[]} onPatchTask={patchTask} onBlock={onBlock} />);
+    expect(screen.getByRole("button", { name: "Record Product sync" }).textContent).toBe("Record");
+  });
+});
