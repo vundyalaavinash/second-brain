@@ -336,8 +336,18 @@ fn spawn_server(app: &AppHandle, dir: &Path) -> std::io::Result<Child> {
     Ok(child)
 }
 
+/// Bring the app back from every state it can be put into without quitting.
+///
+/// `window.show()` alone is not enough, and the gap is easy to miss: Tauri's generated macOS menu
+/// includes Hide (Cmd+H), which hides the whole *application*. Showing and focusing a window does
+/// not undo that -- `makeKeyAndOrderFront` has no effect while the app itself is hidden -- so
+/// without `app.show()` the tray's own "Open Second Brain" appears to do nothing at all.
+/// `unminimize` covers the other half: a minimised window is not a hidden one.
 fn show_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -529,10 +539,18 @@ pub fn run() {
             let tray_menu =
                 Menu::with_items(app, &[&status_item, &open_item, &setup_item, &quit_item])?;
             app.state::<TrayStatus>().0.lock().unwrap().replace(status_item);
+            // This is the only tray, and it has to stay that way. A `trayIcon` block in
+            // tauri.conf.json makes Tauri build its own status item during `build()`
+            // (tauri/src/app.rs, "initialize default tray icon if defined") with no menu and no
+            // handlers -- so the menu bar showed the same glyph twice, one of them completely
+            // inert, and clicking the wrong one looked exactly like a dead tray. That block is
+            // gone from the config; `icon_as_template` was the one setting worth keeping from it,
+            // so it lives here now. Do not reintroduce it there.
             TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true)
                 .icon(app.default_window_icon().unwrap().clone())
+                .icon_as_template(true)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "open" => show_main_window(app),
                     "setup" => show_setup_window(app),
@@ -572,11 +590,21 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let RunEvent::Exit = event {
+        .run(|app_handle, event| match event {
+            // Clicking the Dock icon of a running app whose windows are all hidden, and
+            // double-clicking the app in Finder, both arrive here rather than starting a second
+            // process -- macOS sends `applicationShouldHandleReopen`, which Tauri surfaces as
+            // this. Unhandled, the app activates (the menu bar changes) and no window ever
+            // appears, which is indistinguishable from the app being broken. It also means the
+            // single-instance plugin's "bring the existing window forward" callback never fires
+            // for the gesture a Mac user actually makes.
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => show_main_window(app_handle),
+            RunEvent::Exit => {
                 if let Some(mut child) = app_handle.state::<ServerProcess>().0.lock().unwrap().take() {
                     let _ = child.kill();
                 }
             }
+            _ => {}
         });
 }
