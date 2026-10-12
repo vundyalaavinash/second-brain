@@ -534,7 +534,8 @@ export interface GoalDetailDTO extends GoalDTO {
  * `outcome` are null while the run is still going. */
 export interface FocusRunDTO {
   id: number;
-  taskId: number;
+  /** Null for a pomodoro started on nothing in particular. */
+  taskId: number | null;
   taskTitle: string;
   blockId: number | null;
   startedAt: string;

@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Coffee, Play, Square, Timer } from "lucide-react";
-import type { PlanTaskDTO } from "@/lib/dto";
-import { Button } from "../ui";
+import type { PlanTaskDTO, TaskDTO } from "@/lib/dto";
+import { Button, Input } from "../ui";
 import { useFocus } from "../focus/use-focus";
 
 /** mm:ss from milliseconds, for a clock that is read at a glance rather than parsed. */
@@ -48,6 +49,28 @@ function CycleDots({ done, every }: { done: number; every: number }) {
  */
 export function PomodoroPane({ nextTask }: { nextTask: PlanTaskDTO | null }) {
   const { run, settings, completedToday, remainingMs, breakState, start, finish, takeBreak, endBreak, busy, error } = useFocus();
+  // The open tasks, fetched only once somebody asks to choose one -- the pane costs no request
+  // until then, and most starts are the planned next thing or nothing at all.
+  const [choosing, setChoosing] = useState(false);
+  const [tasks, setTasks] = useState<TaskDTO[] | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!choosing || tasks !== null) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch("/api/tasks?status=open", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const body = (await res.json()) as TaskDTO[] | { tasks: TaskDTO[] };
+      if (!cancelled) setTasks(Array.isArray(body) ? body : body.tasks);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [choosing, tasks]);
+
+  const needle = query.trim().toLowerCase();
+  const matches = (tasks ?? []).filter((t) => !needle || t.title.toLowerCase().includes(needle)).slice(0, 6);
 
   const onBreak = breakState.endsAt !== null;
   const isLong = onBreak && breakState.minutes >= settings.longBreak;
@@ -87,9 +110,11 @@ export function PomodoroPane({ nextTask }: { nextTask: PlanTaskDTO | null }) {
           </>
         ) : (
           <>
-            {/* Nothing running. A pomodoro needs something to be about, so this offers the next
-                thing already planned rather than asking for a decision here. */}
-            {nextTask ? (
+            {/* Three ways to start, because a pomodoro is not always about something already
+                written down. The planned next thing is one press; any other task is one more; and
+                a run on nothing at all is its own button rather than a thing you have to fake a
+                task for. */}
+            {nextTask && (
               <Button
                 size="sm"
                 variant="primary"
@@ -99,15 +124,65 @@ export function PomodoroPane({ nextTask }: { nextTask: PlanTaskDTO | null }) {
               >
                 {`${settings.defaultMinutes}m on ${nextTask.title}`}
               </Button>
-            ) : (
-              <span className="flex-1 text-[12.5px] text-fg-faint">Plan something for today and it can be started from here</span>
             )}
+            <Button size="sm" variant={nextTask ? "ghost" : "primary"} icon={Play} disabled={busy} onClick={() => setChoosing((v) => !v)}>
+              {nextTask ? "On\u2026" : `${settings.defaultMinutes}m on\u2026`}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Play}
+              disabled={busy}
+              onClick={() => void start({ minutes: settings.defaultMinutes })}
+              title="A pomodoro on nothing in particular. It counts towards the day and the cycle, but is not attributed to any work."
+            >
+              {`Just ${settings.defaultMinutes}m`}
+            </Button>
             <Button size="sm" variant="ghost" icon={Coffee} disabled={busy} onClick={() => void takeBreak()}>
               Break
             </Button>
           </>
         )}
       </div>
+
+      {choosing && !run && !onBreak && (
+        <div className="flex flex-col gap-1 border-t border-hairline pt-2">
+          <Input
+            autoFocus
+            size="sm"
+            aria-label="Find a task to focus on"
+            placeholder="Which task?"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setChoosing(false);
+            }}
+          />
+          {tasks === null ? (
+            <span className="text-[12px] text-fg-faint">Looking…</span>
+          ) : matches.length === 0 ? (
+            <span className="text-[12px] text-fg-faint">{needle ? "Nothing matches that" : "No open tasks — \u201cJust 25m\u201d starts one anyway"}</span>
+          ) : (
+            <ul role="list" className="list-none m-0 p-0 flex flex-col">
+              {matches.map((t) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    className="focus-ring rounded-sm w-full text-left px-1 py-1 text-[12.5px] truncate hover:bg-layer-2"
+                    onClick={() => {
+                      setChoosing(false);
+                      setQuery("");
+                      void start({ taskId: t.id, minutes: settings.defaultMinutes });
+                    }}
+                  >
+                    {t.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {error && <p className="m-0 text-[12.5px] text-danger">{error}</p>}
     </section>

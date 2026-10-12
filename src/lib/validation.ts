@@ -104,7 +104,9 @@ export const GoalLinksBody = z.object({ containerIds: z.array(z.number().int().p
 
 export const StartFocusBody = z
   .object({
-    taskId: z.number().int().positive(),
+    // Absent or null starts a run on nothing in particular, which is a real request rather than
+    // a malformed one -- the pane's "Just 25m".
+    taskId: z.number().int().positive().nullable().optional(),
     blockId: z.number().int().positive().nullable().optional(),
     minutes: z.number().int().min(MIN_FOCUS_MINUTES).max(MAX_FOCUS_MINUTES).optional(),
   })

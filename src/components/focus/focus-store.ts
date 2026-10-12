@@ -11,7 +11,8 @@ const TICK_MS = 1000;
 const DEFAULT_SETTINGS: FocusSettingsDTO = { defaultMinutes: 25, shortBreak: 5, longBreak: 15, longBreakEvery: 4 };
 
 export interface StartFocusInput {
-  taskId: number;
+  /** Left out for a pomodoro on nothing in particular. */
+  taskId?: number | null;
   /** The session this run belongs to. Its own length is used unless `minutes` overrides it —
    * never recomputed here from the block's own minutes, which the server already knows. */
   blockId?: number | null;

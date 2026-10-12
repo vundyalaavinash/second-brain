@@ -15,7 +15,7 @@ export async function GET(): Promise<Response> {
     const db = getDb();
     const now = new Date();
     const run = runningFocus(db, now);
-    const task = run ? getTask(db, run.taskId) : undefined;
+    const task = run?.taskId != null ? getTask(db, run.taskId) : undefined;
     const settings: FocusSettingsDTO = getFocusSettings(db);
     return NextResponse.json({
       run: run ? serializeFocusRun(run, task?.title ?? "") : null,
@@ -38,7 +38,7 @@ export async function POST(req: Request): Promise<Response> {
     const body = StartFocusBody.parse(await req.json().catch(() => null));
     const db = getDb();
     const run = startFocus(db, body);
-    const task = getTask(db, run.taskId);
+    const task = run.taskId != null ? getTask(db, run.taskId) : undefined;
     return NextResponse.json(serializeFocusRun(run, task?.title ?? ""), { status: 201 });
   } catch (err) {
     return errorResponse(err);

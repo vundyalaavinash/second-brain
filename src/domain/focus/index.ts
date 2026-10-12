@@ -153,20 +153,24 @@ function closeRow(db: Executor, run: FocusRun, outcome: FocusOutcome, now: Date)
   return row;
 }
 
-/** Starts a run on a task. Length is chosen in the order design §4.2 lays out: an explicit
+/** Starts a run, on a task or on nothing. Length is chosen in the order design §4.2 lays out: an explicit
  * `minutes` first, then the named block's own length, then the saved default for a run with no
  * session behind it at all. Starting stops whatever run is currently live, in the same
  * transaction: there is only ever one run at a time, and the incumbent keeps whatever it has
  * actually run rather than losing it to a race. */
-export function startFocus(db: DB, input: { taskId: number; blockId?: number | null; minutes?: number }, now = new Date()): FocusRun {
-  if (!getTask(db, input.taskId)) throw new FocusError("Task not found", 404);
+export function startFocus(db: DB, input: { taskId?: number | null; blockId?: number | null; minutes?: number }, now = new Date()): FocusRun {
+  // No task is a run on nothing in particular, not a missing argument: the timer does not require
+  // the work to already be written down. A task that was *named* still has to exist.
+  const taskId = input.taskId ?? null;
+  if (taskId !== null && !getTask(db, taskId)) throw new FocusError("Task not found", 404);
   let block: TaskBlock | undefined;
   if (input.blockId != null) {
     // A block names the session this run's length is meant to come from (design §4.2): one that
     // does not exist, or belongs to a different task, is a silent mis-attribution, not a run.
     block = getBlock(db, input.blockId);
     if (!block) throw new FocusError("Session not found", 404);
-    if (block.taskId !== input.taskId) throw new FocusError("That session belongs to a different task");
+    if (taskId === null) throw new FocusError("A session belongs to a task, so name the task too");
+    if (block.taskId !== taskId) throw new FocusError("That session belongs to a different task");
   }
   const minutes = input.minutes ?? block?.minutes ?? getFocusSettings(db).defaultMinutes;
   if (!Number.isInteger(minutes) || minutes < MIN_FOCUS_MINUTES || minutes > MAX_FOCUS_MINUTES) {
@@ -183,7 +187,7 @@ export function startFocus(db: DB, input: { taskId: number; blockId?: number | n
     }
     const row = tx
       .insert(focusRuns)
-      .values({ taskId: input.taskId, blockId: input.blockId ?? null, startedAt: now.toISOString(), plannedMinutes: minutes })
+      .values({ taskId, blockId: input.blockId ?? null, startedAt: now.toISOString(), plannedMinutes: minutes })
       .returning()
       .get();
     if (!row) throw new Error("Insert returned no row");
@@ -226,7 +230,12 @@ export function focusMinutesByTask(db: DB, taskIds: number[]): Map<number, numbe
     .from(focusRuns)
     .where(and(inArray(focusRuns.taskId, taskIds), isNotNull(focusRuns.actualMinutes), ne(focusRuns.outcome, "abandoned")))
     .all();
-  for (const row of rows) out.set(row.taskId, (out.get(row.taskId) ?? 0) + (row.minutes ?? 0));
+  // `inArray` above already restricts this to the task ids asked for, so a null cannot be among
+  // them -- the guard is for the type, not for a case that can happen.
+  for (const row of rows) {
+    if (row.taskId === null) continue;
+    out.set(row.taskId, (out.get(row.taskId) ?? 0) + (row.minutes ?? 0));
+  }
   return out;
 }
 
@@ -371,10 +380,13 @@ export interface FocusSummary {
  */
 export function focusSummary(db: DB, range: { from: string; to: string }, now = new Date()): FocusSummary {
   runningFocus(db, now);
+  // Left-joined, not inner: a run started on nothing in particular is still focused work and
+  // still belongs in `minutes` and `runs`. It has no row in `byTask`, which is a breakdown of
+  // time by task and cannot invent one for time that was not about a task.
   const rows = db
     .select({ taskId: focusRuns.taskId, title: tasks.title, startedAt: focusRuns.startedAt, minutes: focusRuns.actualMinutes })
     .from(focusRuns)
-    .innerJoin(tasks, eq(tasks.id, focusRuns.taskId))
+    .leftJoin(tasks, eq(tasks.id, focusRuns.taskId))
     .where(and(gte(focusRuns.startedAt, dayBounds(range.from).start), isNotNull(focusRuns.actualMinutes), ne(focusRuns.outcome, "abandoned")))
     .all()
     .filter((row) => {
@@ -389,7 +401,8 @@ export function focusSummary(db: DB, range: { from: string; to: string }, now = 
     const m = row.minutes ?? 0;
     minutes += m;
     runs += 1;
-    const entry = byTask.get(row.taskId) ?? { taskId: row.taskId, title: row.title, minutes: 0, runs: 0 };
+    if (row.taskId === null) continue;
+    const entry = byTask.get(row.taskId) ?? { taskId: row.taskId, title: row.title ?? "", minutes: 0, runs: 0 };
     entry.minutes += m;
     entry.runs += 1;
     byTask.set(row.taskId, entry);

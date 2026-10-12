@@ -20,7 +20,7 @@ export async function PATCH(req: Request, ctx: Ctx): Promise<Response> {
     const body = FinishFocusBody.parse(await req.json().catch(() => null));
     const db = getDb();
     const run = finishFocus(db, id, body.outcome);
-    const task = getTask(db, run.taskId);
+    const task = run.taskId != null ? getTask(db, run.taskId) : undefined;
     return NextResponse.json({ run: serializeFocusRun(run, task?.title ?? ""), where: focusWhere(db, run) });
   } catch (err) {
     return errorResponse(err);

@@ -234,7 +234,7 @@ export function homePayload(db: DB, now: Date): HomeDTO {
     activity: activityToday(db, date),
     focus: {
       minutes: focusToday.minutes,
-      running: running ? serializeFocusRun(running, getTask(db, running.taskId)?.title ?? "") : null,
+      running: running ? serializeFocusRun(running, running.taskId != null ? (getTask(db, running.taskId)?.title ?? "") : "") : null,
     },
     review: reviewPrompt(db, date),
     meetingShare: meetingLoad(db, date),

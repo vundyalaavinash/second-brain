@@ -430,9 +430,9 @@ export const focusRuns = sqliteTable(
   "focus_runs",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    taskId: integer("task_id")
-      .notNull()
-      .references(() => tasks.id, { onDelete: "cascade" }),
+    /** Null for a pomodoro started on nothing in particular -- the timer does not require that
+     *  the work already be written down, which is exactly when somebody wants to just start. */
+    taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }),
     /** The session this run was started from, when it was started from one. */
     blockId: integer("block_id").references(() => taskBlocks.id, { onDelete: "set null" }),
     startedAt: text("started_at").notNull(),

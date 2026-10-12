@@ -216,6 +216,23 @@ describe("focus summary", () => {
     expect(completedToday(t.db, "2026-09-24")).toBe(1);
   });
 
+  /**
+   * A pomodoro started on nothing in particular is still focused work: it belongs in the day's
+   * total. It cannot belong in `byTask`, which is a breakdown by task and has no task to put it
+   * under -- and inventing one would attribute time to work it was not spent on.
+   */
+  it("counts a run with no task in the totals, but not in the per-task breakdown", () => {
+    const a = createTask(t.db, { title: "A" });
+    finishFocus(t.db, startFocus(t.db, { taskId: a.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25"));
+    finishFocus(t.db, startFocus(t.db, { minutes: 25 }, at("10:00")).id, "completed", at("10:25"));
+
+    const s = focusSummary(t.db, { from: "2026-09-24", to: "2026-09-25" });
+    expect(s).toMatchObject({ minutes: 50, runs: 2 });
+    expect(s.byTask).toEqual([{ taskId: a.id, title: "A", minutes: 25, runs: 1 }]);
+    // It still counts towards the long-break cycle: it was a pomodoro like any other.
+    expect(completedToday(t.db, "2026-09-24")).toBe(2);
+  });
+
   it("sums across a multi-day range, with `to` exclusive of the boundary day", () => {
     const task = createTask(t.db, { title: "A" });
     finishFocus(t.db, startFocus(t.db, { taskId: task.id, minutes: 25 }, at("09:00")).id, "completed", at("09:25")); // 24th

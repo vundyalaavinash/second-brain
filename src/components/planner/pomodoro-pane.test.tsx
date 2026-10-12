@@ -40,6 +40,12 @@ function stubFocus(payload: Record<string, unknown>) {
       if (url === "/api/focus" && (init?.method ?? "GET") === "GET") {
         return Response.json({ run: null, settings: SETTINGS, completedToday: 0, break: { endsAt: null, remainingMs: 0, minutes: 0 }, ...payload });
       }
+      if (url.startsWith("/api/tasks")) {
+        return Response.json([
+          { ...task, id: 77, title: "Review the rollout" },
+          { ...task, id: 78, title: "Answer the auditors" },
+        ]);
+      }
       return Response.json({});
     }),
   );
@@ -61,11 +67,41 @@ describe("PomodoroPane", () => {
     expect(await screen.findByRole("button", { name: "25m on Write the migration" })).toBeTruthy();
   });
 
-  it("says what to do instead of offering nothing when the day is unplanned", async () => {
+  /** An unplanned day used to be a dead end here: the pane said "plan something" and offered no
+   *  way to start at all, which is the one time somebody most wants to just start. */
+  it("can still start on an unplanned day", async () => {
     stubFocus({});
     render(<PomodoroPane nextTask={null} />);
-    await waitFor(() => expect(screen.getByText(/Plan something for today/)).toBeTruthy());
-    expect(screen.queryByRole("button", { name: /25m on/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: "25m on…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Just 25m" })).toBeTruthy();
+  });
+
+  it("starts a run on nothing in particular, naming no task", async () => {
+    const calls = stubFocus({});
+    render(<PomodoroPane nextTask={task} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Just 25m" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/focus" && c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.url === "/api/focus")!.body).toEqual({ minutes: 25 });
+  });
+
+  it("offers any open task, not only the planned one", async () => {
+    const calls = stubFocus({});
+    render(<PomodoroPane nextTask={task} />);
+    fireEvent.click(await screen.findByRole("button", { name: "On…" }));
+    const other = await screen.findByRole("button", { name: "Review the rollout" });
+    fireEvent.click(other);
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/focus" && c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.url === "/api/focus")!.body).toEqual({ taskId: 77, minutes: 25 });
+  });
+
+  it("filters the tasks it offers", async () => {
+    stubFocus({});
+    render(<PomodoroPane nextTask={task} />);
+    fireEvent.click(await screen.findByRole("button", { name: "On…" }));
+    await screen.findByRole("button", { name: "Review the rollout" });
+    fireEvent.change(screen.getByLabelText("Find a task to focus on"), { target: { value: "rollout" } });
+    expect(screen.getByRole("button", { name: "Review the rollout" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Answer the auditors" })).toBeNull();
   });
 
   /** The cycle has been configured since the feature shipped and was never once shown. */

@@ -130,18 +130,49 @@ describe("focus api", () => {
     expect((await r.focusId.PATCH(noBodyPatch, { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
   });
 
-  it("rejects a bad body: an unknown outcome, an out-of-range minutes, and a missing taskId", async () => {
+  it("rejects a bad body: an unknown outcome and an out-of-range minutes", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(at(29, "09:00"));
     const taskId = await newTask("Draft the brief");
     expect((await r.focus.POST(json("POST", "/api/focus", { taskId, minutes: 4 }))).status).toBe(400);
-    expect((await r.focus.POST(json("POST", "/api/focus", {}))).status).toBe(400);
+    expect((await r.focus.POST(json("POST", "/api/focus", { taskId: 0 }))).status).toBe(400);
+    expect((await r.focus.POST(json("POST", "/api/focus", { taskId, nonsense: true }))).status).toBe(400);
     const run = (await (await r.focus.POST(json("POST", "/api/focus", { taskId, minutes: 25 }))).json()) as FocusRunDTO;
     expect(
       (await r.focusId.PATCH(json("PATCH", `/api/focus/${run.id}`, { outcome: "bogus" }), { params: Promise.resolve({ id: String(run.id) }) })).status,
     ).toBe(400);
     // Leaves nothing live for later tests.
     await r.focusId.PATCH(json("PATCH", `/api/focus/${run.id}`, { outcome: "stopped" }), { params: Promise.resolve({ id: String(run.id) }) });
+  });
+
+  /**
+   * A pomodoro on nothing in particular. An empty body used to be rejected, because a run had to
+   * name a task -- which meant the timer could not be started at all on an unplanned day.
+   */
+  it("starts a run with no task, and still counts it", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(at(29, "11:00"));
+
+    const res = await r.focus.POST(json("POST", "/api/focus", {}));
+    expect(res.status).toBe(201);
+    const run = (await res.json()) as FocusRunDTO;
+    expect(run.taskId).toBeNull();
+    expect(run.taskTitle).toBe("");
+    expect(run.plannedMinutes).toBe(25);
+
+    // It is the live run like any other, and finishing it counts towards the day.
+    const live = (await (await r.focus.GET()).json()) as { run: FocusRunDTO | null; completedToday: number };
+    expect(live.run?.id).toBe(run.id);
+    vi.setSystemTime(at(29, "11:25"));
+    await r.focusId.PATCH(json("PATCH", `/api/focus/${run.id}`, { outcome: "completed" }), { params: Promise.resolve({ id: String(run.id) }) });
+    const after = (await (await r.focus.GET()).json()) as { completedToday: number };
+    expect(after.completedToday).toBe(1);
+  });
+
+  it("still refuses a session without the task it belongs to", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(at(29, "13:00"));
+    expect((await r.focus.POST(json("POST", "/api/focus", { blockId: 1 }))).status).toBeGreaterThanOrEqual(400);
   });
 
   it("404s finishing a run that does not exist", async () => {
