@@ -55,7 +55,7 @@ describe("parseOutlookWidgetStore", () => {
 
   it("maps the fields the rest of the calendar pipeline expects", () => {
     const [e] = parseOutlookWidgetStore({ dayToAppointments: day(812473200, [event()]) });
-    expect(e.externalId).toBe("outlook:AAKBOQ-1");
+    expect(e.externalId).toBe(`outlook:AAKBOQ-1:${macTimeToIso(812473200)}`);
     expect(e.title).toBe("FEX deployments India");
     expect(e.startsAt).toBe(macTimeToIso(812473200));
     expect(e.endsAt).toBe(macTimeToIso(812476800));
@@ -154,7 +154,7 @@ describe("parseOutlookWidgetStore", () => {
         event({ stableAppointmentID: "ok" }),
       ]),
     };
-    expect(parseOutlookWidgetStore(store).map((e) => e.externalId)).toEqual(["outlook:ok"]);
+    expect(parseOutlookWidgetStore(store).map((e) => e.externalId)).toEqual([`outlook:ok:${macTimeToIso(812473200)}`]);
   });
 
   // The file is an undocumented Outlook internal; a shape change must mean "no Outlook events",
@@ -310,5 +310,64 @@ describe("outlook sync toggle and cleanup", () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), "sb-none-"));
     expect(getOutlookState(t.db, empty).available).toBe(false);
     fs.rmSync(empty, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Two different duplications arrive through this cache and they need opposite treatment: one
+ * appointment listed under every day it spans is one meeting, while a recurring series repeating
+ * its stableAppointmentID is many. Collapsing the second kind lost twelve of thirteen weeks and
+ * made every occurrence resolve to the first one's captured item -- which is how a previous
+ * meeting's transcript surfaced on a later one.
+ */
+describe("a recurring series in the widget cache", () => {
+  const WEEK = 7 * 86_400;
+  const start = 812473200;
+
+  it("keeps one event per occurrence rather than collapsing the series", () => {
+    const store = {
+      dayToAppointments: [
+        ...day(start, [event({ stableAppointmentID: "weekly", subject: "Standup", startTime: start, endTime: start + 900 })]),
+        ...day(start + WEEK, [event({ stableAppointmentID: "weekly", subject: "Standup", startTime: start + WEEK, endTime: start + WEEK + 900 })]),
+        ...day(start + 2 * WEEK, [event({ stableAppointmentID: "weekly", subject: "Standup", startTime: start + 2 * WEEK, endTime: start + 2 * WEEK + 900 })]),
+      ],
+    };
+    const events = parseOutlookWidgetStore(store);
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((e) => e.externalId)).size).toBe(3);
+    expect(events.map((e) => e.startsAt)).toEqual([
+      macTimeToIso(start),
+      macTimeToIso(start + WEEK),
+      macTimeToIso(start + 2 * WEEK),
+    ]);
+  });
+
+  it("still collapses one appointment listed under several days it spans", () => {
+    const store = {
+      dayToAppointments: [
+        ...day(start, [event({ stableAppointmentID: "spans", subject: "Offsite", startTime: start, endTime: start + 2 * 86_400 })]),
+        ...day(start + 86_400, [event({ stableAppointmentID: "spans", subject: "Offsite", startTime: start, endTime: start + 2 * 86_400 })]),
+      ],
+    };
+    expect(parseOutlookWidgetStore(store)).toHaveLength(1);
+  });
+
+  it("gives each occurrence its own row once synced, not one row rewritten three times", () => {
+    const t = makeTestDb();
+    try {
+      const store = {
+        dayToAppointments: [
+          ...day(start, [event({ stableAppointmentID: "weekly", subject: "Standup", startTime: start, endTime: start + 900 })]),
+          ...day(start + WEEK, [event({ stableAppointmentID: "weekly", subject: "Standup", startTime: start + WEEK, endTime: start + WEEK + 900 })]),
+        ],
+      };
+      const parsed = parseOutlookWidgetStore(store);
+      replaceCalendarEvents(t.db, parsed, undefined, {}, { source: "outlook" });
+      const rows = t.db.$client.prepare("SELECT external_id, starts_at FROM calendar_events ORDER BY starts_at").all() as { external_id: string; starts_at: string }[];
+      expect(rows).toHaveLength(2);
+      expect(rows[0].external_id).not.toBe(rows[1].external_id);
+    } finally {
+      t.cleanup();
+    }
   });
 });

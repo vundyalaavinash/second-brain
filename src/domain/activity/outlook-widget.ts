@@ -123,10 +123,16 @@ export function parseOutlookWidgetStore(raw: unknown): CalendarEventInput[] {
     if (!id || !title || start === undefined || end === undefined) continue;
     if (event.isCancelled === true) continue;
 
-    // The same appointment appears under every day it spans, and a recurring series repeats its
-    // stableAppointmentID across occurrences; the first occurrence wins so the external id stays
-    // unique, which replaceCalendarEvents requires.
-    const externalId = `outlook:${id}`;
+    // Two different duplications arrive through this cache and they need opposite treatment. The
+    // same appointment is listed under every day it spans -- genuinely one meeting, so the repeat
+    // must be dropped. A recurring series also repeats its stableAppointmentID across occurrences
+    // -- genuinely different meetings, each with its own time, its own recording and its own
+    // decision, so collapsing them loses twelve of thirteen weeks and makes every occurrence
+    // resolve to the first one's captured item.
+    //
+    // Keying on the id *and* the occurrence start separates them: a day-spanning repeat matches on
+    // both and is skipped, distinct occurrences differ on the start and are kept.
+    const externalId = `outlook:${id}:${macTimeToIso(start)}`;
     if (seen.has(externalId)) continue;
     seen.add(externalId);
 
@@ -151,7 +157,11 @@ export function parseOutlookWidgetStore(raw: unknown): CalendarEventInput[] {
       // is worse than showing no RSVP at all. Left as "none" until the enum is actually known.
       status: "none" satisfies MeetingStatus,
       calendarTitle: calendarName(event),
-      seriesId: series.get(title) ?? externalId,
+      // Deliberately the appointment id without the occurrence, not `externalId`, which now
+      // carries the start: a series identity that changed every week would group nothing. It also
+      // catches a recurring series whose title drifts between occurrences, which the title
+      // heuristic above cannot see.
+      seriesId: series.get(title) ?? `outlook:${id}`,
     });
   }
   return out;

@@ -150,7 +150,21 @@ final class CalendarReader {
             let joinUrl = firstMatch(joinRe, in: text)
             let hasCall = joinUrl != nil || firstMatch(callRe, in: text) != nil
             return EventPayload(
-                externalId: e.eventIdentifier ?? "\(e.calendarItemIdentifier)-\(iso.string(from: e.startDate))",
+                // The occurrence's own start is part of the id, unconditionally. `eventIdentifier`
+                // is series-level: EventKit hands back the same value for every occurrence of a
+                // recurring event, which is why `event(withIdentifier:)` is documented to return
+                // only the first one. `predicateForEvents` *does* expand occurrences, so a weekly
+                // meeting arrived as thirteen payloads sharing one id, and the unique index plus
+                // `onConflictDoUpdate` collapsed them into a single row whose time kept being
+                // rewritten by whichever occurrence was processed last. Worse, that row keeps its
+                // `item_id` (deliberately — it is ours, not the calendar's), so every occurrence
+                // resolved to the first one's item and opened last week's transcript.
+                //
+                // The old fallback branch already appended the start date for want of an
+                // identifier, so the need was understood; it just never applied to the path that
+                // actually runs. `starts_at` is written by this same formatter, which is what lets
+                // the migration backfill existing rows to this exact shape and keep their items.
+                externalId: "\(e.eventIdentifier ?? e.calendarItemIdentifier)-\(iso.string(from: e.startDate))",
                 title: e.title ?? "",
                 startsAt: iso.string(from: e.startDate),
                 endsAt: iso.string(from: e.endDate),
