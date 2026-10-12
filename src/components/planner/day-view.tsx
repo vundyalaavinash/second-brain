@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { BlockDTO, PlannerDayDTO } from "@/lib/dto";
 import { PlanPane } from "./plan-pane";
+import { PomodoroPane } from "./pomodoro-pane";
 import { Timeline, type BlockAction, type BlockResult } from "./timeline";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -71,7 +72,11 @@ export function DayView({ day, today, onRefresh }: { day: PlannerDayDTO; today: 
 
   return (
     <div className="grid grid-cols-1 min-[1100px]:grid-cols-[1fr_1fr] min-[1400px]:grid-cols-[5fr_4fr] gap-6 items-start">
-      <div className="min-[1100px]:order-2">
+      {/* Beside the calendar, in the column the plan already owns -- and above it, because this is
+          a live clock that gets glanced at, where the plan is read. `nextTask` is the same
+          next-unfinished-task PlanPane itself highlights, so the two cannot name different work. */}
+      <div className="min-[1100px]:order-2 flex flex-col gap-6">
+        <PomodoroPane nextTask={day.plan.find((t) => t.status !== "done") ?? null} />
         <PlanPane day={day} today={today} onRefresh={onRefresh} />
       </div>
       <div className="min-[1100px]:order-1">

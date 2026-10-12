@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
+import type { FocusBreakDTO, FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
 import type { FocusOutcome } from "@/db/enums";
 import * as store from "./focus-store";
 
@@ -25,6 +25,11 @@ export interface UseFocusResult {
   finish: (outcome: FocusOutcome) => Promise<void>;
   busy: boolean;
   error: string | null;
+  /** The running break. Server-held, so it outlives the component that started it. */
+  breakState: FocusBreakDTO;
+  /** Take the break the cycle calls for, or one of a given length. */
+  takeBreak: (minutes?: number) => Promise<void>;
+  endBreak: () => Promise<void>;
 }
 
 /**
@@ -45,5 +50,8 @@ export function useFocus(): UseFocusResult {
     finish: store.finish,
     busy: state.busy,
     error: state.error,
+    breakState: state.breakState,
+    takeBreak: store.takeBreak,
+    endBreak: store.endBreak,
   };
 }

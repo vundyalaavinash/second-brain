@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { BreakOffer } from "./break-offer";
+import { resetFocusStore } from "./focus-store";
 import type { FocusCompletedDetail } from "./use-focus";
 import type { FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
 
@@ -29,8 +30,39 @@ function complete(over: Partial<FocusCompletedDetail> = {}) {
   });
 }
 
+/**
+ * The break lives on the server now, so these drive it through the API rather than through this
+ * component's own state -- which is the point of the change: a countdown owned by a mounted
+ * component was cancelled the moment someone opened another page.
+ */
+function stubBreakApi() {
+  const calls: { url: string; method: string }[] = [];
+  let current = { endsAt: null as string | null, remainingMs: 0, minutes: 0 };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method });
+      if (url === "/api/focus/break" && method === "POST") {
+        const minutes = JSON.parse(String(init?.body ?? "{}")).minutes ?? 5;
+        current = { endsAt: new Date(Date.now() + minutes * 60_000).toISOString(), remainingMs: minutes * 60_000, minutes };
+        return Response.json(current, { status: 201 });
+      }
+      if (url === "/api/focus/break" && method === "DELETE") {
+        current = { endsAt: null, remainingMs: 0, minutes: 0 };
+        return Response.json(current);
+      }
+      return Response.json({ run: null, settings: SETTINGS, completedToday: 0, break: current });
+    }),
+  );
+  return calls;
+}
+
 afterEach(() => {
   cleanup();
+  resetFocusStore();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -61,13 +93,16 @@ describe("BreakOffer", () => {
   });
 
   it("taking the break counts down and clears itself at zero", async () => {
+    stubBreakApi();
     vi.useFakeTimers();
     render(<BreakOffer />);
     complete({ completedToday: 1 });
     // `complete` dispatches inside its own `act`, so the button is already in the tree; fake
     // timers make `findBy*`'s own polling unreliable, so a plain `getBy*` is used instead, the
     // same way `recording-chip.test.tsx` does.
-    fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
+    });
 
     expect(screen.getByText("7:00")).toBeTruthy();
     await act(async () => {
@@ -111,24 +146,40 @@ describe("BreakOffer", () => {
   });
 
   it("skipping a running break removes the line", async () => {
+    const calls = stubBreakApi();
     vi.useFakeTimers();
     render(<BreakOffer />);
     complete();
-    fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
-    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    });
     expect(screen.queryByText(/Back to it in/)).toBeNull();
+    // Ended on the server too, so the pomodoro pane stops showing it as well.
+    expect(calls.some((c) => c.url === "/api/focus/break" && c.method === "DELETE")).toBe(true);
   });
 
   it("a second completion while a break is running replaces the offer", async () => {
+    stubBreakApi();
     vi.useFakeTimers();
     render(<BreakOffer />);
     complete({ completedToday: 1 });
-    fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Take a break" }));
+    });
     expect(screen.getByText(/Back to it in/)).toBeTruthy();
 
-    complete({ completedToday: 4 });
+    // Finishing another pomodoro means the time was spent working, so the break on the clock is
+    // over -- it is ended rather than left running underneath the new offer.
+    await act(async () => {
+      complete({ completedToday: 4 });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
 
-    // Back to the offer line, not mid-countdown, and the new run's break length applies.
     expect(screen.queryByText(/Back to it in/)).toBeNull();
     expect(screen.getByText("Take 21 minutes?")).toBeTruthy();
   });

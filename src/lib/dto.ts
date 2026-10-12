@@ -544,6 +544,13 @@ export interface FocusRunDTO {
   outcome: FocusOutcome | null;
 }
 
+/** The break between pomodoros, as the server reports it. `endsAt` null means none is running. */
+export interface FocusBreakDTO {
+  endsAt: string | null;
+  remainingMs: number;
+  minutes: number;
+}
+
 export interface FocusSettingsDTO {
   defaultMinutes: number;
   shortBreak: number;

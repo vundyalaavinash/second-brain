@@ -1,6 +1,6 @@
 "use client";
 
-import type { FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
+import type { FocusBreakDTO, FocusRunDTO, FocusSettingsDTO } from "@/lib/dto";
 import type { FocusOutcome } from "@/db/enums";
 
 /** Slow enough to cost nothing: nothing but this browser starts a run, so the poll exists only
@@ -47,9 +47,29 @@ export interface FocusStoreState {
    * payload of its own (Home's first paint) must read `loaded` to know whether `run` is this
    * store's real answer yet, rather than falling back to a run that may already be over. */
   loaded: boolean;
+  /** The running break, from the server rather than this component tree: a break used to be a
+   * `useState` countdown inside the break offer, so opening another page cancelled it silently. */
+  breakState: FocusBreakDTO;
 }
 
-const INITIAL_STATE: FocusStoreState = { run: null, settings: DEFAULT_SETTINGS, completedToday: 0, remainingMs: 0, busy: false, error: null, loaded: false };
+const NO_BREAK: FocusBreakDTO = { endsAt: null, remainingMs: 0, minutes: 0 };
+
+const INITIAL_STATE: FocusStoreState = {
+  run: null,
+  settings: DEFAULT_SETTINGS,
+  completedToday: 0,
+  remainingMs: 0,
+  busy: false,
+  error: null,
+  loaded: false,
+  breakState: NO_BREAK,
+};
+
+/** A break's time left, against the wall clock -- the same discipline `remainingFor` applies to a
+ *  run, so a tab asleep through the whole break wakes up showing it over, not frozen mid-count. */
+export function remainingBreak(breakState: FocusBreakDTO, now: number = Date.now()): number {
+  return breakState.endsAt ? Math.max(0, Date.parse(breakState.endsAt) - now) : 0;
+}
 
 /** The run's planned end, in epoch ms — the one place it is computed, so the countdown and the
  * auto-finish check can never disagree about when zero is reached. */
@@ -106,7 +126,7 @@ function setState(patch: Partial<FocusStoreState>): void {
  * exist at all. With no subscriber left this always stops it: a state change from a request that
  * outlived its engine must never arm a timer nothing is around to clear. */
 function syncTick(): void {
-  const live = subscriberCount > 0 && state.run !== null;
+  const live = subscriberCount > 0 && (state.run !== null || state.breakState.endsAt !== null);
   if (live && !tickTimer) {
     tickTimer = setInterval(tick, TICK_MS);
   } else if (!live && tickTimer) {
@@ -116,10 +136,25 @@ function syncTick(): void {
 }
 
 function tick(): void {
-  const run = state.run;
-  if (!run) return;
+  // A break counts down here rather than in the component that shows it, so every surface reads
+  // one clock. Reaching zero clears it locally; the server already reports an elapsed break as
+  // none, so there is nothing to tell it.
+  let next = state;
+  if (next.breakState.endsAt) {
+    const remaining = remainingBreak(next.breakState);
+    next = { ...next, breakState: remaining <= 0 ? NO_BREAK : { ...next.breakState, remainingMs: remaining } };
+  }
+  const run = next.run;
+  if (!run) {
+    if (next !== state) {
+      state = next;
+      syncTick();
+      for (const listener of listeners) listener();
+    }
+    return;
+  }
   const remainingMs = remainingFor(run);
-  state = { ...state, remainingMs };
+  state = { ...next, remainingMs };
   for (const listener of listeners) listener();
   if (remainingMs <= 0 && finishingId !== run.id && autoFinishFailedId !== run.id) {
     finishingId = run.id;
@@ -131,12 +166,31 @@ async function load(): Promise<void> {
   try {
     const res = await fetch("/api/focus", { cache: "no-store" });
     if (!res.ok || engineStopped) return;
-    const data = (await res.json()) as { run: FocusRunDTO | null; settings: FocusSettingsDTO; completedToday: number };
+    const data = (await res.json()) as {
+      run: FocusRunDTO | null;
+      settings: FocusSettingsDTO;
+      completedToday: number;
+      // Absent from a server that predates the break living server-side; read as no break rather
+      // than undefined, which would take down every surface that renders it.
+      break?: FocusBreakDTO;
+    };
     if (engineStopped) return;
     // A load reflects the server's own truth, so it is the one thing allowed to give the tick
     // another chance at a run whose auto-finish previously failed (F9).
     autoFinishFailedId = null;
-    setState({ run: data.run, settings: data.settings, completedToday: data.completedToday, remainingMs: remainingFor(data.run), loaded: true });
+    const serverBreak = data.break ?? NO_BREAK;
+    // Each field falls back rather than being trusted to be present. A payload missing `settings`
+    // used to blank them for every focus surface at once, and `settings.longBreakEvery` is read
+    // while rendering -- so a partial answer, from a server mid-deploy or any other cause, took
+    // the pane down rather than degrading.
+    setState({
+      run: data.run ?? null,
+      settings: data.settings ?? state.settings,
+      completedToday: data.completedToday ?? 0,
+      remainingMs: remainingFor(data.run ?? null),
+      loaded: true,
+      breakState: serverBreak.endsAt ? { ...serverBreak, remainingMs: remainingBreak(serverBreak) } : NO_BREAK,
+    });
   } catch {
     /* offline: the next poll or event retries */
   }
@@ -271,6 +325,44 @@ export async function finish(outcome: FocusOutcome): Promise<void> {
   if (finishingId === run.id) return;
   finishingId = run.id;
   await finishRun(run.id, outcome);
+}
+
+/**
+ * Take the break the cycle calls for, or one of a given length. The server decides the default so
+ * the pane and the break offer cannot disagree about whether this one is the long one.
+ */
+export async function takeBreak(minutes?: number): Promise<void> {
+  setState({ busy: true });
+  try {
+    const res = await fetch("/api/focus/break", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(minutes === undefined ? {} : { minutes }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      setState({ error: (body as { error?: string } | null)?.error ?? "Could not start a break" });
+      return;
+    }
+    const started = body as FocusBreakDTO;
+    setState({ breakState: { ...started, remainingMs: remainingBreak(started) }, error: null });
+  } catch {
+    setState({ error: "Could not start a break" });
+  } finally {
+    setState({ busy: false });
+  }
+}
+
+/** Back to work early. Clears locally first: the button should not look stuck on a slow request. */
+export async function endBreak(): Promise<void> {
+  setState({ breakState: NO_BREAK, busy: true });
+  try {
+    await fetch("/api/focus/break", { method: "DELETE" });
+  } catch {
+    /* the next poll reconciles */
+  } finally {
+    setState({ busy: false });
+  }
 }
 
 /** Test-only: drops every timer and listener and puts the store back to its initial state, so

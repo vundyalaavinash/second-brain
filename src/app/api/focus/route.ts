@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { completedToday, getFocusSettings, runningFocus, startFocus } from "@/domain/focus";
+import { breakState } from "@/domain/focus/break";
 import { getTask } from "@/domain/tasks";
 import { localDay } from "@/domain/activity";
 import { crossSite, errorResponse, forbidden, serializeFocusRun } from "@/lib/api";
@@ -20,6 +21,9 @@ export async function GET(): Promise<Response> {
       run: run ? serializeFocusRun(run, task?.title ?? "") : null,
       settings,
       completedToday: completedToday(db, localDay(now.toISOString())),
+      // Carried on the same payload every focus-aware surface already polls, so the pomodoro pane
+      // and the break offer cannot disagree about whether a break is running.
+      break: breakState(db, now),
     });
   } catch (err) {
     return errorResponse(err);

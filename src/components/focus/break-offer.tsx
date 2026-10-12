@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { Button, IconButton } from "../ui";
 import { formatDuration } from "../activity/format";
-import type { FocusCompletedDetail } from "./use-focus";
+import { useFocus, type FocusCompletedDetail } from "./use-focus";
 
 function clock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -31,39 +31,27 @@ function whereLine(offer: FocusCompletedDetail): string | null {
  */
 export function BreakOffer() {
   const [offer, setOffer] = useState<FocusCompletedDetail | null>(null);
-  // The break's own end, or null before one is taken. `now` only exists to make the countdown
-  // re-render; the target time is the one thing remembered.
-  const [breakEndAt, setBreakEndAt] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  // The break itself is not state here any more. It lives on the server, so this line and the
+  // pomodoro pane read one clock -- and, more to the point, a break survives walking to another
+  // page, which it did not when the countdown belonged to this component.
+  const { breakState, takeBreak, endBreak } = useFocus();
+  const onBreak = breakState.endsAt !== null;
+
+  // Read inside the listener below, which is registered once: without a ref it would close over
+  // whatever the break was on first render and never see a later one.
+  const running = useRef(onBreak);
+  running.current = onBreak;
 
   useEffect(() => {
     function onCompleted(e: Event) {
       setOffer((e as CustomEvent<FocusCompletedDetail>).detail);
-      setBreakEndAt(null);
+      // Finishing a pomodoro means the time was spent working, so a break still on the clock is
+      // over whatever it says -- and this line goes back to offering the new one.
+      if (running.current) void endBreak();
     }
     window.addEventListener("sb:focus-completed", onCompleted);
     return () => window.removeEventListener("sb:focus-completed", onCompleted);
-  }, []);
-
-  // Ticks while a break is running; the interval itself notices the break running out and
-  // clears both pieces of state from inside its own callback, never synchronously in the effect
-  // body.
-  useEffect(() => {
-    if (breakEndAt === null) return;
-    const timer = setInterval(() => {
-      if (Date.now() >= breakEndAt) {
-        setOffer(null);
-        setBreakEndAt(null);
-      } else {
-        setNow(Date.now());
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [breakEndAt]);
-
-  if (!offer) return null;
-
-  const minutes = offer.completedToday > 0 && offer.completedToday % offer.settings.longBreakEvery === 0 ? offer.settings.longBreak : offer.settings.shortBreak;
+  }, [endBreak]);
 
   // Mounted once in the shell rather than any one page, so it floats free like the dock and the
   // toasts do — a fixed line, not something laid into whatever page happens to be showing.
@@ -75,17 +63,17 @@ export function BreakOffer() {
   const shell =
     "fixed bottom-36 left-1/2 -translate-x-1/2 z-50 panel rounded-2xl min-h-10 py-1.5 px-4 flex items-center gap-2 text-[12.5px] text-fg-muted m-0 max-w-[calc(100vw-3rem)]";
 
-  if (breakEndAt !== null) {
+  if (onBreak) {
     return (
       <p className={shell}>
         <span>
-          Back to it in <span className="font-mono tabular-nums">{clock(breakEndAt - now)}</span>
+          Back to it in <span className="font-mono tabular-nums">{clock(breakState.remainingMs)}</span>
         </span>
         <button
           type="button"
           onClick={() => {
             setOffer(null);
-            setBreakEndAt(null);
+            void endBreak();
           }}
           className="focus-ring rounded-sm text-fg-faint hover:text-fg underline"
         >
@@ -95,6 +83,12 @@ export function BreakOffer() {
     );
   }
 
+  // Only the countdown outlives the offer: once a break is taken the offer is retired, and the
+  // break above is what there is to show.
+  if (!offer) return null;
+
+  const minutes = offer.completedToday > 0 && offer.completedToday % offer.settings.longBreakEvery === 0 ? offer.settings.longBreak : offer.settings.shortBreak;
+
   const where = whereLine(offer);
 
   return (
@@ -103,7 +97,16 @@ export function BreakOffer() {
         <span>Take {minutes} minutes?</span>
         {where && <span className="text-[11px] text-fg-faint">{where}</span>}
       </span>
-      <Button size="sm" variant="ghost" onClick={() => setBreakEndAt(Date.now() + minutes * 60_000)}>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          // Retired here, not when the break ends: otherwise the offer would be waiting again the
+          // moment the countdown reached zero.
+          setOffer(null);
+          void takeBreak(minutes);
+        }}
+      >
         Take a break
       </Button>
       <IconButton label="Dismiss the break offer" icon={X} onClick={() => setOffer(null)} />
