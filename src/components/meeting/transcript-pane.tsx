@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Copy, Mic } from "lucide-react";
 import type { Segment } from "@/domain/meetings/transcript";
 import { Button, Input } from "../ui";
@@ -41,8 +41,30 @@ export function TranscriptPane({ live, segments, recording, finalReady, transcri
   const [filter, setFilter] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const scroller = useRef<HTMLDivElement>(null);
+  /** False once the reader scrolls up to read something, so new lines stop yanking them back. */
+  const following = useRef(true);
+
   const needle = filter.trim().toLowerCase();
   const shown = needle ? segments.filter((s) => s.text.toLowerCase().includes(needle)) : segments;
+
+  // A capped box that does not follow the tail is worse than an uncapped one during a meeting:
+  // the newest line is the one being said, and it would sit just out of sight. So it follows --
+  // but only while the reader is already at the bottom. Scrolling up to re-read something is a
+  // deliberate act, and dragging them back down for every new line would undo it.
+  const lastLine = segments.length > 0 ? `s${segments.length}` : `l${live.length}`;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !following.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [lastLine]);
+
+  function onScroll() {
+    const el = scroller.current;
+    if (!el) return;
+    // A couple of lines of slack: "at the bottom" should survive rounding and a half-scrolled line.
+    following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  }
 
   function copy() {
     const text = segments.map((s) => `${clock(s.start)} ${s.text}`).join("\n");
@@ -52,8 +74,13 @@ export function TranscriptPane({ live, segments, recording, finalReady, transcri
     );
   }
 
+  // `min-h` with no `max-h` is why this grew without bound: the body is already
+  // `flex-1 overflow-y-auto`, but a flex child only scrolls when something above it limits the
+  // height, and nothing did -- so an hour-long transcript simply made the page an hour long. The
+  // ceiling is viewport-relative rather than a pixel count, so it still fills a large screen and
+  // still fits on a laptop.
   return (
-    <section className="pane flex flex-col min-h-[320px]" aria-label="Transcript">
+    <section className="pane flex flex-col min-h-[320px] max-h-[70vh]" aria-label="Transcript">
       <header className="flex items-center gap-2 px-4 h-11 border-b border-hairline">
         <span className="micro">Transcript</span>
         {recording && (
@@ -80,7 +107,7 @@ export function TranscriptPane({ live, segments, recording, finalReady, transcri
         )}
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-y-auto px-4 py-3">
         {segments.length > 0 ? (
           shown.length === 0 ? (
             <p className="text-[13px] text-fg-faint">Nothing matches that</p>
