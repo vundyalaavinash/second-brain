@@ -237,6 +237,22 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
     reorder(ids);
   }
 
+  /**
+   * Moves a plan row by one place, for the keyboard. The same single `reorder` write the drop path
+   * makes -- clamped at the ends rather than wrapping, because a row jumping from first to last on
+   * one keypress is never what was meant.
+   */
+  function moveBy(id: number, delta: number) {
+    const ids = day.plan.map((t) => t.id);
+    const from = ids.indexOf(id);
+    if (from === -1) return;
+    const to = from + delta;
+    if (to < 0 || to >= ids.length) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    reorder(ids);
+  }
+
   /** A plan row dropped on the list's own area rather than on a row: it goes last. */
   function moveToEnd(id: number) {
     const ids = day.plan.map((t) => t.id);
@@ -301,6 +317,7 @@ export function PlanPane({ day, today, onRefresh, hideRitual = false, label }: P
           if (e.dataTransfer?.types.includes(PLAN_DRAG_MIME)) e.preventDefault();
         }}
         onRowDrop={(e) => handleRowDrop(task.id, e)}
+        onMoveBy={(delta) => moveBy(task.id, delta)}
       />
     );
   }

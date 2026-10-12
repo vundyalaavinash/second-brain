@@ -85,6 +85,9 @@ interface Props {
   /** Extra classes for the row itself, e.g. dimming one that is already on a plan. */
   className?: string;
   draggable?: boolean;
+  /** Moves the row by `delta` within its list. Given, the row takes Alt+Arrow keys for it --
+   *  the grip beside it is mouse-only, and reordering a plan is not a mouse-only idea. */
+  onMoveBy?: (delta: number) => void;
   onDragStart?: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver?: (e: DragEvent<HTMLLIElement>) => void;
   onDragLeave?: (e: DragEvent<HTMLLIElement>) => void;
@@ -98,7 +101,7 @@ interface Props {
 
 export function TaskRow({
   task, today, onToggle, onRename, onDue, onEstimate, onPriority, onDrop, onDelete, onMove, onPlan, onPlanDate, onBlockNow, onUnblock, onPlace, onSplit, blockDate, planFrom = today,
-  planLabel = "Plan for today", planned, compact, className = "", draggable, onDragStart, onDragOver, onDragLeave, onDragEnd, onRowDrop,
+  planLabel = "Plan for today", planned, compact, className = "", draggable, onMoveBy, onDragStart, onDragOver, onDragLeave, onDragEnd, onRowDrop,
   as, rowProps: extraRowProps,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
@@ -607,6 +610,17 @@ export function TaskRow({
   // `p` plans the task under the cursor, `n` blocks it out now and `f` lays its sessions in
   // the day's free slots, unless something on the row is taking the letter itself.
   function onRowKeyDown(e: ReactKeyboardEvent<HTMLLIElement>) {
+    // Alt+Arrow moves the row. Checked before the modifier guard below, which exists to keep the
+    // single-letter shortcuts from firing on a chord -- this one *is* a chord.
+    if (onMoveBy && e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const target = e.target as HTMLElement | null;
+      if (target && e.currentTarget.contains(target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        onMoveBy(e.key === "ArrowUp" ? -1 : 1);
+        return;
+      }
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const plans = e.key === "p" && (!!onPlan || !!onPlanDate);
     // A finished task is not blocked out or placed: the menu has no such item either, being
@@ -694,7 +708,14 @@ export function TaskRow({
       className={`hairline-row group flex flex-col gap-1 px-3 ${extraLine ? "py-2" : "h-11 justify-center"} hover:bg-layer-2 transition-colors ${className}`}
     >
       <div className="flex items-center gap-3">
-        <span className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity" aria-hidden>
+        {/* Visible on hover and on focus-within, so the keyboard finds it too. The title says
+            both ways of using it: the grip was already draggable but nothing said so, and the
+            Alt+Arrow path had no affordance at all. */}
+        <span
+          className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 cursor-grab text-fg-faint transition-opacity"
+          aria-hidden
+          title={onMoveBy ? "Drag to reorder, or Alt+Up / Alt+Down" : undefined}
+        >
           <GripVertical className="w-3.5 h-3.5" />
         </span>
         {checkbox}

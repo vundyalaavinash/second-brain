@@ -544,3 +544,53 @@ describe("PlanPane", () => {
     }
   });
 });
+
+/**
+ * Reordering the plan was mouse-only: the row has been draggable since the pane shipped, with a
+ * grip that appears on hover, but there was no keyboard path to it at all.
+ */
+describe("reordering the plan from the keyboard", () => {
+  function planOf(...titles: string[]) {
+    return titles.map((title, i) => ({ ...planned, id: 10 + i, planId: 90 + i, title, sortOrder: i }));
+  }
+
+  async function reorderCalls(key: string, rowTitle: string, alt = true) {
+    const calls: { url: string; method?: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
+        calls.push({ url, method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : null });
+        return Response.json({});
+      }),
+    );
+    render(<PlanPane day={day({ plan: planOf("First", "Second", "Third") })} today={TODAY} onRefresh={vi.fn()} />);
+    const row = screen.getByText(rowTitle).closest("[role='listitem']") as HTMLElement;
+    fireEvent.keyDown(row, { key, altKey: alt });
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/plan")).toBe(true), { timeout: 1000 }).catch(() => {});
+    return calls.find((c) => c.url === "/api/plan");
+  }
+
+  it("moves a row down with Alt+ArrowDown", async () => {
+    const call = await reorderCalls("ArrowDown", "First");
+    expect(call?.method).toBe("PATCH");
+    expect((call?.body as { taskIds: number[] }).taskIds).toEqual([11, 10, 12]);
+  });
+
+  it("moves a row up with Alt+ArrowUp", async () => {
+    const call = await reorderCalls("ArrowUp", "Third");
+    expect((call?.body as { taskIds: number[] }).taskIds).toEqual([10, 12, 11]);
+  });
+
+  /** Clamped, not wrapping: first to last on one keypress is never what was meant. */
+  it("does nothing at the ends", async () => {
+    expect(await reorderCalls("ArrowUp", "First")).toBeUndefined();
+    cleanup();
+    expect(await reorderCalls("ArrowDown", "Third")).toBeUndefined();
+  });
+
+  it("leaves a bare arrow alone, so it can still move the caret", async () => {
+    expect(await reorderCalls("ArrowDown", "First", false)).toBeUndefined();
+  });
+});
