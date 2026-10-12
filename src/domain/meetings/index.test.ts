@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { calendarEvents } from "@/db/schema";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { createItem, getItem, parseMeta } from "@/domain/items";
+import { createItem, getItem, getItemChunks, parseMeta, rechunkItem, updateItem } from "@/domain/items";
 import { replaceCalendarEvents } from "@/domain/activity/calendar";
 import { MeetingError } from "./errors";
 import { Recorder } from "./recorder";
@@ -112,6 +112,43 @@ describe("recording sessions", () => {
     // The new session starts clean, so a stale transcript or summary cannot look like this one's.
     expect(meta.transcript).toBeUndefined();
     expect(meta.summary).toBeUndefined();
+  });
+
+  /**
+   * `extracted_text` is the transcript's other copy, and clearing only the meta left the archived
+   * session's words being served as this one's: `summarize_meeting` reads the column directly,
+   * search and RAG read the chunks built from it, and `canRemoveAudio` tested it to decide whether
+   * this recording had produced anything worth keeping the audio for. Wrong until the new final
+   * pass lands, and wrong forever if it fails.
+   */
+  it("clears the transcript's other copy, and what was indexed from it", () => {
+    const created = createItem(t.db, {
+      type: "meeting",
+      title: "Weekly",
+      meta: {
+        transcript: [{ start: 0, end: 1, text: "first pass" }],
+        recording: { wavPath: "meetings/old.wav", startedAt: "2026-09-22T10:00:00.000Z", state: "done" },
+      },
+    });
+    const meeting = updateItem(t.db, created.id, { extractedText: "The first session said the backfill runs on Tuesday night." });
+    rechunkItem(t.db, meeting.id);
+    expect(getItemChunks(t.db, meeting.id).some((c) => c.text.includes("backfill runs on Tuesday"))).toBe(true);
+
+    startRecording(t.db, { itemId: meeting.id });
+
+    expect(getItem(t.db, meeting.id)!.extractedText).toBe("");
+    // The title still chunks, so what matters is that the old words are no longer searchable.
+    expect(getItemChunks(t.db, meeting.id).some((c) => c.text.includes("backfill runs on Tuesday"))).toBe(false);
+    // ...and it is kept, not destroyed: the archive is the way back to it.
+    const meta = parseMeta<{ previousSessions?: { transcript?: unknown }[] }>(getItem(t.db, meeting.id)!);
+    expect(meta.previousSessions![0].transcript).toEqual([{ start: 0, end: 1, text: "first pass" }]);
+  });
+
+  it("leaves the text of a meeting it files nothing away for", () => {
+    const created = createItem(t.db, { type: "meeting", title: "Notes only", meta: {} });
+    const meeting = updateItem(t.db, created.id, { extractedText: "typed, never recorded" });
+    startRecording(t.db, { itemId: meeting.id });
+    expect(getItem(t.db, meeting.id)!.extractedText).toBe("typed, never recorded");
   });
 
   it("files nothing away for a meeting that has never been transcribed", () => {

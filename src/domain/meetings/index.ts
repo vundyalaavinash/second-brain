@@ -1,6 +1,6 @@
 import type { DB } from "@/db/client";
 import type { Item } from "@/db/schema";
-import { createItem, getItem, parseMeta, updateItem } from "@/domain/items";
+import { createItem, getItem, parseMeta, rechunkItem, updateItem } from "@/domain/items";
 import { captureMeeting } from "@/domain/activity/calendar";
 import { filesDir } from "@/lib/paths";
 import { MeetingError } from "./errors";
@@ -113,7 +113,16 @@ function archivePreviousSession(db: DB, item: Item): void {
   delete next.liveTranscript;
   delete next.final_transcript_ready;
   delete next.summary;
-  updateItem(db, item.id, { meta: next });
+  // `extracted_text` is the other copy of the transcript, and clearing the meta without it left
+  // the archived session's words still being served as if they were this one's: search and RAG
+  // read the chunks built from it, `summarize_meeting` reads it directly, and
+  // `canRemoveAudio` tested it to decide whether this recording had a transcript worth keeping the
+  // audio for -- so "Remove the audio" offered itself on a session that had produced nothing yet.
+  // It stays wrong until the new final pass lands, and forever if that pass fails.
+  updateItem(db, item.id, { meta: next, extractedText: "" });
+  // The chunk rows outlive the column they were built from, so they have to go too -- otherwise
+  // the old transcript stays searchable after the text behind it is gone.
+  rechunkItem(db, item.id);
 }
 
 export function startRecording(db: DB, target: RecordingTarget, opts: { autoStarted?: boolean } = {}): RecorderStatus {

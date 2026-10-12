@@ -56,9 +56,20 @@ export function finishRecordingItem(db: DB, itemId: number, state: RecordingMeta
   if (state === "error" && item.status === "processing") updateItem(db, itemId, { status: "ready" });
 }
 
-/** The one place the final pass is queued, so a reconciled session queues exactly what a live one does. */
+/**
+ * The one place the final pass is queued, so a reconciled session queues exactly what a live one
+ * does.
+ *
+ * The wav path travels in the payload, rather than being looked up when the job runs. The queue is
+ * serial and a job can sit in it: start a second session on the same meeting before the first
+ * job is claimed and the handler, re-reading `meta.recording.wavPath`, would transcribe the *new*
+ * session's part-written audio and store it as the first session's final transcript. Naming the
+ * file at queue time makes the job about the recording it was queued for.
+ */
 export function queueFinalTranscript(db: DB, itemId: number): void {
-  enqueueJob(db, "transcribe_final", { itemId, source: "recording" }, itemId);
+  const item = getItem(db, itemId);
+  const wavPath = item ? parseMeta<{ recording?: { wavPath?: string } }>(item).recording?.wavPath : undefined;
+  enqueueJob(db, "transcribe_final", { itemId, source: "recording", wavPath }, itemId);
 }
 
 export interface RecorderDeps {

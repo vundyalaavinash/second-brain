@@ -127,7 +127,9 @@ describe("Recorder", () => {
     expect(typeof recording.endedAt).toBe("string");
     const queued = listJobs(t.db, { itemId: item.id });
     expect(queued.map((j) => j.type)).toEqual(["transcribe_final"]);
-    expect(JSON.parse(queued[0].payload)).toEqual({ itemId: item.id, source: "recording" });
+    // `wavPath` is part of the payload on purpose: the job has to name the recording it was
+    // queued for, or a job waiting behind a second session transcribes that session's audio.
+    expect(JSON.parse(queued[0].payload)).toEqual({ itemId: item.id, source: "recording", wavPath: recording.wavPath });
     // The wav survives the stop: nothing recorded is thrown away.
     expect(fs.statSync(path.join(filesDir, recording.wavPath)).size).toBeGreaterThan(44);
   });

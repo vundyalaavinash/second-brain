@@ -73,12 +73,16 @@ export function createTranscribeFinalHandler(deps: TranscribeFinalDeps): JobHand
   }
 
   return async (job) => {
-    const { itemId } = jobPayload<{ itemId: number; source?: string }>(job);
+    const { itemId, wavPath } = jobPayload<{ itemId: number; source?: string; wavPath?: string }>(job);
     const item = getItem(db, itemId);
     if (!item) throw new Error(`Item ${itemId} not found`);
 
     const meta = parseMeta<MeetingMeta>(item);
-    const relative = meta.recording?.wavPath ?? item.filePath;
+    // The payload's path wins: it names the recording this job was queued for. Falling back to the
+    // item's current one would, for a job that waited behind a second session, transcribe that
+    // session's audio and file it as this one's. Older jobs queued before the payload carried it
+    // still fall through to the item.
+    const relative = wavPath ?? meta.recording?.wavPath ?? item.filePath;
     if (!relative) fail(itemId, `Item ${itemId} has no audio to transcribe`);
     const source = absoluteFilePath(relative);
     if (!fs.existsSync(source)) fail(itemId, `The audio for item ${itemId} is missing: ${relative}`);

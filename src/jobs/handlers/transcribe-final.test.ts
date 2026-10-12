@@ -3,10 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestDb, type TestDb } from "@/test/db";
-import { createItem, getItem, getItemChunks, parseMeta } from "@/domain/items";
+import { createItem, getItem, getItemChunks, parseMeta, updateItem } from "@/domain/items";
 import { enqueueJob, listJobs } from "@/jobs/queue";
 import { filesDir } from "@/lib/paths";
 import type { Segment } from "@/domain/meetings/transcript";
+import { queueFinalTranscript } from "@/domain/meetings/recorder";
 import { createTranscribeFinalHandler } from "./transcribe-final";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -149,5 +150,35 @@ describe("transcribe_final handler", () => {
     const run = createTranscribeFinalHandler({ db: t.db, whisperBin: null, ffmpegBin: null, finalModel: model, hasSummaryModel: () => false });
     await expect(run(job)).rejects.toThrow(/whisper/i);
     expect(getItem(t.db, item.id)!.status).toBe("failed");
+  });
+});
+
+/**
+ * The queue is serial and a job can wait in it. Re-reading `meta.recording.wavPath` when the job
+ * finally runs means a job queued for one session can transcribe a *later* session's audio and
+ * file it as the first one's -- a previous meeting's words, under this meeting's name. The path
+ * travels in the payload so the job stays about the recording it was queued for.
+ */
+describe("a job that waited behind a second recording", () => {
+  let t2: TestDb;
+  beforeEach(() => {
+    t2 = makeTestDb();
+  });
+  afterEach(() => {
+    t2.cleanup();
+  });
+
+  it("is queued against the wav that existed at the time, not whatever the item points at later", () => {
+    const item = createItem(t2.db, { type: "meeting", title: "Weekly", status: "processing" });
+    updateItem(t2.db, item.id, { meta: { recording: { wavPath: "meetings/first.wav", state: "done" } } });
+
+    queueFinalTranscript(t2.db, item.id);
+
+    // A second session replaces what the item points at, before the job is claimed.
+    updateItem(t2.db, item.id, { meta: { recording: { wavPath: "meetings/second.wav", state: "recording" } } });
+
+    const queued = listJobs(t2.db).find((j) => j.type === "transcribe_final");
+    expect(queued).toBeTruthy();
+    expect(JSON.parse(queued!.payload).wavPath).toBe("meetings/first.wav");
   });
 });

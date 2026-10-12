@@ -50,7 +50,13 @@ describe("reconcileRecordings", () => {
     expect(recording.state).toBe("done");
     expect(typeof recording.endedAt).toBe("string");
     expect(listJobs(t.db, { itemId: withWav }).map((j) => j.type)).toEqual(["transcribe_final"]);
-    expect(JSON.parse(listJobs(t.db, { itemId: withWav })[0].payload)).toEqual({ itemId: withWav, source: "recording" });
+    expect(JSON.parse(listJobs(t.db, { itemId: withWav })[0].payload)).toEqual({
+      itemId: withWav,
+      source: "recording",
+      // A session stranded by a crash still names its own audio, which is the whole point of
+      // reconciling it rather than leaving it stuck.
+      wavPath: recording.wavPath,
+    });
     expect(log).toHaveBeenCalledTimes(1);
     // An item that was never recording is none of this sweep's business.
     expect(getItem(t.db, id)!.status).toBe("processing");
