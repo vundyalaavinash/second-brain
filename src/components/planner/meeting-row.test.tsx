@@ -32,17 +32,22 @@ function meeting(over: Partial<MeetingListDTO> & { id: number; title: string } =
   };
 }
 
-function mount(over: Partial<MeetingListDTO> & { id: number; title: string } = { id: 1, title: "Standup" }) {
+/** `containerName` is the row's own prop, not part of the meeting payload, so it rides along here
+ *  rather than being invented inside `meeting()`. */
+function mount(
+  over: Partial<MeetingListDTO> & { id: number; title: string; containerName?: string | null } = { id: 1, title: "Standup" },
+) {
   const handlers = {
     onOpen: vi.fn(),
     onNoRecord: vi.fn(),
     onRecord: vi.fn(),
     onDecision: vi.fn(),
+    onContainer: vi.fn(),
     onOpenCalendar: vi.fn(),
   };
   render(
     <ul>
-      <MeetingRow meeting={meeting(over)} onOpen={handlers.onOpen} onNoRecord={handlers.onNoRecord} onRecord={handlers.onRecord} onDecision={handlers.onDecision} onOpenCalendar={handlers.onOpenCalendar} blocked={null} recordTitle={null} />
+      <MeetingRow meeting={meeting(over)} onOpen={handlers.onOpen} onNoRecord={handlers.onNoRecord} onRecord={handlers.onRecord} onDecision={handlers.onDecision} onContainer={handlers.onContainer} containerName={over.containerName ?? null} onOpenCalendar={handlers.onOpenCalendar} blocked={null} recordTitle={null} />
     </ul>,
   );
   return handlers;
@@ -123,5 +128,59 @@ describe("MeetingRow decision control", () => {
     mount({ id: 1, title: "Standup", decision: "not-going" });
     expect(screen.getByTestId("meeting-title").textContent).toBe("Standup");
     expect(screen.getByRole("button", { name: "Record Standup" })).toBeTruthy();
+  });
+});
+
+/**
+ * Attribution: what the meeting counts against. The domain and the route have existed, and been
+ * tested, since the attribution work -- with nothing in the app wired to them, so a meeting could
+ * not actually be attributed to anything.
+ */
+describe("attributing a meeting", () => {
+  it("offers attribution on a meeting that has none", () => {
+    mount({ id: 1, title: "Standup" });
+    expect(screen.getByRole("button", { name: "Attribute Standup to a project or area" })).toBeTruthy();
+  });
+
+  it("names what it counts against once it has one", () => {
+    mount({ id: 1, title: "Standup", containerId: 8, containerName: "Payments" });
+    expect(screen.getByRole("button", { name: "Attributed to Payments. Change" })).toBeTruthy();
+    expect(screen.getByText("Payments")).toBeTruthy();
+  });
+
+  /** The containers the picker lists, so a pick can actually be made. */
+  function stubContainers() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json([{ id: 8, kind: "project", name: "Payments", slug: "payments", description: "", status: "active", goal: "", deadline: null, standard: "", nextSteps: "" }])),
+    );
+  }
+
+  async function pickPayments(rowLabel: string) {
+    stubContainers();
+    fireEvent.click(screen.getByRole("button", { name: rowLabel }));
+    const option = await screen.findByText("Payments");
+    fireEvent.click(option);
+  }
+
+  // A recurring meeting is labelled once and stays labelled, past occurrences included, which is
+  // what makes keeping this up to date cheap enough to bother with.
+  it("applies to the whole series when the meeting has one", async () => {
+    const handlers = mount({ id: 1, title: "Standup", seriesId: "eventkit:abc" });
+    await pickPayments("Attribute Standup to a project or area");
+    expect(handlers.onContainer).toHaveBeenCalledWith(8, "series");
+  });
+
+  it("applies to just this one when there is no series to apply to", async () => {
+    const handlers = mount({ id: 1, title: "One-off", seriesId: null });
+    await pickPayments("Attribute One-off to a project or area");
+    expect(handlers.onContainer).toHaveBeenCalledWith(8, "occurrence");
+  });
+
+  it("says a series attribution covers every occurrence, when it came from one", () => {
+    mount({ id: 1, title: "Standup", containerId: 8, containerName: "Payments", containerFromSeries: true });
+    expect(screen.getByRole("button", { name: /Attributed to Payments/ }).getAttribute("title")).toBe(
+      "Counts against Payments, for every occurrence",
+    );
   });
 });

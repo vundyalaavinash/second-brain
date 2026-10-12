@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { MeetingItemDTO, MeetingListDTO } from "@/lib/dto";
+import { FolderOpen } from "lucide-react";
+import type { ContainerDTO, MeetingItemDTO, MeetingListDTO } from "@/lib/dto";
 import type { MeetingDecision } from "@/db/enums";
 import { formatClock } from "../activity/format";
 import { Button, Chip } from "../ui";
+import { ContainerPicker } from "../container-picker";
 import { count } from "./open-meeting";
 
 interface Props {
@@ -13,6 +15,10 @@ interface Props {
   onNoRecord: (noRecord: boolean) => void;
   onRecord: () => void;
   onDecision: (decision: MeetingDecision, scope: "occurrence" | "series") => void;
+  /** Assigns the meeting to the project or area it counts against. */
+  onContainer: (containerId: number | null, scope: "occurrence" | "series") => void;
+  /** What the meeting is attributed to today, for the control's own label. */
+  containerName: string | null;
   onOpenCalendar: () => void;
   /** Why recording is out of reach, or null when the button is live. */
   blocked: string | null;
@@ -47,7 +53,8 @@ export function MeetingBadges({ item }: { item: MeetingItemDTO | null | undefine
   );
 }
 
-export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, onOpenCalendar, blocked, recordTitle }: Props) {
+export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, onContainer, containerName, onOpenCalendar, blocked, recordTitle }: Props) {
+  const [picking, setPicking] = useState(false);
   // A decision on a recurring meeting can mean "just this once" or "every time it happens" --
   // asked once, right here, rather than guessed. A one-off meeting (no seriesId) has no series
   // to ask about, so it writes the occurrence straight away. Going back to "Going" never asks
@@ -115,6 +122,41 @@ export function MeetingRow({ meeting, onOpen, onNoRecord, onRecord, onDecision, 
           </Chip>
         ))}
       </div>
+      {/* An icon when there is nothing to say and the project's name when there is, so an
+          unattributed meeting costs one glyph of width and an attributed one reads without being
+          opened. This is the only way in the app to attribute a meeting: the domain and the route
+          have existed, and tested, since the attribution work, with nothing wired to them. */}
+      <Chip
+        active={meeting.containerId !== null}
+        onClick={() => setPicking(true)}
+        className="shrink-0 flex items-center gap-1"
+        title={
+          containerName
+            ? meeting.containerFromSeries
+              ? `Counts against ${containerName}, for every occurrence`
+              : `Counts against ${containerName}`
+            : "Attribute this meeting to a project or area"
+        }
+        aria-label={containerName ? `Attributed to ${containerName}. Change` : `Attribute ${meeting.title} to a project or area`}
+      >
+        <FolderOpen className="w-3 h-3 shrink-0" aria-hidden />
+        {containerName && <span className="max-w-[14ch] truncate">{containerName}</span>}
+      </Chip>
+      {picking && (
+        <ContainerPicker
+          title={`What does "${meeting.title}" count against?`}
+          allowInbox
+          onClose={() => setPicking(false)}
+          onPick={(container: ContainerDTO | null) => {
+            setPicking(false);
+            // A recurring meeting is labelled once and stays labelled -- including the occurrences
+            // already past -- which is what makes this cheap enough to keep up to date. A one-off
+            // has no series to apply that to, and the route rejects the attempt rather than
+            // writing a single-occurrence assignment nobody asked for.
+            onContainer(container?.id ?? null, meeting.seriesId ? "series" : "occurrence");
+          }}
+        />
+      )}
       <Chip
         active={meeting.noRecord}
         aria-pressed={meeting.noRecord}

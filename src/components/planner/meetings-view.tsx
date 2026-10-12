@@ -84,6 +84,22 @@ export function MeetingsView({ today, meetings, containerId: containerFilter = n
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<number>>(new Set());
   // Null until the server has answered: a switch that renders before then would render a guess.
   const [settings, setSettings] = useState<MeetingSettingsDTO | null>(null);
+  // Just the names, for the attribution chip's label. The meeting payload carries `containerId`
+  // but not what it is called, and widening it would mean a new field on every meeting fixture in
+  // the suite for a string this one control uses. Same list the picker itself reads.
+  const [containerNames, setContainerNames] = useState<Map<number, string>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch("/api/containers?status=active", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const list = (await res.json()) as { id: number; name: string }[];
+      if (!cancelled) setContainerNames(new Map(list.map((c) => [c.id, c.name])));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // The switches and the feed link live behind one control; with no meetings at all the panel
   // opens on its own, since connecting a calendar is then the only thing to do here.
   const [settingsOpen, setSettingsOpen] = useState(meetings.length === 0);
@@ -154,6 +170,23 @@ export function MeetingsView({ today, meetings, containerId: containerFilter = n
 
   /** Writes a decision -- a local fact this app keeps for itself, never a message to the
    * calendar server (design §1.1). */
+  /**
+   * Attributing a meeting to the project or area it counts against. Same shape as `setDecision`
+   * below it, and the same single write -- the route decides what a series assignment means.
+   */
+  function setContainer(id: number, containerId: number | null, scope: "occurrence" | "series") {
+    void (async () => {
+      const res = await fetch(`/api/meetings/${id}/container`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ containerId, scope }) });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(body?.error ?? "Could not save that change");
+        return;
+      }
+      setError(null);
+      onRefresh?.();
+    })();
+  }
+
   function setDecision(id: number, decision: MeetingDecision, scope: "occurrence" | "series") {
     void (async () => {
       const res = await fetch(`/api/meetings/${id}/decision`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ decision, scope }) });
@@ -250,6 +283,8 @@ export function MeetingsView({ today, meetings, containerId: containerFilter = n
               onNoRecord={(noRecord) => setNoRecord(m.id, noRecord)}
               onRecord={() => recorder.record({ calendarEventId: m.id })}
               onDecision={(decision, scope) => setDecision(m.id, decision, scope)}
+              onContainer={(containerId, scope) => setContainer(m.id, containerId, scope)}
+              containerName={containerNames.get(m.containerId ?? -1) ?? null}
               onOpenCalendar={openCalendar}
               blocked={recorder.blocked}
               recordTitle={recorder.title}
