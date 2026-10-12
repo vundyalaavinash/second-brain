@@ -78,6 +78,16 @@ describe("PATCH /api/meetings/[id]/decision", () => {
   });
 
   it("writes a series decision that a sibling occurrence with no override of its own then resolves to", async () => {
+    // Both occurrences have to be ahead of the decision. A series decision is scoped from the
+    // moment it is made -- it answers "from now on", not retroactively -- so a pair of fixed dates
+    // stopped exercising anything the day they slipped into the past: the sibling then resolved
+    // to the default "going" for a reason that had nothing to do with series resolution.
+    const occurrence = (weeks: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7 * weeks);
+      const pad = (x: number) => String(x).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
     const { getDb } = await import("@/db/client");
     const { replaceCalendarEvents } = await import("@/domain/activity/calendar");
     const { calendarEvents } = await import("@/db/schema");
@@ -86,8 +96,8 @@ describe("PATCH /api/meetings/[id]/decision", () => {
       {
         externalId: "occ-4a",
         title: "Recurring",
-        startsAt: "2026-09-21T12:00:00.000Z",
-        endsAt: "2026-09-21T12:30:00.000Z",
+        startsAt: `${occurrence(1)}T12:00:00.000Z`,
+        endsAt: `${occurrence(1)}T12:30:00.000Z`,
         attendees: 1,
         hasCallLink: false,
         seriesId: "eventkit:series-x",
@@ -95,8 +105,8 @@ describe("PATCH /api/meetings/[id]/decision", () => {
       {
         externalId: "occ-4b",
         title: "Recurring",
-        startsAt: "2026-09-28T12:00:00.000Z",
-        endsAt: "2026-09-28T12:30:00.000Z",
+        startsAt: `${occurrence(2)}T12:00:00.000Z`,
+        endsAt: `${occurrence(2)}T12:30:00.000Z`,
         attendees: 1,
         hasCallLink: false,
         seriesId: "eventkit:series-x",

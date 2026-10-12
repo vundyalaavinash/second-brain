@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import type { PlannerCalendarDTO, PlannerDayDTO, PlannerMeetingsDTO, PlannerWeekDTO } from "@/lib/dto";
 import { setPlanDate } from "@/lib/plan-date";
 import { Crumb } from "../shell/crumb";
-import { addDaysLocal } from "../activity/format";
+import { addDaysLocal, todayLocal } from "../activity/format";
 import { CapacityLine } from "./capacity-line";
 import { DateHeader } from "./date-header";
 import { DayView } from "./day-view";
@@ -38,6 +39,10 @@ const CRUMB: Record<PlannerView, string> = { day: "Planner", week: "Week", meeti
 /** One interaction often moves a task and the plan in the same breath; the day is ~a quarter
  * of a megabyte, so the two events are let to settle into one request. */
 const DAY_REFRESH_MS = 50;
+
+/** How often the local date is re-checked, for a tab left open across midnight. A minute is far
+ *  finer than the thing being watched and costs one comparison. */
+const TODAY_CHECK_MS = 60_000;
 
 /** The one panel the tabs speak for: each view is a route, so only the open one is ever rendered. */
 const PANEL_ID = "planner-panel";
@@ -76,7 +81,36 @@ function Tabs({ view }: { view: PlannerView }) {
 }
 
 export function PlannerShell(props: Props) {
-  const { view, today } = props;
+  const { view } = props;
+  const router = useRouter();
+
+  // `today` arrives with the server payload so the first paint and hydration agree -- but it was
+  // then kept forever. A tab left open past midnight went on grouping meetings into "Today" and
+  // "Upcoming" against yesterday, and the day on screen was yesterday's. After mount the local
+  // clock is the authority; when the date actually turns, the whole view is re-rendered from the
+  // server rather than patched here, because the day payload is keyed by date too.
+  const [today, setToday] = useState(props.today);
+  useEffect(() => {
+    function check() {
+      const now = todayLocal();
+      setToday((prev) => {
+        if (prev === now) return prev;
+        router.refresh();
+        return now;
+      });
+    }
+    // Not called immediately: the server has just rendered, so the date it sent is fresh by
+    // definition, and overriding it on mount would only disagree with the payload beside it.
+    const timer = setInterval(check, TODAY_CHECK_MS);
+    // A laptop asleep through midnight fires no interval, so coming back is its own trigger.
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [router]);
   const [day, setDay] = useState<PlannerDayDTO | null>(props.view === "day" ? props.initial : null);
   const [week, setWeek] = useState<PlannerWeekDTO | null>(props.view === "week" ? props.initial : null);
   const [meetings, setMeetings] = useState<PlannerMeetingsDTO | null>(props.view === "meetings" ? props.initial : null);
@@ -112,7 +146,7 @@ export function PlannerShell(props: Props) {
       dayTimer.current = null;
       const request = ++dayRequest.current;
       void (async () => {
-        const res = await fetch(`/api/planner/day?date=${dayDate}`);
+        const res = await fetch(`/api/planner/day?date=${dayDate}`, { cache: "no-store" });
         if (!res.ok) return;
         const body = (await res.json()) as PlannerDayDTO;
         // A slower earlier request answering last would put the day back as it was.
@@ -124,7 +158,7 @@ export function PlannerShell(props: Props) {
   const refreshWeek = useCallback(() => {
     if (!weekStart) return;
     void (async () => {
-      const res = await fetch(`/api/planner/week?start=${weekStart}`);
+      const res = await fetch(`/api/planner/week?start=${weekStart}`, { cache: "no-store" });
       if (res.ok) setWeek((await res.json()) as PlannerWeekDTO);
     })();
   }, [weekStart]);
@@ -134,12 +168,32 @@ export function PlannerShell(props: Props) {
     if (!meetingWindow) return;
     const [from, to] = meetingWindow.split("|");
     void (async () => {
-      const res = await fetch(`/api/meetings?from=${from}&to=${to}`);
+      const res = await fetch(`/api/meetings?from=${from}&to=${to}`, { cache: "no-store" });
       if (!res.ok) return;
       const body = (await res.json()) as { meetings: PlannerMeetingsDTO["meetings"] };
       setMeetings((prev) => (prev ? { ...prev, meetings: body.meetings } : prev));
     })();
   }, [meetingWindow]);
+
+  // Coming back to the tab is a refresh. The helper syncs the calendar every five minutes, but
+  // nothing told an already-rendered page: a planner left open all afternoon showed the calendar
+  // as it was when the page loaded, which is most of what "the planner does not always reflect
+  // what's in the calendar" was. Only the view on screen is refetched, and `cache: "no-store"` on
+  // the day fetch matters for the same reason the calendar settings pane passes it.
+  useEffect(() => {
+    function onBack() {
+      if (document.visibilityState === "hidden") return;
+      if (view === "day") refreshDay();
+      else if (view === "week") refreshWeek();
+      else refreshMeetings();
+    }
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+    };
+  }, [view, refreshDay, refreshWeek, refreshMeetings]);
 
   // The capacity is reckoned server-side, so new hours are saved and then read back whole.
   const saveHours = useCallback(

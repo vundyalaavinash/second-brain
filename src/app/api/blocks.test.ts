@@ -3,8 +3,6 @@ import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
 
 const DAY = "2026-10-05";
-/** The placement's own day, so nothing an earlier case left behind can sit in its slots. */
-const PLACE_DAY = "2026-10-12";
 
 let dir: string;
 let r: {
@@ -19,7 +17,6 @@ const json = (method: string, url: string, body?: unknown) =>
   new Request(`http://localhost${url}`, { method, headers: body ? { "content-type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
 const params = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) });
 
-/** A local date `n` days from today, for the window a task list carries its sessions in. */
 /** A day inside the list's window that is never DAY, however the calendar happens to fall. */
 function otherDay(): string {
   for (let n = 3; n < 10; n += 1) {
@@ -28,6 +25,25 @@ function otherDay(): string {
   }
   throw new Error("no day inside the window that is not DAY");
 }
+
+/**
+ * The placement's own day: far enough ahead that nothing an earlier case left behind can sit in
+ * its slots, and a weekday, since those are the working days placement fills.
+ *
+ * Derived rather than written down. This was a fixed date a week in the future when it was
+ * written, and it became *today* -- which left half its working hours in the past and one of the
+ * two sessions with nowhere to go. That is the third hardcoded future date in this suite to
+ * expire, so this one cannot: it is always a week or so ahead of whenever the suite runs.
+ */
+function placeDay(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const PLACE_DAY = placeDay();
 
 function shift(n: number): string {
   const d = new Date();

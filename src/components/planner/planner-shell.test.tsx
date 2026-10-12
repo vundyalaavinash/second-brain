@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { PlannerShell } from "./planner-shell";
 import { usePlanDate } from "@/lib/plan-date";
 import type { PlannerDayDTO, PlanTaskDTO } from "@/lib/dto";
@@ -246,5 +246,55 @@ describe("PlannerShell", () => {
     cleanup();
     render(<PlannerShell view="week" today="2026-09-22" initial={{ start: "2026-10-05", drift: null, days: [] }} />);
     expect(readPlanDate()).toBe("2026-10-05");
+  });
+});
+
+/**
+ * The helper syncs the calendar every five minutes but nothing told an already-rendered page, so
+ * a planner left open all afternoon showed the calendar as it was when the page loaded. That is
+ * most of what "the planner does not always reflect what's in the calendar" was.
+ */
+describe("coming back to a planner left open", () => {
+  it("refetches the day on return, and does not read it through the cache", async () => {
+    const calls: { url: string; cache?: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
+        calls.push({ url, cache: init?.cache });
+        return Response.json(day());
+      }),
+    );
+    render(<PlannerShell view="day" initial={day()} today="2026-09-22" />);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    const dayCall = calls.find((c) => c.url.startsWith("/api/planner/day"));
+    expect(dayCall).toBeTruthy();
+    expect(dayCall!.cache).toBe("no-store");
+  });
+
+  it("does not refetch while the tab is hidden", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/meetings/recorder") return Response.json({ state: "idle", missing: [] });
+      calls.push(url);
+      return Response.json(day());
+    }));
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    render(<PlannerShell view="day" initial={day()} today="2026-09-22" />);
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    expect(calls.some((u) => u.startsWith("/api/planner/day"))).toBe(false);
+    hidden.mockRestore();
   });
 });
