@@ -5,6 +5,7 @@ import { calendarEvents, items, meetingSeriesContainers } from "@/db/schema";
 import { createItem } from "@/domain/items";
 import { createContainer } from "@/domain/containers";
 import {
+  meetingTimeByContainer,
   assignMeetingContainer,
   containerMeetingRollup,
   effectiveContainerId,
@@ -237,5 +238,94 @@ describe("captured-item fallback", () => {
     expect(effectiveContainerId({ containerId: 1, seriesId: "s" }, 2, 3)).toBe(1);
     expect(effectiveContainerId({ containerId: null, seriesId: "s" }, 2, 3)).toBe(2);
     expect(effectiveContainerId({ containerId: null, seriesId: null }, null, 3)).toBe(3);
+  });
+});
+
+/**
+ * Where the time actually goes. The per-container rollup has existed, tested, since the
+ * attribution work; the ranking across containers is what answers the question somebody asks.
+ */
+describe("meetingTimeByContainer", () => {
+  let t: TestDb;
+  const RANGE = { from: "2026-09-01", to: "2026-10-01" };
+
+  function container(kind: "project" | "area", name: string): number {
+    return createContainer(t.db, { kind, name }).id;
+  }
+
+  function meeting(over: Partial<typeof calendarEvents.$inferInsert> = {}): number {
+    return t.db
+      .insert(calendarEvents)
+      .values({
+        externalId: `ext-${Math.random()}`,
+        title: "Standup",
+        startsAt: "2026-09-10T09:00:00.000Z",
+        endsAt: "2026-09-10T09:30:00.000Z",
+        day: "2026-09-10",
+        attendees: 0,
+        hasCallLink: 0,
+        source: "eventkit",
+        ...over,
+      })
+      .returning({ id: calendarEvents.id })
+      .get().id;
+  }
+
+  beforeEach(() => {
+    t = makeTestDb();
+  });
+  afterEach(() => t.cleanup());
+
+  it("ranks the heaviest claim first, with its meeting count", () => {
+    const payments = container("project", "Payments");
+    const admin = container("area", "Admin");
+    meeting({ containerId: payments, startsAt: "2026-09-10T09:00:00.000Z", endsAt: "2026-09-10T10:00:00.000Z" });
+    meeting({ containerId: payments, startsAt: "2026-09-11T09:00:00.000Z", endsAt: "2026-09-11T09:30:00.000Z" });
+    meeting({ containerId: admin, startsAt: "2026-09-12T09:00:00.000Z", endsAt: "2026-09-12T09:15:00.000Z" });
+
+    expect(meetingTimeByContainer(t.db, RANGE)).toEqual([
+      { containerId: payments, meetings: 2, minutes: 90 },
+      { containerId: admin, meetings: 1, minutes: 15 },
+    ]);
+  });
+
+  /** A series labelled once carries every occurrence, which is the whole reason that is cheap. */
+  it("counts occurrences that inherit their container from the series", () => {
+    const payments = container("project", "Payments");
+    t.db.insert(meetingSeriesContainers).values({ seriesId: "eventkit:weekly", containerId: payments, assignedAt: "2026-09-01T00:00:00.000Z" }).run();
+    meeting({ seriesId: "eventkit:weekly", startsAt: "2026-09-10T09:00:00.000Z", endsAt: "2026-09-10T09:30:00.000Z" });
+    meeting({ seriesId: "eventkit:weekly", startsAt: "2026-09-17T09:00:00.000Z", endsAt: "2026-09-17T09:30:00.000Z" });
+
+    expect(meetingTimeByContainer(t.db, RANGE)).toEqual([{ containerId: payments, meetings: 2, minutes: 60 }]);
+  });
+
+  it("leaves out meetings nothing claims, rather than bucketing them somewhere", () => {
+    const payments = container("project", "Payments");
+    meeting({ containerId: payments });
+    meeting({});
+    const out = meetingTimeByContainer(t.db, RANGE);
+    expect(out).toHaveLength(1);
+    expect(out[0].containerId).toBe(payments);
+  });
+
+  /** An out-of-office block or a holiday spans a whole day and would dwarf every real meeting. */
+  it("leaves all-day entries out of the total", () => {
+    const admin = container("area", "Admin");
+    meeting({ containerId: admin, allDay: 1, startsAt: "2026-09-14T00:00:00.000Z", endsAt: "2026-09-15T00:00:00.000Z" });
+    meeting({ containerId: admin, startsAt: "2026-09-14T09:00:00.000Z", endsAt: "2026-09-14T09:30:00.000Z" });
+
+    expect(meetingTimeByContainer(t.db, RANGE)).toEqual([{ containerId: admin, meetings: 1, minutes: 30 }]);
+  });
+
+  it("respects the range, exclusive of `to`", () => {
+    const payments = container("project", "Payments");
+    meeting({ containerId: payments, day: "2026-08-31", startsAt: "2026-08-31T09:00:00.000Z", endsAt: "2026-08-31T10:00:00.000Z" });
+    meeting({ containerId: payments, day: "2026-10-01", startsAt: "2026-10-01T09:00:00.000Z", endsAt: "2026-10-01T10:00:00.000Z" });
+    expect(meetingTimeByContainer(t.db, RANGE)).toEqual([]);
+  });
+
+  it("is empty when nothing is attributed at all", () => {
+    meeting({});
+    expect(meetingTimeByContainer(t.db, RANGE)).toEqual([]);
   });
 });

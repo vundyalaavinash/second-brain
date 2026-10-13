@@ -2,7 +2,17 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import { makeTempDataDir } from "@/test/db";
 
-const DAY = "2026-10-05";
+/**
+ * The day most of these cases put their sessions on. Derived, not written down: a task carries
+ * its sessions only within a window around today, so a fixed date silently falls out of that
+ * window as it recedes and the list simply stops returning them. It was a fixed date and did
+ * exactly that, eight days after it was written -- the same expiry as PLACE_DAY below, which was
+ * fixed first on the mistaken reasoning that a date already in the past could not newly break.
+ *
+ * Today needs no weekday check: these cases place sessions at explicit times rather than asking
+ * placement to find slots, so working days do not come into it.
+ */
+const DAY = shift(0);
 
 let dir: string;
 let r: {

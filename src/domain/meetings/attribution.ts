@@ -155,6 +155,56 @@ export function containerMeetingRollup(
   };
 }
 
+export interface ContainerMeetingTime {
+  containerId: number;
+  meetings: number;
+  minutes: number;
+}
+
+/**
+ * Meeting time over `[from, to)` for every project and area that claims any, heaviest first --
+ * the answer to "where is the time actually going".
+ *
+ * Deliberately one query rather than `containerMeetingRollup` per container: the ranking is the
+ * point, and asking per container means the list is only as complete as whatever set of containers
+ * the caller happened to think to ask about. This finds them from the meetings themselves.
+ *
+ * Resolution and exclusions match the per-container rollup exactly -- occurrence, then series,
+ * then the captured item, and no all-day entries, which would swamp every real meeting.
+ */
+export function meetingTimeByContainer(db: DB, range: { from: string; to: string }): ContainerMeetingTime[] {
+  const rows = db
+    .select({
+      containerId: sql<number>`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}, ${items.containerId})`,
+      startsAt: calendarEvents.startsAt,
+      endsAt: calendarEvents.endsAt,
+    })
+    .from(calendarEvents)
+    .leftJoin(meetingSeriesContainers, eq(calendarEvents.seriesId, meetingSeriesContainers.seriesId))
+    .leftJoin(items, eq(calendarEvents.itemId, items.id))
+    .where(
+      and(
+        gte(calendarEvents.day, range.from),
+        lt(calendarEvents.day, range.to),
+        eq(calendarEvents.allDay, 0),
+        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}, ${items.containerId}) is not null`,
+      ),
+    )
+    .all();
+
+  const byContainer = new Map<number, ContainerMeetingTime>();
+  for (const row of rows) {
+    const length = Math.max(0, (Date.parse(row.endsAt) - Date.parse(row.startsAt)) / 60000);
+    const entry = byContainer.get(row.containerId) ?? { containerId: row.containerId, meetings: 0, minutes: 0 };
+    entry.meetings += 1;
+    entry.minutes += length;
+    byContainer.set(row.containerId, entry);
+  }
+  return [...byContainer.values()]
+    .map((c) => ({ ...c, minutes: Math.round(c.minutes) }))
+    .sort((a, b) => b.minutes - a.minutes || a.containerId - b.containerId);
+}
+
 /** Meetings in `[from, to)` that no project or area claims -- the accountability gap. */
 export function unattributedMeetings(
   db: DB,

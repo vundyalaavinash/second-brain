@@ -12,6 +12,7 @@ import { CapacityLine } from "./capacity-line";
 import { DateHeader } from "./date-header";
 import { DayView } from "./day-view";
 import { MeetingsView, dayOf } from "./meetings-view";
+import { MeetingTimePane } from "./meeting-time-pane";
 import { SetupCard } from "./setup-card";
 import { WeekView } from "./week-view";
 import { count } from "./open-meeting";
@@ -273,6 +274,9 @@ export function PlannerShell(props: Props) {
       <div id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(view)}>
         {day && <DayView day={day} today={today} onRefresh={refreshDay} />}
         {week && <WeekView week={week} today={today} onRefresh={refreshWeek} />}
+        {/* Only on the unscoped list: with `?container=` the page is already one project's
+            meetings, where a ranking across projects answers nothing. */}
+        {meetings && meetings.containerId === null && <MeetingTimePane today={today} />}
         {meetings && <MeetingsView today={today} meetings={meetings.meetings} containerId={meetings.containerId} onRefresh={refreshMeetings} />}
       </div>
     </div>
