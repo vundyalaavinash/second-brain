@@ -133,7 +133,11 @@ export function ContainerEditor({
           if (c.kind === "project") Object.assign(body, { goal, deadline: deadline || null });
           if (c.kind === "area") body.standard = standard;
           if (c.kind === "resource") body.category = category;
-          if (c.kind === "area" || c.kind === "resource") body.nextSteps = nextSteps;
+          // Every kind, not just area and resource. `nextSteps` is one column, the route accepts
+          // it for any kind, and "what is the next concrete step" is the most useful thing a
+          // project can hold -- it was simply unreachable here, so a project could neither show
+          // nor save the field it already had.
+          body.nextSteps = nextSteps;
           const res = await fetch(`/api/containers/${c.id}`, {
             method: "PATCH",
             keepalive: fromUnmount,
@@ -318,9 +322,14 @@ export function ContainerEditor({
         {c.status === "archived" && <span className="text-[11.5px] text-warn">Archived</span>}
         <span className={`text-[12px] ${save === "error" ? "text-danger" : "text-fg-faint"}`}>{saveLabel[save]}</span>
         <span className="flex-1" />
-        <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
-          Capture here
-        </Button>
+        {/* The capture page drops the container when it is not active (`capture/page.tsx`), so an
+            archived project's button silently filed to the Inbox instead. Rather than offer a
+            destination that will be ignored, it is not offered. */}
+        {c.status === "active" && (
+          <Button href={`/capture?to=${c.slug}`} variant="secondary" size="sm" icon={Plus}>
+            Capture here
+          </Button>
+        )}
         {(c.status === "archived" || c.kind !== "project") && (
           <IconButton
             label={c.status === "archived" ? "Restore" : `Archive ${c.kind}`}
@@ -415,7 +424,7 @@ export function ContainerEditor({
           ))}
         </Select>
       )}
-      {(c.kind === "area" || c.kind === "resource") && (
+      {c.kind !== "project" && (
         <Textarea
           value={nextSteps}
           onChange={(e) => {
@@ -435,7 +444,7 @@ export function ContainerEditor({
           <div className="flex flex-col gap-6">
             <section className="flex flex-col gap-2">
               <SectionHeading count={progress.open}>Tasks</SectionHeading>
-              <TaskList containerId={c.id} initialTasks={tasks} initialProgress={progress} onProgress={setProgress} today={today} />
+              <TaskList containerId={c.id} initialTasks={tasks} onProgress={setProgress} today={today} />
             </section>
             <MeetingsSection containerId={c.id} meetings={meetings} />
           </div>

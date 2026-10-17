@@ -213,17 +213,32 @@ export function TaskRow({
     if (next !== task.dueDate) onDue(next);
   }
 
-  /** Plans from the keyboard: today's plan, or the first day the row was told to offer. */
-  function planFromKey() {
+  /**
+   * Planning, and saying so. The toast used to hang off the keyboard path alone, so the same
+   * action taken from the menu changed nothing visible -- on a surface that does not show the
+   * plan, that is indistinguishable from a button that does not work. Both paths come here now.
+   */
+  function plan() {
     if (onPlan) {
       onPlan();
       window.dispatchEvent(
         new CustomEvent("sb:toast", { detail: { text: planned ? "Taken off the plan" : planLabel === "Plan for today" ? "Planned for today" : "Planned" } }),
       );
     } else if (onPlanDate) {
-      onPlanDate(planFrom);
-      window.dispatchEvent(new CustomEvent("sb:toast", { detail: { text: planFrom === today ? "Planned for today" : `Planned for ${formatShortDate(planFrom)}` } }));
+      planOn(planFrom);
     }
+  }
+
+  function planOn(date: string) {
+    onPlanDate?.(date);
+    window.dispatchEvent(
+      new CustomEvent("sb:toast", { detail: { text: date === today ? "Planned for today" : `Planned for ${formatShortDate(date)}` } }),
+    );
+  }
+
+  /** Plans from the keyboard: today's plan, or the first day the row was told to offer. */
+  function planFromKey() {
+    plan();
   }
 
   const checkbox = (
@@ -427,7 +442,7 @@ export function TaskRow({
                             className={MENU_ITEM}
                             onClick={() => {
                               closeMenu();
-                              onPlanDate(day.date);
+                              planOn(day.date);
                             }}
                           >
                             {day.label}
@@ -444,7 +459,7 @@ export function TaskRow({
                     className={MENU_ITEM}
                     onClick={() => {
                       closeMenu();
-                      onPlan();
+                      plan();
                     }}
                   >
                     {planned ? "Remove from plan" : planLabel}

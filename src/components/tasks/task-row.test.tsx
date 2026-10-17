@@ -661,3 +661,57 @@ describe("TaskRow placing and splitting", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });
+
+/**
+ * The menu is where most people plan a task, and it used to be the one path that said nothing:
+ * the toast hung off the keyboard handler alone. On a surface that does not show the plan, a
+ * silent write is indistinguishable from a button that does not work.
+ */
+describe("TaskRow planning from the menu", () => {
+  function toastsFrom(run: () => void): unknown[] {
+    const toasts: unknown[] = [];
+    const listen = (e: Event) => toasts.push((e as CustomEvent).detail);
+    window.addEventListener("sb:toast", listen);
+    try {
+      run();
+    } finally {
+      window.removeEventListener("sb:toast", listen);
+    }
+    return toasts;
+  }
+
+  it("says so when planning through the menu", () => {
+    const onPlan = vi.fn();
+    const toasts = toastsFrom(() => {
+      renderRow({ onPlan }, { ...task, title: "Write" });
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Plan for today" }));
+    });
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(toasts).toEqual([{ text: "Planned for today" }]);
+  });
+
+  it("says so when taking it off through the menu", () => {
+    const onPlan = vi.fn();
+    const toasts = toastsFrom(() => {
+      renderRow({ onPlan, planned: true }, { ...task, title: "Write" });
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Remove from plan" }));
+    });
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(toasts).toEqual([{ text: "Taken off the plan" }]);
+  });
+
+  it("names the day when one is picked from the submenu", () => {
+    const onPlanDate = vi.fn();
+    const toasts = toastsFrom(() => {
+      renderRow({ onPlanDate, planFrom: "2026-09-25" }, { ...task, title: "Write" });
+      fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Plan for/ }));
+      const submenu = screen.getByRole("menu", { name: "Plan for" });
+      fireEvent.click(within(submenu).getAllByRole("menuitem")[0]);
+    });
+    expect(onPlanDate).toHaveBeenCalled();
+    expect(toasts).toHaveLength(1);
+  });
+});

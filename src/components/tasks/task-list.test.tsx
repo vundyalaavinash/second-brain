@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, act, cleanup , waitFor } from "@testing-library/react";
 import { TaskList } from "./task-list";
 import { resetFocusStore } from "../focus/focus-store";
 import type { TaskDTO } from "@/lib/dto";
@@ -38,7 +38,7 @@ describe("TaskList", () => {
       }
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
-    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
     const input = screen.getByPlaceholderText("Add a task") as HTMLInputElement;
     input.focus();
     fireEvent.change(input, { target: { value: "! Ship it ~45m fri" } });
@@ -59,7 +59,7 @@ describe("TaskList", () => {
       }
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
-    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
     const input = screen.getByPlaceholderText("Add a task") as HTMLInputElement;
     input.focus();
     fireEvent.change(input, { target: { value: "Deep work ~2h/45m" } });
@@ -74,12 +74,13 @@ describe("TaskList", () => {
     stub(async (url) => {
       // The store makes exactly one `/api/focus` call for the whole page, not one per row, but
       // it is still background noise unrelated to what this list refetches when a task changes
-      // elsewhere.
-      if (url !== "/api/focus") urls.push(url);
+      // elsewhere. The plan read on mount is the same kind of noise: what this case is about is
+      // that one tasks-changed event causes exactly one task refetch.
+      if (url !== "/api/focus" && !url.startsWith("/api/plan")) urls.push(url);
       return new Response(JSON.stringify({ tasks: [base, added], progress: refreshed }), { status: 200 });
     });
     const onProgress = vi.fn();
-    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} onProgress={onProgress} today="2026-09-16" />);
+    render(<TaskList containerId={5} initialTasks={[base]} onProgress={onProgress} today="2026-09-16" />);
     expect(screen.queryByText("Booked from the prompt bar")).toBeNull();
 
     await act(async () => { window.dispatchEvent(new Event("sb:tasks-changed")); });
@@ -92,10 +93,10 @@ describe("TaskList", () => {
   it("stops listening for task changes once it unmounts", async () => {
     const urls: string[] = [];
     stub(async (url) => {
-      if (url !== "/api/focus") urls.push(url);
+      if (url !== "/api/focus" && !url.startsWith("/api/plan")) urls.push(url);
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
-    const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
     unmount();
     await act(async () => { window.dispatchEvent(new Event("sb:tasks-changed")); });
     expect(urls).toEqual([]);
@@ -112,7 +113,7 @@ describe("TaskList", () => {
       }
       return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
     });
-    render(<TaskList containerId={5} initialTasks={[base]} initialProgress={progress} today="2026-09-16" />);
+    render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
     const box = screen.getByRole("checkbox", { name: "Draft email" }) as HTMLInputElement;
     await act(async () => { fireEvent.click(box); });
     expect(patches).toEqual([{ status: "done" }]);
@@ -123,5 +124,59 @@ describe("TaskList", () => {
     await act(async () => { fireEvent.click(reopen); });
     expect(await screen.findByText("Could not save that change")).toBeTruthy();
     expect(screen.getByRole("button", { name: /1 done/ })).toBeTruthy();
+  });
+});
+
+/**
+ * Planning from a task list that does not itself show the plan. It used to be one-way and silent:
+ * the row could not say whether the task was already planned, so it could never offer to take it
+ * off, and the only feedback was a toast on the keyboard path that the menu did not share.
+ */
+describe("planning from the list", () => {
+  function stubWithPlan(plannedIds: number[]) {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    stub(async (url, init) => {
+      const method = init?.method ?? "GET";
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (url.startsWith("/api/plan") && method === "GET") {
+        return new Response(JSON.stringify({ tasks: plannedIds.map((id) => ({ id })) }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ tasks: [base], progress }), { status: 200 });
+    });
+    return calls;
+  }
+
+  async function openMenu() {
+    fireEvent.click(await screen.findByRole("button", { name: "Task actions" }));
+  }
+
+  it("offers to take a planned task off the plan, not to plan it again", async () => {
+    stubWithPlan([base.id]);
+    render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Task actions" })).toBeTruthy());
+    await openMenu();
+    expect(await screen.findByRole("menuitem", { name: "Remove from plan" })).toBeTruthy();
+  });
+
+  it("takes it off through the plan route when asked", async () => {
+    const calls = stubWithPlan([base.id]);
+    render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/plan"))).toBe(true));
+    await openMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from plan" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/plan" && c.method === "DELETE")).toBe(true));
+    expect(calls.find((c) => c.method === "DELETE")!.body).toEqual({ date: "2026-10-17", taskId: base.id });
+  });
+
+  it("stops listening for plan changes once it unmounts", async () => {
+    const calls = stubWithPlan([]);
+    const { unmount } = render(<TaskList containerId={5} initialTasks={[base]} today="2026-09-16" />);
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/plan"))).toBe(true));
+    const before = calls.length;
+    unmount();
+    await act(async () => {
+      window.dispatchEvent(new Event("sb:plan-changed"));
+    });
+    expect(calls.length).toBe(before);
   });
 });

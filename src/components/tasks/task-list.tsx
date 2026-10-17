@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskDTO, ProgressDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { quickParse } from "@/domain/tasks/quick-parse";
@@ -30,7 +30,6 @@ function progressFrom(list: TaskDTO[]): ProgressDTO {
 interface Props {
   containerId: number;
   initialTasks: TaskDTO[];
-  initialProgress: ProgressDTO;
   onProgress?: (progress: ProgressDTO) => void;
   today: string;
 }
@@ -126,17 +125,50 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
     }
   }
 
-  /** Puts the task on today's plan. Nothing here shows the plan, so the row keeps its own state
-   * and the Planner hears about it through the event. */
-  function planToday(id: number) {
+  /**
+   * What of this list is on today's plan. Without it the rows could not say, so "Plan for today"
+   * was a one-way action with nothing to show for it and no way back -- the row's own menu can
+   * only offer "Remove from plan" when it is told the task is already on one.
+   */
+  const [plannedIds, setPlannedIds] = useState<Set<number>>(new Set());
+
+  const loadPlan = useCallback(() => {
     void (async () => {
-      const res = await fetch("/api/plan", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ date: todayLocal(), taskId: id }) });
-      if (!res.ok) {
-        setError(SAVE_ERROR);
-        return;
-      }
-      setError(null);
+      const res = await fetch(`/api/plan?date=${todayLocal()}`, { cache: "no-store" }).catch(() => null);
+      if (!res?.ok) return;
+      const body = (await res.json()) as { tasks: { id: number }[] };
+      setPlannedIds(new Set(body.tasks.map((t) => t.id)));
+    })();
+  }, []);
+
+  useEffect(() => {
+    loadPlan();
+    // Another surface planning the same task -- the Planner, the prompt bar -- says so this way.
+    window.addEventListener("sb:plan-changed", loadPlan);
+    return () => window.removeEventListener("sb:plan-changed", loadPlan);
+  }, [loadPlan]);
+
+  /** Adds to, or takes off, a day's plan. `date` defaults to today. */
+  function togglePlan(id: number, date = todayLocal()) {
+    const on = plannedIds.has(id);
+    // Moved before the request: the row's label flips immediately, and the reload below is what
+    // settles it if the write did not land.
+    setPlannedIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    void (async () => {
+      const res = await fetch("/api/plan", {
+        method: on ? "DELETE" : "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ date, taskId: id }),
+      });
+      if (!res.ok) setError(SAVE_ERROR);
+      else setError(null);
       window.dispatchEvent(new Event("sb:plan-changed"));
+      loadPlan();
     })();
   }
 
@@ -266,7 +298,11 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
               onDrop={() => drop(task.id)}
               onDelete={() => remove(task.id)}
               onMove={(dir) => move(task.id, dir)}
-              onPlan={() => planToday(task.id)}
+              onPlan={() => togglePlan(task.id)}
+              planned={plannedIds.has(task.id)}
+              // The seven-day submenu TaskRow already carries: planning something here for Thursday
+              // should not mean going to the Planner to do it.
+              onPlanDate={(date) => togglePlan(task.id, date)}
               draggable
               onDragStart={() => setDragId(task.id)}
               onDragOver={(e) => e.preventDefault()}
