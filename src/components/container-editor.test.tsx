@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, act, cleanup, fireEvent, within } from "@testing-library/react";
+import { render, screen, act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { useRouter } from "next/navigation";
 import { ContainerEditor } from "./container-editor";
-import type { ContainerDTO, ContainerMeetingDTO, ItemDTO } from "@/lib/dto";
+import type { ContainerDTO, ContainerMeetingDTO, ItemDTO, TaskDTO } from "@/lib/dto";
 
 // A single stable router object (not a fresh one per call) so tests can grab `replace` etc. up
 // front via `useRouter()` and assert on the same spy instances the component used.
@@ -344,5 +344,69 @@ describe("the project page's own Meetings section", () => {
   it("links out to the project-filtered Planner view", () => {
     const { getByRole } = render(<ContainerEditor initial={project} items={[]} tasks={[]} meetings={[meeting]} today="2026-09-16" />);
     expect(getByRole("link", { name: "See calendar meetings in Planner" }).getAttribute("href")).toBe(`/planner/meetings?container=${project.id}`);
+  });
+});
+
+/**
+ * The pulse above the task list. Everything it shows was already in props and summed nowhere, so
+ * a project's aggregate -- is it forecastable, is it slipping, did anything move -- was never on
+ * screen.
+ */
+describe("the project pulse", () => {
+  function tasks(over: Partial<TaskDTO>[] = []): TaskDTO[] {
+    const base: TaskDTO = {
+      id: 1, title: "A task", notes: "", status: "open", priority: "normal", dueDate: null, containerId: 1,
+      sourceItemId: null, estimateMinutes: null, sessionMinutes: null, blocks: [], goals: [], spentMinutes: 0,
+      likeThisMinutes: null, completedAt: null, sortOrder: 0, createdAt: "", updatedAt: "",
+    };
+    return over.map((o, i) => ({ ...base, id: 10 + i, ...o }));
+  }
+
+  it("sums estimate against spend, and flags what is overdue", () => {
+    render(
+      <ContainerEditor
+        initial={container}
+        items={[]}
+        tasks={tasks([{ estimateMinutes: 60, spentMinutes: 90, dueDate: "2026-09-15" }, { estimateMinutes: 30 }])}
+        today="2026-09-16"
+      />,
+    );
+    const pulse = screen.getByRole("group", { name: "Project pulse" });
+    expect(pulse.textContent).toContain("2 open");
+    expect(pulse.textContent).toContain("1 overdue");
+    expect(pulse.textContent).toContain("1h 30m / 1h 30m");
+  });
+
+  it("says what closed this week", () => {
+    render(
+      <ContainerEditor
+        initial={container}
+        items={[]}
+        tasks={tasks([{ status: "done", completedAt: "2026-09-15T09:00:00.000Z" }])}
+        today="2026-09-16"
+      />,
+    );
+    expect(screen.getByRole("group", { name: "Project pulse" }).textContent).toContain("1 closed this week");
+  });
+
+  /** A project with nothing measured should not carry a row of zeroes. */
+  it("is absent when there is nothing to say", () => {
+    render(<ContainerEditor initial={container} items={[]} tasks={[]} today="2026-09-16" />);
+    expect(screen.queryByRole("group", { name: "Project pulse" })).toBeNull();
+  });
+
+  // The list edits tasks in place, so a summary built from the render-time snapshot would stop
+  // matching the rows beneath it the moment anything was ticked.
+  it("follows the list rather than the snapshot it was rendered with", async () => {
+    render(
+      <ContainerEditor initial={container} items={[]} tasks={tasks([{ title: "Tick me" }, { title: "Leave me" }])} today="2026-09-16" />,
+    );
+    expect(screen.getByRole("group", { name: "Project pulse" }).textContent).toContain("2 open");
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    });
+
+    await waitFor(() => expect(screen.getByRole("group", { name: "Project pulse" }).textContent).toContain("1 open"));
   });
 });

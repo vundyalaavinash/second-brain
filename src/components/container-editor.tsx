@@ -16,6 +16,7 @@ import { KindIcon, KIND_LABEL, TypeIcon, StatusDot } from "./type-icon";
 import { Crumb } from "./shell/crumb";
 import { CompleteProjectDialog } from "./complete-project-dialog";
 import { ProgressRing } from "./tasks/progress-ring";
+import { ProjectPulse } from "./containers/project-pulse";
 import { TaskList } from "./tasks/task-list";
 import { ContainerRail } from "./containers/container-rail";
 import { GoalsLine } from "./containers/goals-line";
@@ -73,6 +74,9 @@ export function ContainerEditor({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
+  // The pulse above the list has to describe the rows in it, so the list owns the tasks and
+  // reports them up rather than the page summarising the snapshot it was rendered with.
+  const [liveTasks, setLiveTasks] = useState(tasks);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(initial.description.trim().length > 0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -439,12 +443,16 @@ export function ContainerEditor({
 
       {c.kind !== "project" && aboutDisclosure}
 
+      {/* Above the task list rather than inside the project hero: an area has tasks too, and
+          "open, overdue, unestimated, spent against estimated, closed this week" is as useful for
+          one as for a project. Resources have no task list, so they get no pulse. */}
+      {c.kind !== "resource" && <ProjectPulse tasks={liveTasks} today={today} />}
       {c.kind === "project" || c.kind === "area" ? (
         <div className="grid grid-cols-1 min-[1200px]:grid-cols-[3fr_2fr] gap-6">
           <div className="flex flex-col gap-6">
             <section className="flex flex-col gap-2">
               <SectionHeading count={progress.open}>Tasks</SectionHeading>
-              <TaskList containerId={c.id} initialTasks={tasks} onProgress={setProgress} today={today} />
+              <TaskList containerId={c.id} initialTasks={tasks} onProgress={setProgress} onTasks={setLiveTasks} today={today} />
             </section>
             <MeetingsSection containerId={c.id} meetings={meetings} />
           </div>

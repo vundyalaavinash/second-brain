@@ -31,10 +31,14 @@ interface Props {
   containerId: number;
   initialTasks: TaskDTO[];
   onProgress?: (progress: ProgressDTO) => void;
+  /** The list's own tasks, whenever they change. The page summarises them above the list, and
+   *  this list edits them in place -- without this the summary would describe the snapshot the
+   *  page was rendered with and quietly stop matching the rows under it. */
+  onTasks?: (tasks: TaskDTO[]) => void;
   today: string;
 }
 
-export function TaskList({ containerId, initialTasks, onProgress, today }: Props) {
+export function TaskList({ containerId, initialTasks, onProgress, onTasks, today }: Props) {
   const [tasks, setTasks] = useState<TaskDTO[]>(initialTasks);
   const [error, setError] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
@@ -42,6 +46,13 @@ export function TaskList({ containerId, initialTasks, onProgress, today }: Props
   const [dragId, setDragId] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
+
+  // Reported from an effect rather than from each writer: every path that changes `tasks` --
+  // adding, ticking, renaming, the refetch on `sb:tasks-changed`, an optimistic update that then
+  // reverts -- goes through this one, so none can forget to.
+  useEffect(() => {
+    onTasks?.(tasks);
+  }, [tasks, onTasks]);
 
   const open = tasks.filter((t) => t.status === "open").sort(bySortOrder);
   const done = tasks.filter((t) => t.status === "done");
