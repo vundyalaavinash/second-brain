@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { makeTempDataDir } from "@/test/db";
@@ -33,6 +33,14 @@ const json = (method: string, url: string, body?: unknown, token?: string) =>
 const params = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) });
 
 beforeAll(async () => {
+  // The clock is pinned to the fixtures' own day, not merely the fixtures written down.
+  //
+  // Every timestamp in this file hangs off T0, and the routes under test read the real clock to
+  // decide what is recent -- so as T0 receded the seeded day drifted out of what they would look
+  // at, and a rule-ordering assertion started failing for a reason that had nothing to do with
+  // rules. Only `Date` is faked: faking timers as well would strand the async route handlers.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T0);
   dir = makeTempDataDir();
   fs.writeFileSync(path.join(dir, "activity-token"), TOKEN + "\n");
   r = {
@@ -51,7 +59,10 @@ beforeAll(async () => {
     label: await import("./activity/sessions/[id]/label/route"),
   };
 });
-afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+  vi.useRealTimers();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getDay = async () => (await (await r.day.GET(json("GET", `/api/activity/day?date=${day}`))).json()) as Record<string, any>;
