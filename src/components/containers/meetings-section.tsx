@@ -34,11 +34,18 @@ export function MeetingsSection({ containerId, meetings }: { containerId: number
       ) : (
         <List>
           {meetings.map((m) => (
-            <Row key={m.item.id}>
+            // A meeting attributed to this container but never opened has no item behind it, so
+            // there is nothing to link to and no badges to earn. It is still this container's
+            // meeting -- a series assigned to a project covers occurrences nobody took notes on.
+            <Row key={m.item ? `i${m.item.id}` : `e${m.eventId}`}>
               <TypeIcon type="meeting" />
-              <Link href={`/items/${m.item.id}`} className="focus-ring shrink-0 max-w-[45%] truncate text-[13.5px] hover:text-violet-bright">
-                {m.title}
-              </Link>
+              {m.item ? (
+                <Link href={`/items/${m.item.id}`} className="focus-ring shrink-0 max-w-[45%] truncate text-[13.5px] hover:text-violet-bright">
+                  {m.title}
+                </Link>
+              ) : (
+                <span className="shrink-0 max-w-[45%] truncate text-[13.5px] text-fg-muted">{m.title}</span>
+              )}
               <span className="flex-1 truncate text-[12px] text-fg-faint">{m.startsAt ? formatDate(m.startsAt) : "Not on the calendar"}</span>
               <div className="flex items-center gap-1.5 shrink-0">
                 <MeetingBadges item={m.item} />

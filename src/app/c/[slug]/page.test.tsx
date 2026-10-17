@@ -35,7 +35,17 @@ describe("ContainerPage", () => {
     createItem(db, { type: "note", title: "Plan", containerId: project.id });
 
     const el = (await ContainerPage({ params: Promise.resolve({ slug: project.slug }) })) as unknown as { props: ContainerEditorProps };
-    expect(el.props.meetings).toEqual([{ title: "Kickoff", startsAt: "2026-09-20T14:00:00.000Z", item: { id: meetingItem.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: project.id } }]);
+    // `eventId` is set because this meeting is reachable through its calendar event -- filing the
+    // item is the third thing `effectiveContainerId` resolves through, so the attribution path
+    // finds it and the row knows which event it came from.
+    expect(el.props.meetings).toEqual([
+      {
+        title: "Kickoff",
+        startsAt: "2026-09-20T14:00:00.000Z",
+        item: { id: meetingItem.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: project.id },
+        eventId: ev.id,
+      },
+    ]);
     // The generic `items` list still carries the raw item -- `ContainerEditor` itself is what
     // keeps a meeting out of the "Files and other items" bucket, not the page.
     expect(el.props.items.some((i) => i.id === meetingItem.id)).toBe(true);

@@ -161,11 +161,16 @@ describe("ContainerEditor with RichEditor", () => {
     vi.unstubAllGlobals();
   });
 
-  it("offers a next-steps field for an area but not a project, and saves it on blur", async () => {
+  /**
+   * The field is offered on every kind now, projects included. It used to be area and resource
+   * only -- while the column and the route took it for any kind, so a project's next concrete
+   * step was stored, accepted, and impossible to enter.
+   */
+  it("offers a next-steps field on a project as well as an area, and saves it on blur", async () => {
     const { queryByPlaceholderText: queryProject, unmount } = render(
       <ContainerEditor initial={project} items={[]} tasks={[]} today="2026-09-16" />,
     );
-    expect(queryProject("What's the next concrete step here?")).toBeNull();
+    expect(queryProject("What's the next concrete step here?")).not.toBeNull();
     unmount();
 
     const patches: unknown[] = [];
@@ -320,7 +325,7 @@ describe("the project page's own Meetings section", () => {
   const meeting: ContainerMeetingDTO = {
     title: "Kickoff",
     startsAt: "2026-09-20T14:00:00.000Z",
-    item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 },
+    item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 }, eventId: null,
   };
 
   it("lists a filed meeting with its date and its item's badges, not the generic 'Files and other items' bucket", () => {

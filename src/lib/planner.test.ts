@@ -6,6 +6,7 @@ import { addDays, captureMeeting, listMeetings, replaceCalendarEvents } from "@/
 import { setMeetingDecision } from "@/domain/meetings/decision";
 import { localDay } from "@/lib/time";
 import { createContainer } from "@/domain/containers";
+import { assignMeetingContainer } from "@/domain/meetings/attribution";
 import { addBlock } from "@/domain/blocks";
 import { addToPlan } from "@/domain/plan";
 import { createTask, completeTask } from "@/domain/tasks";
@@ -358,13 +359,16 @@ describe("containerMeetings", () => {
     const kickoffItem = captureMeeting(t.db, kickoffEv.id);
     const retroItem = captureMeeting(t.db, retroEv.id);
 
-    const result = containerMeetings(t.db, [kickoffItem, retroItem]);
+    // Container 1 claims nothing here: these items carry no container, so this exercises the
+    // filed-item path, which is the one these two meetings are reachable by.
+    const result = containerMeetings(t.db, 1, [kickoffItem, retroItem]);
     expect(result.map((m) => m.title)).toEqual(["Retro", "Kickoff"]);
     expect(result[0].startsAt).toBe("2026-09-22T10:00:00.000Z");
     expect(result[0].item).toEqual({ id: retroItem.id, hasNotes: false, hasTranscript: false, hasSummary: false, containerId: null });
+    expect(result[0].eventId).toBeNull();
   });
 
-  it("costs one query for the calendar times of the whole list, never one per meeting item", () => {
+  it("costs the same number of queries whatever the length of the list, never one per meeting item", () => {
     replaceCalendarEvents(
       t.db,
       Array.from({ length: 5 }, (_, i) => ({
@@ -377,9 +381,57 @@ describe("containerMeetings", () => {
       })),
     );
     const items = listMeetings(t.db, { from: "2026-09-19", to: "2026-09-25" }).map((ev) => captureMeeting(t.db, ev.id));
-    const spy = vi.spyOn(t.db, "select");
-    containerMeetings(t.db, items);
-    expect(spy).toHaveBeenCalledTimes(1);
+
+    // A count rather than a constant: what matters is that it does not grow with the list, and
+    // pinning the exact number only records however many sources the function reads today.
+    const one = vi.spyOn(t.db, "select");
+    containerMeetings(t.db, 1, items.slice(0, 1));
+    const forOne = one.mock.calls.length;
+    one.mockRestore();
+
+    const many = vi.spyOn(t.db, "select");
+    containerMeetings(t.db, 1, items);
+    expect(many).toHaveBeenCalledTimes(forOne);
+  });
+
+  /**
+   * The bug this merge exists for: assigning a recurring series to a project writes
+   * `meeting_series_containers` and never touches the item, so the project's own page -- which
+   * listed meetings from `items.containerId` alone -- showed nothing, while the same meetings
+   * counted towards that project's meeting time elsewhere.
+   */
+  it("lists a meeting attributed through its series, which no item names", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Payments" });
+    replaceCalendarEvents(t.db, [
+      { externalId: "s1", title: "Weekly sync", startsAt: "2026-09-21T09:00:00.000Z", endsAt: "2026-09-21T09:30:00.000Z", attendees: 2, hasCallLink: false, seriesId: "eventkit:weekly" },
+      { externalId: "s2", title: "Weekly sync", startsAt: "2026-09-28T09:00:00.000Z", endsAt: "2026-09-28T09:30:00.000Z", attendees: 2, hasCallLink: false, seriesId: "eventkit:weekly" },
+    ]);
+    const first = listMeetings(t.db, { from: "2026-09-19", to: "2026-10-01" })[0];
+    assignMeetingContainer(t.db, first.id, project.id, "series");
+
+    // No meeting item is filed to this project at all -- nothing was ever recorded.
+    const result = containerMeetings(t.db, project.id, []);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.title)).toEqual(["Weekly sync", "Weekly sync"]);
+    // Nothing to link to, and no badges to earn, but the meetings are the project's all the same.
+    expect(result[0].item).toBeNull();
+    expect(result[0].eventId).not.toBeNull();
+  });
+
+  it("lists a meeting reachable both ways exactly once", () => {
+    const project = createContainer(t.db, { kind: "project", name: "Payments" });
+    replaceCalendarEvents(t.db, [
+      { externalId: "both", title: "Kickoff", startsAt: "2026-09-21T09:00:00.000Z", endsAt: "2026-09-21T10:00:00.000Z", attendees: 2, hasCallLink: false },
+    ]);
+    const ev = listMeetings(t.db, { from: "2026-09-19", to: "2026-09-23" })[0];
+    const item = captureMeeting(t.db, ev.id);
+    assignMeetingContainer(t.db, ev.id, project.id, "occurrence");
+
+    const result = containerMeetings(t.db, project.id, [item]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].item?.id).toBe(item.id);
   });
 });
 

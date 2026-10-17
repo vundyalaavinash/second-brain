@@ -7,7 +7,8 @@ import { suggestContainersFor } from "@/domain/containers/suggest";
 import { listPlan, unfinished } from "@/domain/plan";
 import { listTasks } from "@/domain/tasks";
 import { estimateActualPairs } from "@/domain/focus";
-import { parseMeta } from "@/domain/items";
+import { getItem, parseMeta } from "@/domain/items";
+import { containerMeetings as containerMeetingsByAttribution } from "@/domain/meetings/attribution";
 import { driftFactor, forecastMinutes } from "@/lib/drift";
 import { serializeMeeting, serializeMeetings, serializePlanTasks, serializeTasks } from "./api";
 import { blockedMinutes, freeMinutes, plannedMinutes, unplacedMinutes } from "./capacity";
@@ -241,16 +242,46 @@ export function plannerMeetings(db: DB, opts: { from: string; to: string; q?: st
  * times of the whole list, never one per meeting, on top of the item rows the caller already
  * has in hand.
  */
-export function containerMeetings(db: DB, meetingItems: Item[]): ContainerMeetingDTO[] {
+/** Wide enough to mean "this project's whole history", which is what its page should show. */
+const ALL_TIME = { from: "0001-01-01", to: "9999-12-31" };
+
+/**
+ * A container's meetings, from both ways one can belong to it.
+ *
+ * Filing the meeting *item* to the container is one way; attributing the calendar event or its
+ * whole series is the other, and the page used to see only the first. So a standup assigned to a
+ * project showed up in that project's meeting time and nowhere on its page -- and the page's own
+ * "see these in the Planner" link led to an empty list for the same reason.
+ *
+ * Attribution is the primary source, since `effectiveContainerId` already treats a filed item as
+ * its third fallback and therefore covers that case too. Filed meeting items with no calendar
+ * event behind them -- ad hoc recordings -- have no row to be found that way, so they are added
+ * afterwards, keyed by item id so a meeting reachable both ways is listed once.
+ */
+export function containerMeetings(db: DB, containerId: number, meetingItems: Item[]): ContainerMeetingDTO[] {
+  const attributed = containerMeetingsByAttribution(db, containerId, ALL_TIME);
+  const itemsById = new Map(meetingItems.map((i) => [i.id, i]));
+  const seenItemIds = new Set<number>();
+
+  const rows: ContainerMeetingDTO[] = attributed.map((m) => {
+    if (m.itemId !== null) seenItemIds.add(m.itemId);
+    const item = m.itemId !== null ? (itemsById.get(m.itemId) ?? getItem(db, m.itemId)) : undefined;
+    return {
+      title: m.title,
+      startsAt: m.startsAt,
+      item: item ? meetingItemFlags(item) : null,
+      eventId: m.eventId,
+    };
+  });
+
+  const itemOnly = meetingItems.filter((i) => !seenItemIds.has(i.id));
   const times = meetingTimesByItemIds(
     db,
-    meetingItems.map((i) => i.id),
+    itemOnly.map((i) => i.id),
   );
-  return meetingItems
-    .map((i) => ({
-      title: i.title,
-      startsAt: times.get(i.id)?.startsAt ?? null,
-      item: meetingItemFlags(i),
-    }))
-    .sort((a, b) => (b.startsAt ?? "").localeCompare(a.startsAt ?? ""));
+  for (const i of itemOnly) {
+    rows.push({ title: i.title, startsAt: times.get(i.id)?.startsAt ?? null, item: meetingItemFlags(i), eventId: null });
+  }
+
+  return rows.sort((a, b) => (b.startsAt ?? "").localeCompare(a.startsAt ?? ""));
 }

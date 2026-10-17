@@ -9,13 +9,13 @@ afterEach(cleanup);
 const kickoff: ContainerMeetingDTO = {
   title: "Kickoff",
   startsAt: "2026-09-20T14:00:00.000Z",
-  item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 },
+  item: { id: 40, hasNotes: true, hasTranscript: false, hasSummary: true, containerId: 7 }, eventId: null,
 };
 
 const adhoc: ContainerMeetingDTO = {
   title: "Hallway chat",
   startsAt: null,
-  item: { id: 41, hasNotes: false, hasTranscript: true, hasSummary: false, containerId: 7 },
+  item: { id: 41, hasNotes: false, hasTranscript: true, hasSummary: false, containerId: 7 }, eventId: null,
 };
 
 describe("MeetingsSection", () => {

@@ -22,6 +22,7 @@ export default async function ContainerPage({ params }: { params: Promise<{ slug
   // `MeetingsSection` (Task 3, step 3).
   const meetings = containerMeetings(
     db,
+    c.id,
     rawItems.filter((i) => i.type === "meeting"),
   );
   const tasks = serializeTasks(

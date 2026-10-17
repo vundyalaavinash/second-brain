@@ -155,6 +155,49 @@ export function containerMeetingRollup(
   };
 }
 
+export interface AttributedMeeting {
+  eventId: number;
+  /** The captured meeting item, when this meeting was ever opened or recorded. */
+  itemId: number | null;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+/**
+ * Every meeting a project or area claims over `[from, to)`, resolved the same three ways as the
+ * rollup -- occurrence, then series, then the captured item.
+ *
+ * This exists because the project page listed its meetings from `items.containerId` alone, which
+ * is a different question: assigning a recurring series to a project writes
+ * `meeting_series_containers`, never the item, so a standup could be attributed to Payments, show
+ * up in Payments' meeting time, and appear nowhere on Payments' own page. All-day entries are
+ * kept here, unlike in the time rollup -- a holiday should not be priced as meeting time, but if
+ * someone has deliberately filed one to a project it is not this function's place to hide it.
+ */
+export function containerMeetings(db: DB, containerId: number, range: { from: string; to: string }): AttributedMeeting[] {
+  return db
+    .select({
+      eventId: calendarEvents.id,
+      itemId: calendarEvents.itemId,
+      title: calendarEvents.title,
+      startsAt: calendarEvents.startsAt,
+      endsAt: calendarEvents.endsAt,
+    })
+    .from(calendarEvents)
+    .leftJoin(meetingSeriesContainers, eq(calendarEvents.seriesId, meetingSeriesContainers.seriesId))
+    .leftJoin(items, eq(calendarEvents.itemId, items.id))
+    .where(
+      and(
+        gte(calendarEvents.day, range.from),
+        lt(calendarEvents.day, range.to),
+        sql`coalesce(${calendarEvents.containerId}, ${meetingSeriesContainers.containerId}, ${items.containerId}) = ${containerId}`,
+      ),
+    )
+    .all()
+    .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+}
+
 export interface ContainerMeetingTime {
   containerId: number;
   meetings: number;

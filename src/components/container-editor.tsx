@@ -428,18 +428,19 @@ export function ContainerEditor({
           ))}
         </Select>
       )}
-      {c.kind !== "project" && (
-        <Textarea
+      {/* Every kind. A project's next concrete step is the most useful line it can hold, and the
+          column and the route already took it -- only this gate kept projects out, so the field
+          was stored, accepted, and impossible to fill. */}
+      <Textarea
           value={nextSteps}
           onChange={(e) => {
             setNextSteps(e.target.value);
             markDirty();
           }}
           onBlur={flushOnBlur}
-          placeholder="What's the next concrete step here?"
-          rows={2}
-        />
-      )}
+        placeholder="What's the next concrete step here?"
+        rows={2}
+      />
 
       {c.kind !== "project" && aboutDisclosure}
 

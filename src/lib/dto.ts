@@ -418,7 +418,12 @@ export interface ContainerMeetingDTO {
   title: string;
   /** Null for a meeting item with no calendar event behind it (an ad hoc recording). */
   startsAt: string | null;
-  item: MeetingItemDTO;
+  /** Null for a meeting attributed to this container that was never opened or recorded -- a
+   *  series assigned to a project covers occurrences nobody took notes on, and they are still
+   *  that project's meetings. Nothing to link to, so the row is not a link. */
+  item: MeetingItemDTO | null;
+  /** Stable row key when there is no item: the calendar event it came from. */
+  eventId: number | null;
 }
 
 /** One timed thing on the day: the meeting or session Home shows as now, or as what comes next. */
