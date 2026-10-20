@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock, type FocusRun } from "@/db/schema";
+import { items, type CalendarEvent, type Item, type Container, type Person, type Task, type TaskBlock, type FocusRun, type Prediction } from "@/db/schema";
 import { domainOf } from "@/lib/text";
 import { getItemTags, parseMeta } from "@/domain/items";
 import { CaptureError, DuplicateError } from "@/domain/items/capture";
@@ -18,10 +18,11 @@ import { projectProgress, containerProgress, TaskError } from "@/domain/tasks";
 import { blocksByTask, BlockError } from "@/domain/blocks";
 import { GoalError, goalRefsByContainer, goalsWithMeasure, recentCloses, type GoalWithMeasure } from "@/domain/goals";
 import { FocusError, focusMinutesByTask, likeThisMinutesByTask } from "@/domain/focus";
+import { PredictionError } from "@/domain/predictions";
 import { addDays, localDay } from "@/domain/activity";
 import { isInterview, parseAttendeeNames } from "@/domain/activity/calendar";
 import type { Distillation } from "@/domain/distill";
-import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO, FocusRunDTO } from "./dto";
+import type { ActivityMeetingDTO, BlockDTO, ItemDTO, ContainerDTO, PersonDTO, TaskDTO, PlanTaskDTO, PinnedLinkDTO, GoalDTO, GoalDetailDTO, GoalRefDTO, FocusRunDTO, PredictionDTO } from "./dto";
 
 export function serializeItem(db: DB, item: Item): ItemDTO {
   const container = item.containerId ? getContainer(db, item.containerId) : undefined;
@@ -345,6 +346,35 @@ export function serializeFocusRun(run: FocusRun, taskTitle: string): FocusRunDTO
   };
 }
 
+/**
+ * A logged call, as every surface reads it. The kind decides which numbers are present, so they
+ * are carried through as they are stored — null where the kind does not use them — rather than
+ * flattened into one "value" field that the client would then have to un-flatten by kind anyway.
+ */
+export function serializePrediction(p: Prediction): PredictionDTO {
+  return {
+    id: p.id,
+    kind: p.kind,
+    claim: p.claim,
+    containerId: p.containerId,
+    taskId: p.taskId,
+    itemId: p.itemId,
+    unit: p.unit,
+    p50Low: p.p50Low,
+    p50High: p.p50High,
+    p90Low: p.p90Low,
+    p90High: p.p90High,
+    actual: p.actual,
+    probability: p.probability,
+    outcome: p.outcome,
+    resolveBy: p.resolveBy,
+    resolvedAt: p.resolvedAt,
+    notes: p.notes,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+}
+
 export function serializePerson(p: Person & { itemCount?: number; lastContact?: string | null; meetingCount?: number }, itemCount?: number): PersonDTO {
   return {
     id: p.id,
@@ -401,7 +431,8 @@ export function errorResponse(err: unknown): NextResponse {
     err instanceof TaskError ||
     err instanceof BlockError ||
     err instanceof GoalError ||
-    err instanceof FocusError
+    err instanceof FocusError ||
+    err instanceof PredictionError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

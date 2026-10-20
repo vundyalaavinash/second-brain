@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "motion/react";
 import {
   Archive,
   ArrowsClockwise,
+  Ruler,
   BookBookmark,
   CalendarCheck,
   DotsThree,
@@ -46,6 +47,7 @@ const ICONS: Record<IconName, Glyph> = {
   inbox: Tray,
   goal: Target,
   review: ArrowsClockwise,
+  log: Ruler,
   project: Flag,
   area: Stack,
   resource: BookBookmark,

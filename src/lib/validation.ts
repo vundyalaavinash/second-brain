@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, MEETING_DECISIONS, type ReviewStep } from "@/db/enums";
+import { CONTAINER_KINDS, RESOURCE_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, MEETING_DECISIONS, PREDICTION_UNITS, type ReviewStep } from "@/db/enums";
 import { MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES } from "@/domain/focus";
 
 export const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -147,3 +147,74 @@ const _reviewStepsTiedToSaveReviewBody: StepsMatch<ReviewStep, SaveReviewStep> =
 void _reviewStepsTiedToSaveReviewBody;
 
 export const ReviewPlanBody = z.object({ week: CalendarDateString, taskIds: z.array(z.number().int().positive()) }).strict();
+
+/**
+ * A logged call, as a request body. A discriminated union rather than one object of optional
+ * fields, so the shape itself refuses an estimate carrying a probability — the mismatch is a 400
+ * at the edge instead of a silently ignored field. The ranges' arithmetic (the 90% containing the
+ * 50%) is checked in `createPrediction`, where it belongs with the rest of the invariant.
+ */
+const PredictionLinks = {
+  containerId: z.number().int().positive().nullable().optional(),
+  taskId: z.number().int().positive().nullable().optional(),
+  itemId: z.number().int().positive().nullable().optional(),
+  notes: z.string().optional(),
+};
+
+export const CreatePredictionBody = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("estimate"),
+      claim: z.string().min(1),
+      resolveBy: CalendarDateString,
+      unit: z.enum(PREDICTION_UNITS),
+      p50Low: z.number().finite().nonnegative(),
+      p50High: z.number().finite().nonnegative(),
+      p90Low: z.number().finite().nonnegative(),
+      p90High: z.number().finite().nonnegative(),
+      ...PredictionLinks,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("risk"),
+      claim: z.string().min(1),
+      resolveBy: CalendarDateString,
+      probability: z.number().min(0).max(1),
+      ...PredictionLinks,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("call"),
+      claim: z.string().min(1),
+      resolveBy: CalendarDateString,
+      ...PredictionLinks,
+    })
+    .strict(),
+]);
+
+export const PatchPredictionBody = z
+  .object({
+    claim: z.string().min(1).optional(),
+    resolveBy: CalendarDateString.optional(),
+    notes: z.string().optional(),
+    containerId: z.number().int().positive().nullable().optional(),
+    taskId: z.number().int().positive().nullable().optional(),
+    itemId: z.number().int().positive().nullable().optional(),
+  })
+  .strict();
+
+/** `actual` for an estimate, `outcome` for the other two; `unresolve` puts one back to open.
+ *  Exactly one of the three, so a body saying two contradictory things is a 400 rather than
+ *  whichever the server happened to read first. */
+export const ResolvePredictionBody = z
+  .object({
+    actual: z.number().finite().nonnegative().optional(),
+    outcome: z.boolean().optional(),
+    unresolve: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((b) => [b.actual !== undefined, b.outcome !== undefined, b.unresolve !== undefined].filter(Boolean).length === 1, {
+    message: "Say exactly one of an actual, an outcome, or unresolve",
+  });

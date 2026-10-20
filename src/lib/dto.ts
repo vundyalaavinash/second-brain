@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep, MeetingDecision } from "@/db/enums";
+import type { ItemStatus, ItemType, ContainerKind, ContainerStatus, ResourceCategory, GoalHorizon, GoalStatus, FocusOutcome, ReviewStep, MeetingDecision, PredictionKind, PredictionUnit } from "@/db/enums";
 import type { CheckResult } from "@/db/safety";
 import type { Distillation } from "@/domain/distill";
 
@@ -495,6 +495,10 @@ export interface HomeDTO {
    * flag the Goals page and Weekly Review's own Goals step already compute) — named here so
    * the one thing worth a click is a click away, not a trip through /goals to find which. */
   stalledGoals: { id: number; title: string }[];
+  /** Calls whose resolve-by date has passed and which nobody has scored. A count rather than the
+   *  rows, unlike `stalledGoals`: `/log` already puts the overdue ones at the top, so naming them
+   *  twice would only make the quiet line loud. */
+  duePredictions: number;
 }
 
 export interface GoalMeasureDTO {
@@ -622,6 +626,10 @@ export interface ReviewDTO {
      * midnight is attributed to the day it starts, once, here as there. */
     meetings: number;
     projects: { container: ContainerRefDTO; closed: number; percent: number }[];
+    /** Calls logged in the week and calls scored in it. The reps, not the figures: the scores
+     *  are over the whole log and would say nothing about one week. Zero on a review saved
+     *  before the log existed, which is the truth — nothing was recorded. */
+    predictions: { logged: number; resolved: number };
     /** True when these figures are the snapshot frozen in the item's meta at save time rather
      * than a live re-query — a past week whose review has one. A live re-query of `slipped`
      * (still-open tasks) drifts as soon as those tasks are closed, which would otherwise show
@@ -644,4 +652,50 @@ export interface ReviewDTO {
   /** When a step was last saved; null until the first one is — an opened-but-untouched review
    * has nothing to call "saved" yet. */
   savedAt: string | null;
+}
+
+/**
+ * One logged call. The numbers each kind does not use are null: an `estimate` carries the four
+ * range bounds, a unit and later an actual; a `risk` carries a probability and later an outcome;
+ * a `call` carries only an outcome. `resolvedAt` is the single answer to "has this been scored",
+ * whichever kind it is.
+ */
+export interface PredictionDTO {
+  id: number;
+  kind: PredictionKind;
+  claim: string;
+  containerId: number | null;
+  taskId: number | null;
+  itemId: number | null;
+  unit: PredictionUnit | null;
+  p50Low: number | null;
+  p50High: number | null;
+  p90Low: number | null;
+  p90High: number | null;
+  actual: number | null;
+  probability: number | null;
+  /** 1 or 0 once resolved, null while open. */
+  outcome: number | null;
+  resolveBy: string;
+  resolvedAt: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The three figures the log scores itself by. A null score means nothing has resolved yet. */
+export interface PredictionScoresDTO {
+  estimate: { logged: number; resolved: number; inRange: number; percent: number | null };
+  risk: { logged: number; resolved: number; score: number | null };
+  call: { logged: number; resolved: number; hit: number; percent: number | null };
+}
+
+export interface PredictionsDTO {
+  predictions: PredictionDTO[];
+  /** Always over the whole log, not the filtered view — a figure that moved when you clicked a
+   *  filter would read as progress. */
+  scores: PredictionScoresDTO;
+  /** Unresolved and past their date, oldest first. The log's own nag, repeated from Home. */
+  due: PredictionDTO[];
+  today: string;
 }
