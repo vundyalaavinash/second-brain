@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, integer, text, primaryKey, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, integer, text, real, primaryKey, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import {
   ITEM_TYPES,
   ITEM_STATUSES,
@@ -16,10 +16,12 @@ import {
   GOAL_HORIZONS,
   GOAL_STATUSES,
   FOCUS_OUTCOMES,
+  PREDICTION_KINDS,
+  PREDICTION_UNITS,
 } from "./enums";
 
-export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, MEETING_DECISIONS, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES } from "./enums";
-export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, MeetingDecision, CalendarSource, GoalHorizon, GoalStatus, FocusOutcome } from "./enums";
+export { ITEM_TYPES, ITEM_STATUSES, JOB_TYPES, JOB_STATUSES, CONTAINER_KINDS, CONTAINER_STATUSES, RESOURCE_CATEGORIES, TASK_STATUSES, TASK_PRIORITIES, MEETING_STATUSES, MEETING_DECISIONS, CALENDAR_SOURCES, GOAL_HORIZONS, GOAL_STATUSES, FOCUS_OUTCOMES, PREDICTION_KINDS, PREDICTION_UNITS } from "./enums";
+export type { ItemType, ItemStatus, JobType, JobStatus, ContainerKind, ContainerStatus, ResourceCategory, TaskStatus, TaskPriority, MeetingStatus, MeetingDecision, CalendarSource, GoalHorizon, GoalStatus, FocusOutcome, PredictionKind, PredictionUnit } from "./enums";
 
 export const containers = sqliteTable(
   "containers",
@@ -455,3 +457,59 @@ export const focusRuns = sqliteTable(
   ],
 );
 export type FocusRun = typeof focusRuns.$inferSelect;
+
+/**
+ * A call made before the answer is known, and the score it earned once the answer arrived.
+ *
+ * The one thing a second brain cannot reconstruct after the fact is what you *thought* was going
+ * to happen. A task remembers how long it took; nothing remembers the range you gave out loud
+ * beforehand, so nobody can tell whether their estimates are any good. This table is that
+ * memory, and it is one table rather than three because the move is identical in all three
+ * shapes: write it down, put a date on when it resolves, then come back and be honest.
+ *
+ * The kind-specific numbers are nullable because each kind uses its own, and only its own:
+ * `createPrediction` builds the row from the kind rather than from whatever the caller passed,
+ * so an estimate can never end up carrying a probability. A row is resolved exactly when
+ * `resolvedAt` is set — the open-set query reads that one column rather than guessing from
+ * whichever payload column the kind happens to use.
+ */
+export const predictions = sqliteTable(
+  "predictions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind", { enum: PREDICTION_KINDS }).notNull(),
+    /** The claim, specific enough to be checkable later by someone who has forgotten it. */
+    claim: text("claim").notNull(),
+    /** What it is about, when it is about something already written down. All optional: a call
+     *  made in a corridor is still worth logging, and losing its subject must not lose it. */
+    containerId: integer("container_id").references(() => containers.id, { onDelete: "set null" }),
+    taskId: integer("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    itemId: integer("item_id").references(() => items.id, { onDelete: "set null" }),
+    /** `estimate` only. Two ranges, because one number is a wish: the 50% you think is likely
+     *  and the 90% you would be surprised to land outside. `actual` is what it really took. */
+    unit: text("unit", { enum: PREDICTION_UNITS }),
+    p50Low: real("p50_low"),
+    p50High: real("p50_high"),
+    p90Low: real("p90_low"),
+    p90High: real("p90_high"),
+    actual: real("actual"),
+    /** `risk` only: 0..1, the stated chance it happens. */
+    probability: real("probability"),
+    /** `risk` and `call`: 1 if it happened (or the call was right), 0 if not. */
+    outcome: integer("outcome"),
+    /** The date by which the answer will be known. What makes the log nag rather than rot. */
+    resolveBy: text("resolve_by").notNull(),
+    resolvedAt: text("resolved_at"),
+    notes: text("notes").notNull().default(""),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("predictions_kind_idx").on(t.kind),
+    // The two queries that run on every page load: what is overdue to resolve, and the log in
+    // reverse order. Both read `resolved_at` first, so it leads the index.
+    index("predictions_open_idx").on(t.resolvedAt, t.resolveBy),
+    index("predictions_created_idx").on(t.createdAt),
+  ],
+);
+export type Prediction = typeof predictions.$inferSelect;

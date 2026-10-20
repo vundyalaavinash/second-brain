@@ -73,3 +73,18 @@ export const REVIEW_STEP_LABELS: Record<ReviewStep, string> = {
   goals: "Goals",
   ahead: "Look ahead",
 };
+
+/**
+ * The three shapes a call can take, all of them "say it before you know".
+ *
+ * `estimate` carries two ranges and an actual: how long something will take, scored by whether
+ * the actual landed inside the 90% range. `risk` carries a probability and a yes/no outcome,
+ * scored by Brier. `call` carries neither number — it is a bare claim scored right or wrong,
+ * which is what a root-cause guess before reading the postmortem is.
+ */
+export const PREDICTION_KINDS = ["estimate", "risk", "call"] as const;
+export type PredictionKind = (typeof PREDICTION_KINDS)[number];
+
+/** What an estimate's numbers count. Calibration is unit-blind, so this is only for display. */
+export const PREDICTION_UNITS = ["hours", "days", "weeks"] as const;
+export type PredictionUnit = (typeof PREDICTION_UNITS)[number];
