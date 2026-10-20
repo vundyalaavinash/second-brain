@@ -29,13 +29,14 @@ interface Props {
   review: HomeDTO["review"];
   meetingShare: HomeDTO["meetingShare"];
   stalledGoals: HomeDTO["stalledGoals"];
+  duePredictions: HomeDTO["duePredictions"];
   onHours: (workHours: string) => void;
   onWorkingDays: (workingDays: number[]) => void;
 }
 
 /** Whether the week has anything worth its own quiet line under today's figures. */
-function hasWeekLine(meetingShare: HomeDTO["meetingShare"], stalledGoals: HomeDTO["stalledGoals"], review: HomeDTO["review"]): boolean {
-  return meetingShare.minutes > 0 || stalledGoals.length > 0 || review.due;
+function hasWeekLine(meetingShare: HomeDTO["meetingShare"], stalledGoals: HomeDTO["stalledGoals"], review: HomeDTO["review"], duePredictions: number): boolean {
+  return meetingShare.minutes > 0 || stalledGoals.length > 0 || review.due || duePredictions > 0;
 }
 
 /**
@@ -52,7 +53,7 @@ function hasWeekLine(meetingShare: HomeDTO["meetingShare"], stalledGoals: HomeDT
  * week has a review it renders nothing at all, not even a tick, because this is a nudge and the
  * research behind it is explicit that the nagging version is the one people turn off.
  */
-export function TopBand({ day, counts, focus, review, meetingShare, stalledGoals, onHours, onWorkingDays }: Props) {
+export function TopBand({ day, counts, focus, review, meetingShare, stalledGoals, duePredictions, onHours, onWorkingDays }: Props) {
   return (
     <header className="flex flex-col gap-2">
       <DateHeader
@@ -73,7 +74,7 @@ export function TopBand({ day, counts, focus, review, meetingShare, stalledGoals
         {/* What the day has cost so far — nowhere of its own to lead to yet, so it is read, not linked. */}
         <li>{focus.minutes === 0 ? "Nothing focused yet" : `${formatDuration(focus.minutes * 60_000)} focused`}</li>
       </ul>
-      {hasWeekLine(meetingShare, stalledGoals, review) && (
+      {hasWeekLine(meetingShare, stalledGoals, review, duePredictions) && (
         <ul className="list-none m-0 p-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-fg-faint">
           {/* This week's meeting load, the audit's own figure — reused, not re-derived, so the
             * two can never disagree about the same week. Zero reads as a fact, not a nudge: a
@@ -96,6 +97,15 @@ export function TopBand({ day, counts, focus, review, meetingShare, stalledGoals
             <li>
               <Link href="/review" className="focus-ring rounded-sm hover:text-fg transition-colors duration-150">
                 Review your week
+              </Link>
+            </li>
+          )}
+          {/* A call whose answer is already knowable. Said plainly, because the honest figures
+            * the log produces depend entirely on these being gone back to. */}
+          {duePredictions > 0 && (
+            <li>
+              <Link href="/log" className="focus-ring rounded-sm hover:text-fg transition-colors duration-150">
+                {count(duePredictions, "call")} to score
               </Link>
             </li>
           )}

@@ -62,6 +62,7 @@ export async function PATCH(req: Request): Promise<Response> {
       focusRuns: current.back.focusRuns,
       meetings: current.back.meetings,
       projects: current.back.projects.map((p) => ({ containerId: p.container.id, name: p.container.name, closed: p.closed, percent: p.percent })),
+      predictions: current.back.predictions,
     };
     saveReviewStep(db, week, body.step, body.value, snapshot);
     const item = getReview(db, week)!;

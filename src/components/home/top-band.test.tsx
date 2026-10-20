@@ -28,6 +28,7 @@ function band(
   review: HomeDTO["review"] = NOT_DUE,
   meetingShare: HomeDTO["meetingShare"] = NO_MEETING_LOAD,
   stalledGoals: HomeDTO["stalledGoals"] = [],
+  duePredictions: HomeDTO["duePredictions"] = 0,
 ) {
   render(
     <TopBand
@@ -37,6 +38,7 @@ function band(
       review={review}
       meetingShare={meetingShare}
       stalledGoals={stalledGoals}
+      duePredictions={duePredictions}
       onHours={() => {}}
       onWorkingDays={() => {}}
     />,
@@ -138,5 +140,19 @@ describe("TopBand", () => {
   it("says nothing about stalled goals when there are none", () => {
     band({ planned: 3, meetings: 2, inbox: 4 });
     expect(screen.queryByText(/stalled/)).toBeNull();
+  });
+});
+
+describe("the week line's calls to score", () => {
+  it("names how many calls are waiting to be scored and links to the log", () => {
+    band({ planned: 0, meetings: 0, inbox: 0 }, undefined, undefined, undefined, [], 3);
+    expect(screen.getByRole("link", { name: "3 calls to score" }).getAttribute("href")).toBe("/log");
+  });
+
+  /** A log with nothing overdue is not something to fix, so it drops off the line entirely
+   *  rather than reading "0 calls to score". */
+  it("says nothing when none is overdue", () => {
+    band({ planned: 0, meetings: 0, inbox: 0 }, undefined, undefined, undefined, [], 0);
+    expect(screen.queryByText(/to score/)).toBeNull();
   });
 });

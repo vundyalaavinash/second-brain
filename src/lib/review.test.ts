@@ -8,6 +8,7 @@ import { createItem } from "@/domain/items";
 import { addToPlan } from "@/domain/plan";
 import { openReview, saveReviewStep } from "@/domain/review";
 import { completeTask, createTask, dropTask } from "@/domain/tasks";
+import { createPrediction, resolvePrediction } from "@/domain/predictions";
 import { reviewPayload } from "./review";
 
 const WEEK = "2026-09-21"; // Monday
@@ -124,7 +125,7 @@ describe("reviewPayload", () => {
   it("is empty in every figure for a week with nothing in it", () => {
     const payload = reviewPayload(t.db, WEEK, NOW);
     expect(payload.clear).toEqual({ inbox: 0, leftover: [] });
-    expect(payload.back).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], frozen: false });
+    expect(payload.back).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], predictions: { logged: 0, resolved: 0 }, frozen: false });
     expect(payload.goals).toEqual([]);
     expect(payload.ahead.due).toEqual([]);
     expect(payload.ahead.deadlines).toEqual([]);
@@ -270,5 +271,29 @@ describe("reviewPayload", () => {
     expect(payload.current).toBe(true);
     expect(payload.back.frozen).toBe(false);
     expect(payload.back.done).toBe(0);
+  });
+});
+
+describe("the week's calls", () => {
+  /** Logged counts by when the call was made; scored counts by when it was gone back to. Going
+   *  back on Wednesday to score something called months ago is this week's rep, not that one's. */
+  it("counts calls made this week and calls scored this week separately", () => {
+    // Made in June, scored on the Wednesday of the week under test: one rep for this week's
+    // scoring and none for its logging.
+    const earlier = createPrediction(t.db, { kind: "call", claim: "called long ago", resolveBy: WEEK });
+    resolvePrediction(t.db, earlier.id, { outcome: true });
+    t.db.$client.prepare("UPDATE predictions SET created_at = ?, resolved_at = ? WHERE id = ?").run(noon("2026-06-01"), noon("2026-09-23"), earlier.id);
+
+    // Made inside the week and not yet scored: the mirror image.
+    const fresh = createPrediction(t.db, { kind: "call", claim: "called this week", resolveBy: NEXT_WEEK });
+    t.db.$client.prepare("UPDATE predictions SET created_at = ? WHERE id = ?").run(noon("2026-09-22"), fresh.id);
+
+    expect(reviewPayload(t.db, WEEK, NOW).back.predictions).toEqual({ logged: 1, resolved: 1 });
+  });
+
+  it("ignores a call made in another week entirely", () => {
+    const other = createPrediction(t.db, { kind: "call", claim: "elsewhere", resolveBy: WEEK });
+    t.db.$client.prepare("UPDATE predictions SET created_at = ?, resolved_at = ? WHERE id = ?").run(noon("2026-06-01"), noon("2026-06-02"), other.id);
+    expect(reviewPayload(t.db, WEEK, NOW).back.predictions).toEqual({ logged: 0, resolved: 0 });
   });
 });

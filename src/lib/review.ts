@@ -8,6 +8,7 @@ import { goalsWithMeasure } from "@/domain/goals";
 import { countInbox } from "@/domain/items";
 import { type PlanTask } from "@/domain/plan";
 import { getReview, nextStep, reviewAnswers, reviewSavedAt, reviewSnapshot, type ReviewSnapshot } from "@/domain/review";
+import { listPredictions } from "@/domain/predictions";
 import { containerProgress, listTasks } from "@/domain/tasks";
 import { localDay } from "./time";
 import { nextWeek, weekDays, weekEnd, weekLabel, weekStart } from "./week";
@@ -122,6 +123,22 @@ function snapshotProjects(db: DB, snapshot: ReviewSnapshot): ReviewDTO["back"]["
 }
 
 /**
+ * The week's reps in the prediction log: calls made, and calls scored.
+ *
+ * `end` is the following Monday, so both bounds are days and the resolved side counts by
+ * `resolvedAt` rather than by when the call was made — going back on Friday to score something
+ * you called a month ago is the rep this is measuring, and it belongs to the week you did it in.
+ */
+function weekPredictions(db: DB, week: string, end: string): { logged: number; resolved: number } {
+  const rows = listPredictions(db, { state: "all" });
+  const inWeek = (at: string) => at >= week && at < end;
+  return {
+    logged: rows.filter((r) => inWeek(r.createdAt.slice(0, 10))).length,
+    resolved: rows.filter((r) => r.resolvedAt !== null && inWeek(r.resolvedAt.slice(0, 10))).length,
+  };
+}
+
+/**
  * The whole review payload for one week: the record it has written so far, and the figures the
  * four panes read. Every figure comes from the domain that already owns it — `countInbox` for
  * the inbox badge, `focusSummary` for booked time, `goalsWithMeasure` for goal progress, the same
@@ -153,9 +170,13 @@ export function reviewPayload(db: DB, week: string, now: Date): ReviewDTO {
   const focus = snapshot ? { minutes: snapshot.focusMinutes, runs: snapshot.focusRuns } : focusSummary(db, window, now);
   const meetingCount = snapshot ? snapshot.meetings : listMeetings(db, window).filter(isCountableMeeting).length;
 
+  // Reps, not scores: how many calls were logged in the week and how many were gone back to.
+  // The three scores are over the whole log and would mean nothing cut to seven days.
+  const weekCalls = snapshot ? (snapshot.predictions ?? { logged: 0, resolved: 0 }) : weekPredictions(db, week, end);
+
   const back: ReviewDTO["back"] = snapshot
-    ? { done: snapshot.done, dropped: snapshot.dropped, slipped: snapshot.slipped, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: snapshotProjects(db, snapshot), frozen: true }
-    : { done: doneRows.length, dropped: droppedRows.length, slipped: leftover.length, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: weekProjects(db, doneRows), frozen: false };
+    ? { done: snapshot.done, dropped: snapshot.dropped, slipped: snapshot.slipped, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: snapshotProjects(db, snapshot), predictions: weekCalls, frozen: true }
+    : { done: doneRows.length, dropped: droppedRows.length, slipped: leftover.length, focusMinutes: focus.minutes, focusRuns: focus.runs, meetings: meetingCount, projects: weekProjects(db, doneRows), predictions: weekCalls, frozen: false };
 
   // A week's movement cannot come from days it hasn't reached yet: a week still in progress is
   // measured as of today, and a week already closed is measured as of its own last day, never

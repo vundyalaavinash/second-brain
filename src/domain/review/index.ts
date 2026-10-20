@@ -32,6 +32,10 @@ export interface ReviewSnapshot {
   focusRuns: number;
   meetings: number;
   projects: { containerId: number; name: string; closed: number; percent: number }[];
+  /** Optional, because every review saved before the prediction log existed has none. A missing
+   *  key reads as zero reps rather than as a figure to go and re-derive: the whole point of a
+   *  frozen snapshot is that it is not re-derived. */
+  predictions?: { logged: number; resolved: number };
 }
 
 /**

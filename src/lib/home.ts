@@ -9,6 +9,7 @@ import { containerProgress, getTask } from "@/domain/tasks";
 import { focusSummary, runningFocus } from "@/domain/focus";
 import { getReview } from "@/domain/review";
 import { goalsWithMeasure } from "@/domain/goals";
+import { duePredictions } from "@/domain/predictions";
 import { weeklyMeetingShare } from "@/domain/meetings/audit";
 import { serializeFocusRun } from "./api";
 import { daysBetween } from "./deadline";
@@ -239,5 +240,8 @@ export function homePayload(db: DB, now: Date): HomeDTO {
     review: reviewPrompt(db, date),
     meetingShare: meetingLoad(db, date),
     stalledGoals: stalledGoals(db, date),
+    // The log's nag. Counted here rather than on `/log` so it is seen without being looked for:
+    // an unresolved prediction nobody goes back to is what turns the log into a diary.
+    duePredictions: duePredictions(db, date).length,
   };
 }

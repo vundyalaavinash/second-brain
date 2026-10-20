@@ -13,7 +13,15 @@ const ROW_VALUE = "font-mono text-[13px] text-fg";
  * already compute — a small table, not a paragraph re-deriving them in prose.
  */
 export function StepBack({ back, value, onChange }: { back: ReviewDTO["back"]; value: string; onChange: (value: string) => void }) {
-  const empty = back.done === 0 && back.dropped === 0 && back.slipped === 0 && back.focusMinutes === 0 && back.meetings === 0 && back.projects.length === 0;
+  const empty =
+    back.done === 0 &&
+    back.dropped === 0 &&
+    back.slipped === 0 &&
+    back.focusMinutes === 0 &&
+    back.meetings === 0 &&
+    back.projects.length === 0 &&
+    back.predictions.logged === 0 &&
+    back.predictions.resolved === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -33,6 +41,10 @@ export function StepBack({ back, value, onChange }: { back: ReviewDTO["back"]; v
                   ["Still open", back.slipped],
                   ["Focus time", `${formatMinutes(back.focusMinutes)} over ${back.focusRuns} run${back.focusRuns === 1 ? "" : "s"}`],
                   ["Meetings", back.meetings],
+                  // The two reps the prediction log asks for every week: calls made, and calls
+                  // gone back to. Said as one row because they only mean anything together --
+                  // logging ten and scoring none is the failure mode worth seeing.
+                  ["Calls logged", `${back.predictions.logged} logged, ${back.predictions.resolved} scored`],
                 ] as const
               ).map(([label, val]) => (
                 <tr key={label} className="hairline-row">

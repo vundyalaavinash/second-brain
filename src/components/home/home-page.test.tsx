@@ -39,6 +39,7 @@ function payload(over: Partial<HomeDTO> = {}): HomeDTO {
     review: { due: false },
     meetingShare: { minutes: 0, workingMinutes: 2700 },
     stalledGoals: [],
+    duePredictions: 0,
     ...over,
   };
 }

@@ -24,7 +24,7 @@ function payload(over: Partial<ReviewDTO> = {}): ReviewDTO {
     step: "clear",
     answers: {},
     clear: { inbox: 0, leftover: [] },
-    back: { done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], frozen: false },
+    back: { done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], predictions: { logged: 0, resolved: 0 }, frozen: false },
     goals: [],
     ahead: { week: NEXT_WEEK, due: [], deadlines: [], meetings: [] },
     savedAt: null,

@@ -94,6 +94,7 @@ export function HomePage({ initial }: { initial: HomeDTO }) {
         review={data.review}
         meetingShare={data.meetingShare}
         stalledGoals={data.stalledGoals}
+        duePredictions={data.duePredictions}
         onHours={saveHours}
         onWorkingDays={saveWorkingDays}
       />

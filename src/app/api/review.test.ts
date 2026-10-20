@@ -112,7 +112,7 @@ describe("review api", () => {
     await r.review.PATCH(json("PATCH", "/api/review", { week, step: "clear", value: "Cleared." }));
     const item = getReview(getDb(), week);
     expect(item).toBeDefined();
-    expect(reviewSnapshot(item!)).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [] });
+    expect(reviewSnapshot(item!)).toEqual({ done: 0, dropped: 0, slipped: 0, focusMinutes: 0, focusRuns: 0, meetings: 0, projects: [], predictions: { logged: 0, resolved: 0 } });
   });
 
   it("defaults to the current week when none is given — the week actually named, not merely a 200", async () => {
