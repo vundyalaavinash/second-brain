@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskDTO, ProgressDTO } from "@/lib/dto";
 import type { TaskPriority } from "@/db/enums";
 import { quickParse } from "@/domain/tasks/quick-parse";
-import { todayLocal } from "../activity/format";
 import { Button, Input, List } from "../ui";
 import { TaskRow } from "./task-row";
 
@@ -143,14 +142,18 @@ export function TaskList({ containerId, initialTasks, onProgress, onTasks, today
    */
   const [plannedIds, setPlannedIds] = useState<Set<number>>(new Set());
 
+  // `today` rather than the wall clock, which is what every other date in this tree already
+  // reads. The two disagreed: the row's submenu offered the prop's seven days while the bare
+  // "Plan for today" wrote to whatever day the browser was on, so a page still open after
+  // midnight read one day's plan and wrote to another's.
   const loadPlan = useCallback(() => {
     void (async () => {
-      const res = await fetch(`/api/plan?date=${todayLocal()}`, { cache: "no-store" }).catch(() => null);
+      const res = await fetch(`/api/plan?date=${today}`, { cache: "no-store" }).catch(() => null);
       if (!res?.ok) return;
       const body = (await res.json()) as { tasks: { id: number }[] };
       setPlannedIds(new Set(body.tasks.map((t) => t.id)));
     })();
-  }, []);
+  }, [today]);
 
   useEffect(() => {
     loadPlan();
@@ -159,8 +162,8 @@ export function TaskList({ containerId, initialTasks, onProgress, onTasks, today
     return () => window.removeEventListener("sb:plan-changed", loadPlan);
   }, [loadPlan]);
 
-  /** Adds to, or takes off, a day's plan. `date` defaults to today. */
-  function togglePlan(id: number, date = todayLocal()) {
+  /** Adds to, or takes off, a day's plan. `date` defaults to the day this list is rendered for. */
+  function togglePlan(id: number, date = today) {
     const on = plannedIds.has(id);
     // Moved before the request: the row's label flips immediately, and the reload below is what
     // settles it if the write did not land.

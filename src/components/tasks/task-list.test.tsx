@@ -165,7 +165,9 @@ describe("planning from the list", () => {
     await openMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from plan" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/api/plan" && c.method === "DELETE")).toBe(true));
-    expect(calls.find((c) => c.method === "DELETE")!.body).toEqual({ date: "2026-10-17", taskId: base.id });
+    // The day this list was rendered for, not whatever day the test machine is on: that is the
+    // whole reason `today` is a prop here.
+    expect(calls.find((c) => c.method === "DELETE")!.body).toEqual({ date: "2026-09-16", taskId: base.id });
   });
 
   it("stops listening for plan changes once it unmounts", async () => {

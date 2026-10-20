@@ -38,9 +38,13 @@ export function BreakOffer() {
   const onBreak = breakState.endsAt !== null;
 
   // Read inside the listener below, which is registered once: without a ref it would close over
-  // whatever the break was on first render and never see a later one.
+  // whatever the break was on first render and never see a later one. Written in an effect
+  // rather than during render -- the listener only ever reads it in response to an event, long
+  // after paint, so there is nothing to gain from writing it earlier and React forbids it.
   const running = useRef(onBreak);
-  running.current = onBreak;
+  useEffect(() => {
+    running.current = onBreak;
+  }, [onBreak]);
 
   useEffect(() => {
     function onCompleted(e: Event) {
