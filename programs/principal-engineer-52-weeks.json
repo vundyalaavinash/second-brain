@@ -1,0 +1,478 @@
+{
+  "areas": [
+    {
+      "name": "Principal Engineer Plan",
+      "description": "52 weeks of deliberate practice: Senior Staff to top 1% Principal. Four quarters, each with an exit gate. Practice deliberately, measure honestly, don't stop.",
+      "standard": "People fear bringing bad work to me. They never fear me. They love me because I make their work better and give them credit for it.",
+      "nextSteps": "Read the standard every Monday. Name the one thing only you can do this week.",
+      "notes": [
+        {
+          "title": "The ten rules",
+          "body": "1. Fear attaches to the work, never the person. Critique the design. Respect the engineer.\n2. Publish your bar. People can only rise to a standard they can see.\n3. Apply one standard to everyone.\n4. Be precise, not harsh. Point to the line, the trace, the number.\n5. Never soften a real blocker. Calm, specific and unmovable beats loud.\n6. Praise in public, specifically.\n7. Follow up on conditions.\n8. Own your mistakes first and out loud.\n9. Speak last in meetings. Summarise both sides better than they did, then decide.\n10. Bring leaders decisions, not problems: two options, your recommendation, the risk of each.\n\nWarning sign: if people stop showing you half-formed ideas, your fear has leaked from the work onto you. Add warmth. Keep the bar."
+        },
+        {
+          "title": "Operating rhythm",
+          "body": "Daily: 90-minute deep block, protected. Log every estimate and risk call before saying it. One specific piece of public praise.\n\nWeekly: Monday, the one thing only you can do. 3-4 hours of lab work. 1 hour of mentoring. One public postmortem with the root cause predicted first. Friday, the weekly review.\n\nMonthly: score the estimate log (what % landed inside the 90% range?). Score the risk log (Brier). Reread decision-journal entries from 1 and 3 months ago. Manager check-in.\n\nQuarterly: pass the gate. Ask a peer, a junior and a leader: more of, less of? Score all seven goals 1-5. Ask: do people still bring me half-formed ideas? Rebalance time toward the lagging goal."
+        },
+        {
+          "title": "Weekly time budget",
+          "body": "Priority check - Monday morning, 20 min - name the one thing only you can do this week.\nDeep block - every workday morning, 90 min x 5 - design, review, writing. No meetings, no chat.\nLab block - one evening or weekend morning, 3-4 h - build, break, measure.\nMentoring - fixed weekly slot, 1 h - required for G6.\nFriday score - end of day, 10 min - the weekly review."
+        },
+        {
+          "title": "Review checklist v1",
+          "body": "Tier every item: B blocking, I important, N nit. Rewrite this in week 9 from your own misses.\n\nProblem - Is this the right problem? What happens if we do nothing? Is there a simpler option?\nApproach - Why this design over the two obvious alternatives? What does it cost at 10x scale?\nFailure - Dependency slow, not down? Message duplicated or out of order? Partial deploy? Rollback path?\nData - Is every write idempotent? Where can two systems disagree? How do we reconcile?\nLoad - Where is the backpressure? What bounds the queue, the pool, the retry?\nObservability - How do we know it broke before a customer does? Which alert, which dashboard?\nSecurity - Who can call this? What leaks if logs, caches or prompts are exposed?\nCost - What does it cost per month at today's volume and at peak?\nOperability - Who gets paged at 3 a.m.? Can they fix it without the author?\n\nEnd every review with one line: Approve, Approve with conditions, or Rework, plus the single most important reason."
+        },
+        {
+          "title": "Estimation and risk method",
+          "body": "Estimation: reference class first - ask how long the last three similar pieces of work took, anchor there, then adjust. Always give two ranges: 50% likely, 90% you would be surprised to land outside. Separate effort from calendar; reviews, dependencies and integration often double calendar time. Score monthly: if fewer than 85% of actuals land inside your 90% range, widen your ranges.\n\nRisk: pre-mortem - 'it is six months later and this failed, why?' Everyone writes silently for five minutes first. Rate each risk on likelihood, blast radius and detectability; undetectable risks get the most attention. State risk as a probability and a resolve-by date. Brier = (probability - outcome)^2, averaged. 0.25 is a coin flip; target under 0.20.\n\nBoth logs live in /log. Write the call down before you say it out loud."
+        },
+        {
+          "title": "Turn the job into the training ground",
+          "body": "Design reviews -> write four layers: right problem, right approach, production failure, details. End with a one-line verdict.\nGiving estimates -> log the 50% and 90% range before you say the number out loud.\nProject kickoffs -> run a 30-minute pre-mortem. Log the top risks with probabilities.\nIncidents -> write your root-cause guess before reading the analysis. Score it.\nArchitecture decisions -> write a decision-journal entry. Name what would prove you wrong.\nMeetings you chair -> speak last. Summarise both sides. Decide."
+        },
+        {
+          "title": "Handling slippage",
+          "body": "Never miss twice in a row. One missed week is noise; two is a new habit.\nShrink, don't skip. No time for a 90-minute kata? Do 20 minutes. Keep the chain alive.\nRebalance quarterly, not weekly. Move time to lagging goals at the quarter review. Don't redesign the plan every week."
+        }
+      ],
+      "tasks": [
+        {
+          "title": "Audit one week of calendar; mark every meeting where I add nothing unique",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Decline or delegate at least half of those meetings",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Block 90 minutes every weekday morning for the next 13 weeks",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Block one 3-4 hour lab session every week",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Tell my manager the three goals for the quarter; ask for a monthly check-in",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Find one training partner to swap design katas with every two weeks",
+          "dueDate": "2026-11-08"
+        }
+      ]
+    }
+  ],
+  "goals": [
+    {
+      "title": "G1 Understand distributed systems by breaking them",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "70%+ of failure predictions correct in the lab and at work.",
+      "notes": "Predict how a system fails before you test it, and be right most of the time. Log every prediction in /log as a call.",
+      "links": [
+        "Q1 Lab and instruments",
+        "Q3 Bring it to work"
+      ]
+    },
+    {
+      "title": "G2 Be an elite reviewer",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "Catch 70%+ of root causes in cold reviews of designs that later failed.",
+      "notes": "Find the flaw before production does. Teams answer your questions in the doc before you ask. Baseline in week 8; +15 points by the Q2 gate.",
+      "links": [
+        "Q1 Lab and instruments",
+        "Q2 Elite reviewer and GenAI fluency",
+        "Q3 Bring it to work"
+      ]
+    },
+    {
+      "title": "G3 Estimate and assess risk accurately",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "90% ranges contain the actual 85%+ of the time. Brier under 0.20.",
+      "notes": "Give ranges, not guesses. Both figures are the ones /log computes; 0.25 is a coin flip.",
+      "links": [
+        "Q1 Lab and instruments"
+      ]
+    },
+    {
+      "title": "G4 Lead with GenAI, not just use it",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "One agent and one eval harness built from scratch. One AI practice adopted by 2+ teams.",
+      "notes": "Build agents and eval harnesses yourself. Change how other teams build with AI.",
+      "links": [
+        "Q2 Elite reviewer and GenAI fluency",
+        "Q3 Bring it to work"
+      ]
+    },
+    {
+      "title": "G5 Be completely reliable",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "Zero missed commitments without prior renegotiation, tracked weekly.",
+      "notes": "Every commitment lands, or you renegotiate before the deadline, never after.",
+      "links": [
+        "Q3 Bring it to work",
+        "Q4 Move the organization"
+      ]
+    },
+    {
+      "title": "G6 Move the organization and grow people",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "One major proposal decided. Two mentees with clear progress toward Staff.",
+      "notes": "Change what gets funded. Make other engineers visibly better.",
+      "links": [
+        "Q4 Move the organization"
+      ]
+    },
+    {
+      "title": "G7 Stay current in design",
+      "horizon": "year",
+      "targetDate": "2027-10-24",
+      "outcome": "20+ timed design katas completed, each with a written gap list.",
+      "notes": "Hold your own in any architecture debate, in any domain. 90 minutes each, no lookups, constraints written first.",
+      "links": [
+        "Q1 Lab and instruments",
+        "Q2 Elite reviewer and GenAI fluency"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Q1 Lab and instruments",
+      "deadline": "2027-01-24",
+      "goal": "A lab system I can break on purpose, and the three logs that measure my judgement.",
+      "description": "Weeks 1-13 (2026-10-26 to 2027-01-24). Measure everything. Break things on purpose. Goals in focus: G1 systems, G3 estimation and risk, G2 reviewing.",
+      "tasks": [
+        {
+          "title": "Wk 1 - Create the three logs and enter the first estimate and risk call",
+          "dueDate": "2026-11-01",
+          "notes": "Estimates (50% and 90% range, actual), risk calls (probability, outcome), decisions. These live in /log."
+        },
+        {
+          "title": "Wk 1 - Estimate the whole Q1 lab build before starting it, and log it",
+          "dueDate": "2026-11-01"
+        },
+        {
+          "title": "Wk 2-4 - Build a small distributed system in a domain I don't know",
+          "dueDate": "2026-11-22",
+          "notes": "API gateway, order service with a database, queue consumer, notification service, a cache. Containers, with metrics, logs and tracing from day one. Deliverable: working system and dashboard, actual vs estimated build time."
+        },
+        {
+          "title": "Wk 5 - Break it: slow dependencies",
+          "dueDate": "2026-11-29",
+          "notes": "Predict with a probability what breaks, how fast, which alerts. Then inject latency; watch timeouts, thread pools, retry storms. Deliverable: prediction vs reality write-up."
+        },
+        {
+          "title": "Wk 6 - Break it: messaging",
+          "dueDate": "2026-12-06",
+          "notes": "Duplicate messages, out-of-order delivery, consumer crash mid-batch, rebalance. Predict first, then run, then add idempotency where it failed."
+        },
+        {
+          "title": "Wk 7 - Break it: data",
+          "dueDate": "2026-12-13",
+          "notes": "Cache stampede, database failover, partial writes across two services. Predict first, then run, then fix. Deliverable: failure atlas for the lab."
+        },
+        {
+          "title": "Wk 8 - Postmortem drill: five public postmortems, root cause predicted first",
+          "dueDate": "2026-12-20",
+          "notes": "Read only the architecture and context, write how you think it failed, then read the real root cause. Deliverable: catch-rate baseline for G2."
+        },
+        {
+          "title": "Wk 9 - Build review checklist v1 from what broke and what I missed",
+          "dueDate": "2026-12-27",
+          "notes": "Tier every item: blocking, important, nit. Used on every review from now on."
+        },
+        {
+          "title": "Wk 10 - Design katas 1-3: global rate limiter, double-entry ledger, real-time leaderboard",
+          "dueDate": "2027-01-03",
+          "notes": "90 minutes each. Constraints first: team size, budget, deadline. Compare with a strong public reference and list the gaps."
+        },
+        {
+          "title": "Wk 11 - Estimation calibration: 15 real tasks and 5 lab tasks with 50/90 ranges",
+          "dueDate": "2027-01-10",
+          "notes": "Deliverable: first reference-class table."
+        },
+        {
+          "title": "Wk 12-13 - Three-person feedback ask, score the logs, finish what slipped",
+          "dueDate": "2027-01-24",
+          "notes": "Ask one peer, one junior and one leader: what should I do more of, and less of? Protecting slack is part of G5. Deliverable: Q1 review with three changes for Q2."
+        },
+        {
+          "title": "Gate: lab system runs with metrics and tracing",
+          "dueDate": "2027-01-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: three failure classes tested with logged predictions",
+          "dueDate": "2027-01-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: postmortem catch-rate baseline recorded",
+          "dueDate": "2027-01-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: review checklist v1 in use",
+          "dueDate": "2027-01-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: 20+ estimates logged",
+          "dueDate": "2027-01-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        }
+      ]
+    },
+    {
+      "name": "Q2 Elite reviewer and GenAI fluency",
+      "deadline": "2027-04-25",
+      "goal": "A reviewer's eye trained against the best in open source, and an eval harness I built myself.",
+      "description": "Weeks 14-26 (2027-01-25 to 2027-04-25). Train your eye against the best reviewers in open source. Learn where AI helps and where it lies. Goals in focus: G2 reviewing, G4 GenAI, G7 design.",
+      "tasks": [
+        {
+          "title": "Wk 14-15 - Review six public design proposals cold, in four layers",
+          "dueDate": "2027-02-07",
+          "notes": "Kafka KIPs, Kubernetes KEPs or Rust RFCs. Read only the proposal, review, then read the real discussion: what did senior maintainers catch that you missed? Deliverable: six reviews with gap lists."
+        },
+        {
+          "title": "Wk 16-17 - Agentic coding daily; log where AI works and where it lies",
+          "dueDate": "2027-02-21",
+          "notes": "One refactor, one test suite, one 'explain this codebase' question every day. Have an agent add a feature to the lab and review it with the checklist. Log hallucinations, time saved, and subtly wrong concurrency or retry code."
+        },
+        {
+          "title": "Wk 18-19 - Build an eval harness with a 30-example golden set",
+          "dueDate": "2027-03-07",
+          "notes": "Task: extract risks from a design doc. Automate scoring. Compare two prompts or two models. Deliverable: working harness and results table."
+        },
+        {
+          "title": "Wk 20-21 - Build a review agent and measure its precision and recall",
+          "dueDate": "2027-03-21",
+          "notes": "It reviews a design doc against my checklist and uses tools to look things up. Test it on the week-8 postmortems and week-14 proposals. Deliverable: precision, recall and an honest verdict."
+        },
+        {
+          "title": "Wk 22-23 - Design katas 4-7: retrieval, agent orchestration, LLM gateway with cost controls, semantic cache",
+          "dueDate": "2027-04-04"
+        },
+        {
+          "title": "Wk 24-25 - Second drill: five new postmortems and three new proposals, cold",
+          "dueDate": "2027-04-18",
+          "notes": "Deliverable: catch rate vs the week-8 baseline."
+        },
+        {
+          "title": "Wk 26 - Mid-year review: rescore calibration, repeat the feedback ask, rebalance",
+          "dueDate": "2027-04-25"
+        },
+        {
+          "title": "Gate: six public proposals reviewed and compared",
+          "dueDate": "2027-04-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: eval harness runs and produces a results table",
+          "dueDate": "2027-04-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: review agent measured for precision and recall",
+          "dueDate": "2027-04-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: catch rate at baseline + 15 points or better",
+          "dueDate": "2027-04-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: seven design katas done in total",
+          "dueDate": "2027-04-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        }
+      ]
+    },
+    {
+      "name": "Q3 Bring it to work",
+      "deadline": "2027-07-25",
+      "goal": "A GenAI tool shipped with an eval report, two teams using it, and my area's reliability measured.",
+      "description": "Weeks 27-39 (2027-04-26 to 2027-07-25). Everything practised now produces results other people can see. Goals in focus: G4 GenAI, G5 reliability, G2 reviewing.",
+      "tasks": [
+        {
+          "title": "Wk 27-30 - Ship one GenAI tool with evals and a go/no-go decision",
+          "dueDate": "2027-05-23",
+          "notes": "Pick a painful, repetitive task: review prep, incident triage or readiness checks. Build the golden set from real past examples before anything else. Run in shadow mode next to humans for two weeks and compare."
+        },
+        {
+          "title": "Wk 31-32 - Drive adoption: onboard two teams and fix the top three failures",
+          "dueDate": "2027-06-06",
+          "notes": "Sit with them on first real use. Deliverable: two teams using it, with measured impact."
+        },
+        {
+          "title": "Wk 33-34 - Map real failure modes of systems I own",
+          "dueDate": "2027-06-20",
+          "notes": "Apply the lab method. Trace critical paths through code, not docs. Predict failure behaviour first, then verify. Deliverable: reliability scorecard with SLOs, error budgets, worst paths."
+        },
+        {
+          "title": "Wk 35-36 - Run a cross-team game day on the riskiest path",
+          "dueDate": "2027-07-04",
+          "notes": "Predict outcomes first and log them. Deliverable: game-day report with every fix owned."
+        },
+        {
+          "title": "Wk 37-39 - Teach two sessions: my review method, and building AI evals",
+          "dueDate": "2027-07-25",
+          "notes": "Deliverable: reusable materials."
+        },
+        {
+          "title": "Gate: GenAI tool shipped with an eval report",
+          "dueDate": "2027-07-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: two teams using it",
+          "dueDate": "2027-07-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: reliability scorecard published",
+          "dueDate": "2027-07-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: game day done, every fix has an owner",
+          "dueDate": "2027-07-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: two sessions taught",
+          "dueDate": "2027-07-25",
+          "notes": "Quarter gate: do not advance until this is true."
+        }
+      ]
+    },
+    {
+      "name": "Q4 Move the organization",
+      "deadline": "2027-10-24",
+      "goal": "A major proposal decided, two mentees visibly growing, and the principal case written.",
+      "description": "Weeks 40-52 (2027-07-26 to 2027-10-24). Principal scope means your name is on outcomes no single team owns. Goals in focus: G6 org and people, G5 reliability.",
+      "tasks": [
+        {
+          "title": "Wk 40-42 - Find the proposal that matters and quantify the cost of inaction",
+          "dueDate": "2027-08-15",
+          "notes": "Use the reliability scorecard, the risk log and the decision journal. Pick the largest structural risk or opportunity in my area. Quantify in money, incidents, engineer time. Deliverable: two-page draft."
+        },
+        {
+          "title": "Wk 43-44 - Pre-wire it one on one with every key stakeholder",
+          "dueDate": "2027-08-29",
+          "notes": "Fold in good objections. Know where every decision-maker stands. Deliverable: revised proposal and stakeholder map."
+        },
+        {
+          "title": "Wk 45-46 - Present and get a decision",
+          "dueDate": "2027-09-12",
+          "notes": "Two options, my recommendation, the risk of each."
+        },
+        {
+          "title": "Wk 47-50 - Mentor two senior engineers with intent",
+          "dueDate": "2027-10-10",
+          "notes": "Find the one gap blocking each from Staff. Give each a stretch design, review it with them in four layers, and let them present it. Deliverable: a growth plan and one visible win each."
+        },
+        {
+          "title": "Wk 51-52 - Score every goal and write the principal case",
+          "dueDate": "2027-10-24",
+          "notes": "Problems chosen, calls made, people grown, org moved. Deliverable: a document ready for a promotion committee."
+        },
+        {
+          "title": "Gate: proposal decided",
+          "dueDate": "2027-10-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: two mentees with growth plans and one visible win each",
+          "dueDate": "2027-10-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: principal-case document written",
+          "dueDate": "2027-10-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        },
+        {
+          "title": "Gate: all seven goals scored",
+          "dueDate": "2027-10-24",
+          "notes": "Quarter gate: do not advance until this is true."
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "Principal Engineer reading list",
+      "category": "reference",
+      "description": "Ten books, one per theme, scheduled by quarter.",
+      "tasks": [
+        {
+          "title": "Designing Data-Intensive Applications - Kleppmann (Q1, systems)",
+          "dueDate": "2027-01-24"
+        },
+        {
+          "title": "Release It! - Nygard (Q1, failure modes)",
+          "dueDate": "2027-01-24"
+        },
+        {
+          "title": "How Big Things Get Done - Flyvbjerg and Gardner (Q1, estimation)",
+          "dueDate": "2027-01-24"
+        },
+        {
+          "title": "Superforecasting - Tetlock and Gardner (Q1, risk calls)",
+          "dueDate": "2027-01-24"
+        },
+        {
+          "title": "The Staff Engineer's Path - Reilly (Q2, influence)",
+          "dueDate": "2027-04-25"
+        },
+        {
+          "title": "AI Engineering - Huyen (Q2, GenAI and evals)",
+          "dueDate": "2027-04-25"
+        },
+        {
+          "title": "Site Reliability Engineering - Google (Q3, reliability)",
+          "dueDate": "2027-07-25"
+        },
+        {
+          "title": "Thinking in Bets - Duke (Q3, decisions)",
+          "dueDate": "2027-07-25"
+        },
+        {
+          "title": "Crucial Conversations - Patterson et al. (Q4, soft skills)",
+          "dueDate": "2027-10-24"
+        },
+        {
+          "title": "An Elegant Puzzle - Larson (Q4, org design)",
+          "dueDate": "2027-10-24"
+        }
+      ]
+    },
+    {
+      "name": "Practice worksheets",
+      "category": "reference",
+      "description": "The three worksheets the plan runs on, kept as notes to copy per use.",
+      "notes": [
+        {
+          "title": "Pre-mortem worksheet",
+          "body": "45 minutes with the team. 'It is six months later and this failed. Why?' Everyone writes silently for five minutes first.\n\nFor each failure story: likelihood (1-5), blast radius (1-5), detectability (1-5, where 5 is invisible), score = L x B x D, owner.\n\nThen: top three risks and their mitigation. And the tripwire - what signal tells us a risk is happening?\n\nLog each one in /log as a risk call with a probability and a resolve-by date."
+        },
+        {
+          "title": "Design kata worksheet",
+          "body": "90 minutes, no lookups. Write constraints before you draw anything.\n\nProblem.\nConstraints: team, deadline, budget.\nNumbers: peak load, read/write ratio, data size.\nWhere contention really sits.\nTop five failure modes.\nWhat I deliberately cut.\nDelivery estimate (50% / 90%) - log it in /log.\n\nThen compare with a strong reference and score yourself 1-5 on: problem framing, correctness, failure handling, abuse and edge cases, pragmatism, judgement. Finish with: what the reference had that mine didn't."
+        },
+        {
+          "title": "Decision journal entry",
+          "body": "One per significant decision. Revisit at 3 and 12 months.\n\nDate and decision.\nContext: what I knew.\nOptions considered.\nWhat I chose and why.\nConfidence (%) - log this in /log as a risk call so it gets scored.\nWhat would prove me wrong.\n\nReview at 3 months: what happened?\nReview at 12 months: what did I learn?"
+        }
+      ]
+    }
+  ]
+}
