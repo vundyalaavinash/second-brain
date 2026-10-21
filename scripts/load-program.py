@@ -10,9 +10,13 @@ Everything goes through the HTTP API rather than the database, so every write pa
 validation and invariants the UI does. It is idempotent by name: run it twice and the second run
 adds only what was missing, which is what makes it safe to extend a programme file later.
 
-    scripts/load-program.py programs/principal-engineer-52-weeks.json
-    scripts/load-program.py --dry-run programs/<file>.json      # say what it would do
+    scripts/load-program.py programs/example.json
+    scripts/load-program.py --dry-run <file>.json               # say what it would do
     scripts/load-program.py --base http://127.0.0.1:3141 <file>
+
+`programs/example.json` documents the shape. Your own programmes are personal and are not kept in
+the repo -- by convention they live in ~/Library/Application Support/second-brain/programs/, which
+`programs/*.json` in .gitignore is there to keep true.
 """
 
 import argparse

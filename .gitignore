@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Programme files are personal -- a 52-week plan, a reading year, an onboarding ramp. The loader
+# and the example below are the shared part; your own live outside the repo, by convention in
+# ~/Library/Application Support/second-brain/programs/.
+programs/*.json
+!programs/example.json

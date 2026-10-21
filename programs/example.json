@@ -1,0 +1,52 @@
+{
+  "_README": "A programme: any long-running practice with goals, phases and reps. Load it with scripts/load-program.py <file>, which is idempotent by name -- run it again after editing and only the new entries are added. Keep your own programmes outside the repo (~/Library/Application Support/second-brain/programs/); this file is the shape, not a plan.",
+
+  "areas": [
+    {
+      "name": "Learn to sail",
+      "description": "The standing commitment this programme hangs off. An area has no end date.",
+      "standard": "Optional: the bar you are holding yourself to, read back to you on the area page.",
+      "nextSteps": "Optional: the one concrete thing to do next.",
+      "tasks": [
+        { "title": "Book the first lesson", "dueDate": "2027-01-10" },
+        "A bare string is a task with no date or notes"
+      ],
+      "notes": [
+        { "title": "Knots worth knowing", "body": "Notes become note items filed in this container. Markdown works." }
+      ]
+    }
+  ],
+
+  "projects": [
+    {
+      "name": "Term 1 - Dinghy basics",
+      "deadline": "2027-03-28",
+      "goal": "One sentence on what finishing looks like.",
+      "description": "A phase of the programme. Give it a deadline and its progress bar becomes the phase's own gate.",
+      "tasks": [
+        { "title": "Rig and launch unaided", "dueDate": "2027-02-14", "notes": "Longer detail goes here.", "priority": "high", "estimateMinutes": 120 },
+        { "title": "Gate: can sail a triangle course single-handed", "dueDate": "2027-03-28", "notes": "Gate items are ordinary tasks due on the phase's last day, so the project's progress bar is the gate." }
+      ]
+    }
+  ],
+
+  "resources": [
+    {
+      "name": "Sailing reading list",
+      "category": "reference",
+      "description": "Categories: articles, tools, reference, research, inspiration, videos, other.",
+      "tasks": [{ "title": "The Complete Sailing Manual - Sleight", "dueDate": "2027-03-28" }]
+    }
+  ],
+
+  "goals": [
+    {
+      "title": "Sail a dinghy single-handed in open water",
+      "horizon": "year",
+      "targetDate": "2027-10-01",
+      "outcome": "The scoreable target, in one line.",
+      "notes": "Optional detail.",
+      "links": ["Term 1 - Dinghy basics", "Learn to sail"]
+    }
+  ]
+}
